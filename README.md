@@ -133,7 +133,8 @@ meal photos. Set the winner as `NANOGPT_VISION_MODEL`.
 |---|---|
 | Foundation, Docker, VITALS core | Done |
 | Progression — XP, levels, disciplines, challenges, achievements | Done |
-| PATROL — full week view, all four phases, week navigation | Done; check-off, RPE and heatmap pending |
+| PATROL — week view, per-set logging, check-off, AI progression | Done; eight-week heatmap pending |
+| JOURNEY — phase overview, checkpoints, what's behind and ahead | Done |
 | FUEL — photo capture, nutrition estimates, daily log, quick-log | Done; weekly review pending |
 | THE TRIAL, checkpoints, SUIT CHECK | Not started |
 
@@ -148,6 +149,23 @@ changing a rule retroactively fixes history. Tune the values at the top of `lib/
 
 Weekly and monthly challenges are generated from a seed derived from the period key, so the set is
 stable within a period and different the next. Nothing rerolls on refresh.
+
+### PATROL and progression
+
+`lib/plan.ts` owns **structure** — which day is which session, which phase you're in, which movements
+belong to it, and every target read from the plan document. A model never writes to it.
+
+`lib/training.ts` owns **prescription** — sets, reps, load, and when to progress. It reads your
+logged history and asks the model to adjust today's numbers. The movement list is not negotiable:
+anything the model invents is dropped on merge, anything it omits keeps the plan's numbers, and set
+counts are clamped to ±1 of the plan even if the instruction is ignored. A model can tell you to add
+2.5 kg to a goblet squat; it cannot decide Wednesday is now a push day.
+
+Prescriptions are cached per date. Regenerating on every load would mean the target moved while you
+were mid-session. `Re-suggest` forces a fresh one.
+
+Every failure path falls back to the plan's own numbers with your last logged performance applied —
+no key, no model, a timeout or garbage JSON all produce a usable session rather than an error.
 
 ### FUEL
 

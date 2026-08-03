@@ -30,6 +30,8 @@ import {
 export const XP = {
   weightLog: 25,
   session: 150,
+  /** Per set actually recorded. Logging the work is work. */
+  setLogged: 10,
   sessionRpe: 25,
   sessionNote: 25,
   fullPatrolWeek: 400,
@@ -63,14 +65,14 @@ export const XP = {
 /**
  * Set from measurement, not estimate: `npx tsx scripts/tune-curve.ts` runs whole
  * simulated years through this engine and reports what they actually pay out.
- * A consistent year earns ~190k XP, which lands at level 49 here, leaving real
+ * A consistent year earns ~235k XP, which lands at level 49 here, leaving real
  * headroom to the cap. Re-run that script after changing anything in the XP
  * table above — this constant is only correct relative to those values.
  *
  * The first weight log is deliberately just short of level 2. One tap should
  * show visible progress, not hand out a level.
  */
-const LEVEL_K = 80;
+const LEVEL_K = 98;
 export const MAX_LEVEL = 60;
 
 export function xpForLevel(level: number): number {
@@ -228,6 +230,8 @@ export interface GameInput {
   photos: { date: string; weekIndex: number; angle: string }[];
   measurements: { date: string }[];
   abilities: { abilityKey: string; achieved: boolean }[];
+  /** One entry per recorded set. */
+  sets: { date: string }[];
 }
 
 export interface LedgerRow {
@@ -927,6 +931,7 @@ export function computeGameState(input: GameInput): GameState {
 
   add("weights", "Readings logged", input.weights.length * XP.weightLog);
   add("sessions", "Sessions completed", doneSessions.length * XP.session);
+  add("sets", "Sets recorded", input.sets.length * XP.setLogged);
   add("rpe", "Effort rated", doneSessions.filter((s) => s.rpe !== null).length * XP.sessionRpe);
   add(
     "notes",
@@ -971,6 +976,7 @@ export function computeGameState(input: GameInput): GameState {
     ...input.weights.map((w) => w.date),
     ...doneSessions.map((s) => s.date),
     ...input.food.map((f) => f.date),
+    ...input.sets.map((s) => s.date),
   ]);
   let quietDays = 0;
   const totalDays = Math.max(daysBetween(startDate, today), 0);

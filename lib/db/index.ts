@@ -13,6 +13,9 @@ function open() {
   // single writer. This app never has concurrent writers, but it's free.
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
+  // Wait for a competing writer instead of throwing SQLITE_BUSY. Matters most
+  // at startup, when several processes may reach the migration lock at once.
+  sqlite.pragma("busy_timeout = 10000");
   migrate(sqlite);
   return drizzle(sqlite, { schema });
 }
@@ -87,16 +90,60 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
     add("salt_g", "REAL");
     add("portion", "TEXT");
   },
+
+  // ── v4: per-set performance logging and cached prescriptions ──
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS exercise_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        exercise_key TEXT NOT NULL,
+        exercise_name TEXT NOT NULL,
+        set_index INTEGER NOT NULL,
+        reps INTEGER,
+        weight_kg REAL,
+        seconds INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS exlog_key_idx ON exercise_logs(exercise_key);
+      CREATE INDEX IF NOT EXISTS exlog_session_idx ON exercise_logs(session_id);
+
+      CREATE TABLE IF NOT EXISTS session_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        day_key TEXT NOT NULL,
+        phase INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        model TEXT,
+        payload TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS session_plans_date_idx ON session_plans(date);
+    `);
+  },
 ];
 
+/**
+ * Runs pending migrations under an exclusive write lock.
+ *
+ * `.immediate()` takes the lock at BEGIN rather than at the first write, so the
+ * version check and the migrations it authorises are one atomic step. Without
+ * it, two processes opening the same file both read user_version = 0 and both
+ * replay the same steps — the second one then fails, because the first has
+ * already changed the schema out from under it. That is not hypothetical: it
+ * happens every time `next build` fans out across workers, and it would happen
+ * on any overlapping restart in production too.
+ */
 function migrate(sqlite: Database.Database) {
-  const current = (sqlite.pragma("user_version", { simple: true }) as number) ?? 0;
-  for (let v = current; v < MIGRATIONS.length; v++) {
-    sqlite.transaction(() => {
+  const run = sqlite.transaction(() => {
+    const current = (sqlite.pragma("user_version", { simple: true }) as number) ?? 0;
+    for (let v = current; v < MIGRATIONS.length; v++) {
       MIGRATIONS[v](sqlite);
       sqlite.pragma(`user_version = ${v + 1}`);
-    })();
-  }
+    }
+  });
+  run.immediate();
 }
 
 function baseSchema(sqlite: Database.Database) {

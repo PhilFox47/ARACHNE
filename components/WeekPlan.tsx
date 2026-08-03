@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { Exercise, Session } from "@/lib/plan";
 import { TensionLine } from "./TensionLine";
 
@@ -12,6 +13,8 @@ export interface DayPlan {
   isToday: boolean;
   isPast: boolean;
   session: Session | null;
+  completed: boolean;
+  setsLogged: number;
 }
 
 /**
@@ -45,13 +48,23 @@ export function WeekPlan({ days, rounds }: { days: DayPlan[]; rounds: number }) 
               >
                 <span
                   className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center border ${
-                    d.isToday ? "border-crimson bg-crimson/10" : "border-edge"
+                    d.completed
+                      ? "border-crimson bg-crimson text-ink"
+                      : d.isToday
+                        ? "border-crimson bg-crimson/10"
+                        : "border-edge"
                   }`}
                 >
-                  <span className={`display text-xs ${d.isToday ? "text-crimson" : "text-muted"}`}>
-                    {d.dayName}
-                  </span>
-                  <span className="text-[0.55rem] text-muted-dim tabular">{d.dateLabel}</span>
+                  {d.completed ? (
+                    <span className="text-lg leading-none text-ink">✓</span>
+                  ) : (
+                    <>
+                      <span className={`display text-xs ${d.isToday ? "text-crimson" : "text-muted"}`}>
+                        {d.dayName}
+                      </span>
+                      <span className="text-[0.55rem] text-muted-dim tabular">{d.dateLabel}</span>
+                    </>
+                  )}
                 </span>
 
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -59,13 +72,17 @@ export function WeekPlan({ days, rounds }: { days: DayPlan[]; rounds: number }) 
                     {rest ? "Off-duty" : d.session!.title}
                   </span>
                   <span className="label-xs">
-                    {rest
-                      ? "Optional 45 min walk"
-                      : d.session!.main.length > 0
-                        ? `${d.session!.main.length} movements · ${rounds} rounds`
-                        : // Thursday is a pick-one, not a circuit — calling the
-                          // VR titles "movements" misreads the session.
-                          `${d.session!.options?.length ?? 0} options · pick one`}
+                    {d.completed
+                      ? `Complete${d.setsLogged > 0 ? ` · ${d.setsLogged} sets` : ""}`
+                      : d.setsLogged > 0
+                        ? `${d.setsLogged} sets logged`
+                        : rest
+                          ? "Optional 45 min walk"
+                          : d.session!.main.length > 0
+                            ? `${d.session!.main.length} movements · ${rounds} rounds`
+                            : // Thursday is a pick-one, not a circuit — calling
+                              // the VR titles "movements" misreads the session.
+                              `${d.session!.options?.length ?? 0} options · pick one`}
                   </span>
                 </span>
 
@@ -76,6 +93,17 @@ export function WeekPlan({ days, rounds }: { days: DayPlan[]; rounds: number }) 
 
               {isOpen && !rest ? (
                 <div className="flex flex-col gap-4 border-t border-edge p-3">
+                  <Link
+                    href={`/patrol/${d.date}`}
+                    className={`tap display flex items-center justify-center border px-4 py-3 text-sm tracking-widest ${
+                      d.completed
+                        ? "border-crimson-dim text-crimson"
+                        : "border-crimson bg-crimson text-ink"
+                    }`}
+                  >
+                    {d.completed ? "Review session" : "Start session"}
+                  </Link>
+
                   {d.session!.blurb ? (
                     <p className="text-sm leading-relaxed text-muted">{d.session!.blurb}</p>
                   ) : null}

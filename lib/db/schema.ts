@@ -58,6 +58,54 @@ export const sessions = sqliteTable(
   (t) => [uniqueIndex("sessions_date_idx").on(t.date)],
 );
 
+/**
+ * Actual performance, one row per set. This is what turns the plan from a
+ * prescription into a record — progressive overload needs to know what you
+ * lifted last week, not what the document suggested you might.
+ */
+export const exerciseLogs = sqliteTable(
+  "exercise_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionId: integer("session_id").notNull(),
+    date: text("date").notNull(),
+    /** Normalised name, so a movement tracks across phases and renamings. */
+    exerciseKey: text("exercise_key").notNull(),
+    exerciseName: text("exercise_name").notNull(),
+    setIndex: integer("set_index").notNull(),
+    reps: integer("reps"),
+    weightKg: real("weight_kg"),
+    /** Holds and carries measure time, not reps. */
+    seconds: integer("seconds"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [
+    index("exlog_key_idx").on(t.exerciseKey),
+    index("exlog_session_idx").on(t.sessionId),
+  ],
+);
+
+/**
+ * The prescription actually issued for a given day, cached so it is stable.
+ * Regenerating on every page load would mean the target moved while you were
+ * mid-session, and a plan that changes under you is not a plan.
+ */
+export const sessionPlans = sqliteTable(
+  "session_plans",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    date: text("date").notNull(),
+    dayKey: text("day_key").notNull(),
+    phase: integer("phase").notNull(),
+    source: text("source", { enum: ["ai", "plan"] }).notNull(),
+    model: text("model"),
+    /** JSON: PrescribedExercise[] */
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("session_plans_date_idx").on(t.date)],
+);
+
 // ── FUEL ─────────────────────────────────────────────────────
 
 export const foodEntries = sqliteTable(

@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { and, gte, lte, sql } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { sessions } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
 import { addDays, dayKeyOf, formatShort, todayISO, weekIndex } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
@@ -55,9 +58,25 @@ export default async function Patrol({
   // the exercises that will actually apply then rather than today's.
   const weekPhase = phaseForDay(week * 7);
 
+  // One query for the week rather than seven — the set counts come back with
+  // the sessions so the overview shows real progress per day.
+  const weekEnd = addDays(weekStart, 6);
+  const rows = db
+    .select({
+      id: sessions.id,
+      date: sessions.date,
+      completed: sessions.completed,
+      setsLogged: sql<number>`(SELECT COUNT(*) FROM exercise_logs WHERE exercise_logs.session_id = ${sessions.id})`,
+    })
+    .from(sessions)
+    .where(and(gte(sessions.date, weekStart), lte(sessions.date, weekEnd)))
+    .all();
+  const byDate = new Map(rows.map((r) => [r.date, r]));
+
   const days: DayPlan[] = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i);
     const dk = dayKeyOf(date);
+    const row = byDate.get(date);
     return {
       dayKey: dk,
       dayName: DAY_NAMES[dk],
@@ -66,8 +85,12 @@ export default async function Patrol({
       isToday: date === today,
       isPast: date < today,
       session: sessionFor(weekPhase.id, dk),
+      completed: row?.completed ?? false,
+      setsLogged: row?.setsLogged ?? 0,
     };
   });
+
+  const doneThisWeek = days.filter((d) => d.completed).length;
 
   const trainingCount = days.filter((d) => d.session !== null).length;
 
@@ -120,7 +143,7 @@ export default async function Patrol({
       <section className="grid grid-cols-3 border border-edge">
         <Stat value={game.patrolStreak} label="Patrol streak" accent />
         <Stat value={rounds} label="Rounds" bordered />
-        <Stat value={trainingCount} label="Sessions" bordered />
+        <Stat value={doneThisWeek} label={`Done / ${trainingCount}`} bordered />
       </section>
 
       {lowProfile ? (
@@ -140,8 +163,8 @@ export default async function Patrol({
       <WeekPlan days={days} rounds={rounds} />
 
       <p className="px-1 text-xs leading-relaxed text-muted-dim">
-        Day {stats.day} of {stats.totalDays}. Check-off, RPE and the eight-week heatmap arrive next — the plan
-        itself is complete for all four phases, so browsing ahead shows the real exercises.
+        Day {stats.day} of {stats.totalDays}. Open any day to log sets and check it off. The plan is complete
+        for all four phases, so browsing ahead shows the real exercises.
       </p>
 
       <BottomNav />

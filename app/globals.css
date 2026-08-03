@@ -186,11 +186,22 @@
 /* Impact lines on a completed patrol. */
 @keyframes impact-line {
   from {
-    transform: scaleY(0.2);
+    transform: scale(0.25);
     opacity: 1;
   }
   to {
-    transform: scaleY(1);
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+
+@keyframes impact-ring {
+  from {
+    transform: scale(0.3);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(3.4);
     opacity: 0;
   }
 }

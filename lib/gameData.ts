@@ -1,6 +1,15 @@
 import { asc } from "drizzle-orm";
 import { db } from "./db";
-import { abilities, foodEntries, measurements, photos, sessions, trials, weights } from "./db/schema";
+import {
+  abilities,
+  exerciseLogs,
+  foodEntries,
+  measurements,
+  photos,
+  sessions,
+  trials,
+  weights,
+} from "./db/schema";
 import { todayISO } from "./dates";
 import { getSettings } from "./settings";
 import { computeGameState, type GameInput, type GameState } from "./game";
@@ -64,6 +73,7 @@ export function loadGameState(): GameState {
       .select({ abilityKey: abilities.abilityKey, achieved: abilities.achieved })
       .from(abilities)
       .all(),
+    sets: db.select({ date: exerciseLogs.date }).from(exerciseLogs).all(),
   };
 
   return computeGameState(input);

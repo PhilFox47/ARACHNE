@@ -84,7 +84,10 @@ function buildYear(days: number, attendance: number, trackingRate: number): Game
     achieved: true,
   }));
 
-  return { startDate: start, today, weights, sessions, food, trials, photos, measurements, abilities };
+  // ~6 movements x 3 sets per session, matching the plan's shape.
+  const sets = sessions.flatMap((s) => Array.from({ length: 18 }, () => ({ date: s.date })));
+
+  return { startDate: start, today, weights, sessions, food, trials, photos, measurements, abilities, sets };
 }
 
 const PROFILES = [

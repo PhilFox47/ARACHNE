@@ -3,11 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// Five items rather than four. At 393px that's ~78px each — still well clear of
+// the 44px touch minimum — and the journey view earns a permanent slot in a way
+// a once-a-month screen wouldn't.
 const ITEMS = [
   { href: "/", label: "HQ", match: (p: string) => p === "/" },
   { href: "/patrol", label: "PATROL", match: (p: string) => p.startsWith("/patrol") },
   { href: "/fuel", label: "FUEL", match: (p: string) => p.startsWith("/fuel") },
   { href: "/vitals", label: "VITALS", match: (p: string) => p.startsWith("/vitals") },
+  { href: "/journey", label: "JOURNEY", match: (p: string) => p.startsWith("/journey") },
 ];
 
 export function BottomNav() {
@@ -15,7 +19,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-edge bg-base/95 backdrop-blur">
-      <ul className="pad-safe-b mx-auto grid max-w-lg grid-cols-4">
+      <ul className="pad-safe-b mx-auto grid max-w-lg grid-cols-5">
         {ITEMS.map((item) => {
           const active = item.match(pathname);
           return (
@@ -78,6 +82,17 @@ function Icon({ name }: { name: string }) {
       <svg {...common}>
         <circle cx="50" cy="54" r="25" />
         <path d="M33 27 H67" />
+      </svg>
+    );
+
+  // A path with waypoints — the year, marked.
+  if (name === "JOURNEY")
+    return (
+      <svg {...common}>
+        <path d="M16 78 C 36 78, 34 50, 50 50 S 66 22, 84 22" strokeWidth={6} />
+        <circle cx="16" cy="78" r="6" fill="currentColor" stroke="none" />
+        <circle cx="50" cy="50" r="6" fill="currentColor" stroke="none" />
+        <circle cx="84" cy="22" r="6" fill="currentColor" stroke="none" />
       </svg>
     );
 
