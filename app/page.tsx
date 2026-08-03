@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { isAuthed } from "@/lib/auth";
 import { buildSeries, getHqStats, loadWeights } from "@/lib/stats";
 import { computeInsights } from "@/lib/sense";
 import { getSettings, ensureStartDate } from "@/lib/settings";
+import { loadGameState } from "@/lib/gameData";
 import { todayISO } from "@/lib/dates";
 import { Mark } from "@/components/Mark";
 import { CountUp } from "@/components/CountUp";
@@ -10,6 +12,8 @@ import { WeightChart } from "@/components/WeightChart";
 import { WeightEntry } from "@/components/WeightEntry";
 import { TensionLine } from "@/components/TensionLine";
 import { BottomNav } from "@/components/BottomNav";
+import { LevelBar, StreakStrip } from "@/components/LevelBar";
+import { ChallengeList } from "@/components/Challenges";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +26,7 @@ export default async function HQ() {
   const stats = getHqStats();
   const series = buildSeries(rows, settings.startDate);
   const insights = computeInsights(stats, rows);
+  const game = loadGameState();
 
   // The label names the metric; colour carries the corridor state. Labelling it
   // "In corridor" put a state word directly under a signed delta, which read as
@@ -50,9 +55,17 @@ export default async function HQ() {
           <Mark size={26} />
           <span className="display text-lg tracking-[0.14em] text-ink">ARACHNE</span>
         </div>
-        <span className="label-xs tabular">
-          Day {stats.day} / {stats.totalDays}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="label-xs tabular">
+            Day {stats.day} / {stats.totalDays}
+          </span>
+          <Link href="/settings" aria-label="Settings" className="tap flex items-center justify-center">
+            <svg viewBox="0 0 100 100" width="17" height="17" fill="none" stroke="#8A92A6" strokeWidth="7" strokeLinecap="round" aria-hidden="true">
+              <circle cx="50" cy="50" r="14" />
+              <path d="M50 12 V26 M50 74 V88 M12 50 H26 M74 50 H88 M23 23 L33 33 M67 67 L77 77 M77 23 L67 33 M33 67 L23 77" />
+            </svg>
+          </Link>
+        </div>
       </header>
 
       {/* ── Hero: the number that matters ── */}
@@ -115,6 +128,12 @@ export default async function HQ() {
         </div>
       </section>
 
+      {/* ── Progression ── */}
+      <div className="swing flex flex-col gap-3" style={{ animationDelay: "50ms" }}>
+        <LevelBar game={game} />
+        <StreakStrip game={game} />
+      </div>
+
       {/* ── Primary action ── */}
       <div className="swing" style={{ animationDelay: "60ms" }}>
         <WeightEntry
@@ -159,6 +178,21 @@ export default async function HQ() {
           ))
         )}
       </section>
+
+      {/* ── Challenges ── */}
+      <div className="swing" style={{ animationDelay: "220ms" }}>
+        <ChallengeList challenges={game.challenges} scope="weekly" title="This week" />
+      </div>
+
+      <Link href="/progress" className="panel flex items-center justify-between p-4">
+        <span className="flex flex-col gap-1">
+          <span className="display text-sm text-ink">Full record</span>
+          <span className="label-xs">
+            {game.unlockedAchievements} achievements · monthly challenges · disciplines
+          </span>
+        </span>
+        <span className="text-crimson">&rarr;</span>
+      </Link>
 
       <p className="px-1 text-xs leading-relaxed text-muted-dim">{stats.phase.brief}</p>
 

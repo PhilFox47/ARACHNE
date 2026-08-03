@@ -130,17 +130,23 @@ export const abilities = sqliteTable(
 
 // ── SUIT CHECK ───────────────────────────────────────────────
 
+/**
+ * SUIT CHECK is weekly, not monthly. Weekly is a superset — the month-boundary
+ * comparisons still work, they just read off whichever week the checkpoint
+ * lands in, and a weekly cadence gives 52 frames of time-lapse instead of 12.
+ */
 export const photos = sqliteTable(
   "photos",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     date: text("date").notNull(),
-    monthIndex: integer("month_index").notNull(),
+    /** 0-based week since start date. */
+    weekIndex: integer("week_index").notNull(),
     angle: text("angle", { enum: ["front", "side", "back", "side_flexed"] }).notNull(),
     path: text("path").notNull(),
     createdAt: integer("created_at").notNull().default(now),
   },
-  (t) => [uniqueIndex("photos_month_angle_idx").on(t.monthIndex, t.angle)],
+  (t) => [uniqueIndex("photos_week_angle_idx").on(t.weekIndex, t.angle)],
 );
 
 // ── System ───────────────────────────────────────────────────

@@ -10,9 +10,11 @@ export interface AppSettings {
   startWeightKg: number;
   targetWeightKg: number;
   photoCorrectionPct: number;
+  /** Overrides NANOGPT_VISION_MODEL when set, so the model is swappable in-app. */
+  visionModel: string | null;
 }
 
-const DEFAULTS: Omit<AppSettings, "startDate"> = {
+const DEFAULTS: Omit<AppSettings, "startDate" | "visionModel"> = {
   heightCm: PROFILE.heightCm,
   startWeightKg: PROFILE.startWeightKg,
   targetWeightKg: PROFILE.targetWeightKg,
@@ -37,7 +39,13 @@ export function getSettings(): AppSettings {
     startWeightKg: num("start_weight_kg", DEFAULTS.startWeightKg),
     targetWeightKg: num("target_weight_kg", DEFAULTS.targetWeightKg),
     photoCorrectionPct: num("photo_correction_pct", DEFAULTS.photoCorrectionPct),
+    visionModel: raw.vision_model?.trim() || null,
   };
+}
+
+/** Database setting wins over the environment variable. */
+export function activeVisionModel(): string | null {
+  return getSettings().visionModel ?? (process.env.NANOGPT_VISION_MODEL || null);
 }
 
 export function setSetting(key: string, value: string | number): void {

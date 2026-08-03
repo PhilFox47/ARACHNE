@@ -18,11 +18,75 @@ function open() {
 }
 
 /**
- * Schema is created inline rather than through drizzle-kit migrations. One user,
- * one container, no rolling deploys — the app should just come up with a correct
- * database on a fresh volume. `drizzle-kit generate` still works for inspection.
+ * Schema is created and versioned inline rather than through drizzle-kit
+ * migrations. One user, one container, no rolling deploys — the app should just
+ * come up with a correct database on a fresh volume.
+ *
+ * Versioned via PRAGMA user_version. Steps run in order and only once, so a
+ * fresh volume and a volume that's been running since day one converge on the
+ * same schema. `CREATE TABLE IF NOT EXISTS` alone is not enough: it silently
+ * skips an existing table whose columns have since changed.
  */
+const MIGRATIONS: ((db: Database.Database) => void)[] = [
+  // ── v1: base schema ──
+  (sqlite) => baseSchema(sqlite),
+
+  // ── v2: SUIT CHECK moved from monthly to weekly ──
+  (sqlite) => {
+    const cols = sqlite.pragma("table_info(photos)") as { name: string }[];
+    if (!cols.some((c) => c.name === "month_index")) return;
+
+    const rows = sqlite.prepare("SELECT id, date, angle, path, created_at FROM photos").all() as {
+      id: number;
+      date: string;
+      angle: string;
+      path: string;
+      created_at: number;
+    }[];
+
+    const startRow = sqlite.prepare("SELECT value FROM settings WHERE key = 'start_date'").get() as
+      | { value: string }
+      | undefined;
+
+    sqlite.exec(`
+      DROP TABLE photos;
+      CREATE TABLE photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        week_index INTEGER NOT NULL,
+        angle TEXT NOT NULL,
+        path TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE UNIQUE INDEX photos_week_angle_idx ON photos(week_index, angle);
+    `);
+
+    // Nothing has written to this table in any shipped build, but recompute
+    // rather than discard in case a volume somewhere has rows.
+    if (rows.length > 0 && startRow) {
+      const start = new Date(`${startRow.value}T00:00:00`).getTime();
+      const insert = sqlite.prepare(
+        "INSERT OR IGNORE INTO photos (date, week_index, angle, path, created_at) VALUES (?, ?, ?, ?, ?)",
+      );
+      for (const r of rows) {
+        const wk = Math.floor((new Date(`${r.date}T00:00:00`).getTime() - start) / (7 * 86_400_000));
+        insert.run(r.date, Math.max(0, wk), r.angle, r.path, r.created_at);
+      }
+    }
+  },
+];
+
 function migrate(sqlite: Database.Database) {
+  const current = (sqlite.pragma("user_version", { simple: true }) as number) ?? 0;
+  for (let v = current; v < MIGRATIONS.length; v++) {
+    sqlite.transaction(() => {
+      MIGRATIONS[v](sqlite);
+      sqlite.pragma(`user_version = ${v + 1}`);
+    })();
+  }
+}
+
+function baseSchema(sqlite: Database.Database) {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS weights (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,6 +157,10 @@ function migrate(sqlite: Database.Database) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS abilities_trial_key_idx ON abilities(trial_id, ability_key);
 
+    -- Frozen at its v1 shape on purpose. Migration steps are historical
+    -- records, not a mirror of the current schema: if this created the
+    -- week_index index, it would fail on any database still holding the old
+    -- photos table, before the v2 step ever got a chance to convert it.
     CREATE TABLE IF NOT EXISTS photos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT NOT NULL,

@@ -4,8 +4,10 @@ services:
     image: arachne:latest
     container_name: arachne
     restart: unless-stopped
+    # Host port only. The container always listens on 3000, so changing this
+    # needs no rebuild — edit .env and `docker compose up -d`.
     ports:
-      - "${PORT:-3000}:3000"
+      - "${ARACHNE_PORT:-3000}:3000"
     environment:
       APP_PASSWORD: ${APP_PASSWORD:?set APP_PASSWORD in .env}
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}

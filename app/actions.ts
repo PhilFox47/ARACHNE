@@ -42,7 +42,14 @@ export async function deleteWeight(date: string) {
 
 export async function updateSetting(key: string, value: string | number) {
   await guard();
-  const allowed = ["start_date", "height_cm", "start_weight_kg", "target_weight_kg", "photo_correction_pct"];
+  const allowed = [
+    "start_date",
+    "height_cm",
+    "start_weight_kg",
+    "target_weight_kg",
+    "photo_correction_pct",
+    "vision_model",
+  ];
   if (!allowed.includes(key)) return { ok: false as const, error: "Unknown setting." };
   setSetting(key, value);
   revalidatePath("/");
