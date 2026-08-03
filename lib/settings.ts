@@ -3,6 +3,7 @@ import { db } from "./db";
 import { settings } from "./db/schema";
 import { PHOTO_CORRECTION_DEFAULT_PCT, PROFILE } from "./plan";
 import { todayISO } from "./dates";
+import { mergeEquipment, type EquipmentItem } from "./equipment";
 
 export interface AppSettings {
   startDate: string;
@@ -12,9 +13,10 @@ export interface AppSettings {
   photoCorrectionPct: number;
   /** Overrides NANOGPT_VISION_MODEL when set, so the model is swappable in-app. */
   visionModel: string | null;
+  equipment: EquipmentItem[];
 }
 
-const DEFAULTS: Omit<AppSettings, "startDate" | "visionModel"> = {
+const DEFAULTS: Omit<AppSettings, "startDate" | "visionModel" | "equipment"> = {
   heightCm: PROFILE.heightCm,
   startWeightKg: PROFILE.startWeightKg,
   targetWeightKg: PROFILE.targetWeightKg,
@@ -40,7 +42,21 @@ export function getSettings(): AppSettings {
     targetWeightKg: num("target_weight_kg", DEFAULTS.targetWeightKg),
     photoCorrectionPct: num("photo_correction_pct", DEFAULTS.photoCorrectionPct),
     visionModel: raw.vision_model?.trim() || null,
+    equipment: mergeEquipment(safeJson(raw.equipment)),
   };
+}
+
+function safeJson(v: string | undefined): unknown {
+  if (!v) return null;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
+  }
+}
+
+export function setEquipment(items: EquipmentItem[]): void {
+  setSetting("equipment", JSON.stringify(items));
 }
 
 /** Database setting wins over the environment variable. */

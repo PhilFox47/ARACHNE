@@ -18,7 +18,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs, sessionPlans } from "./db/schema";
 import { apiKey, baseUrl } from "./nanogpt";
-import { activeVisionModel } from "./settings";
+import { activeVisionModel, getSettings } from "./settings";
+import { equipmentSummary, gateExercise, ownedKeys } from "./equipment";
 import { roundsForWeek, sessionFor, type DayKey, type Exercise, type PhaseId } from "./plan";
 import { stripFences } from "./vision";
 
@@ -39,6 +40,8 @@ export interface PrescribedExercise {
   perSide: boolean;
   /** Whether to show a load field by default. Always revealable. */
   loaded: boolean;
+  /** Set when equipment gating replaced the plan's movement. */
+  substitutedFrom: string | null;
 }
 
 /**
@@ -127,30 +130,46 @@ export function baselinePrescription(
   const session = sessionFor(phase, dayKey);
   const rounds = roundsForWeek(weekIdx);
   const source: Exercise[] = session ? [...session.main, ...(session.extras ?? [])] : [];
+  const owned = ownedKeys(getSettings().equipment);
 
-  return {
-    date,
-    dayKey,
-    phase,
-    source: "plan",
-    model: null,
-    exercises: source.map((e) => {
-      const p = parseDose(e.dose, rounds);
-      return {
-        key: exerciseKey(e.name),
-        name: e.name,
-        sets: p.sets,
-        metric: p.metric,
-        repRange: p.repRange,
-        targetReps: p.reps,
-        targetSeconds: p.seconds,
-        targetWeightKg: null,
-        note: e.note ?? null,
-        perSide: p.perSide,
-        loaded: looksLoaded(e.name),
-      };
-    }),
-  };
+  const exercises: PrescribedExercise[] = [];
+  const seen = new Set<string>();
+
+  for (const e of source) {
+    // Gate before prescribing. Opening a session and finding work you
+    // physically cannot do is worse than a substitution.
+    const gate = gateExercise(e.name, owned);
+    if (!gate.allowed && gate.substitute === null) continue;
+
+    const use = gate.allowed
+      ? { name: e.name, dose: e.dose, note: e.note ?? null }
+      : { name: gate.substitute!.name, dose: gate.substitute!.dose, note: gate.substitute!.note };
+
+    const key = exerciseKey(use.name);
+    // Sets are keyed by movement, so the same movement twice in one session
+    // would have its logs overwrite each other. A substitution that lands on
+    // something already prescribed is simply dropped.
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const p = parseDose(use.dose, rounds);
+    exercises.push({
+      key,
+      name: use.name,
+      sets: p.sets,
+      metric: p.metric,
+      repRange: p.repRange,
+      targetReps: p.reps,
+      targetSeconds: p.seconds,
+      targetWeightKg: null,
+      note: use.note,
+      perSide: p.perSide,
+      loaded: looksLoaded(use.name),
+      substitutedFrom: gate.allowed ? null : e.name,
+    });
+  }
+
+  return { date, dayKey, phase, source: "plan", model: null, exercises };
 }
 
 export interface ExerciseHistoryRow {
@@ -221,6 +240,8 @@ RULES — these are not yours to change:
 - With no history for a movement, keep the plan's own numbers and set weight to
   null rather than inventing one.
 - Bodyweight movements take weight null unless history shows added load.
+- You are told what equipment the athlete owns. Pick loads and variations that
+  fit it. Never prescribe a load they have no way to produce.
 
 Return ONLY a JSON object. No markdown, no code fences, no commentary.
 
@@ -299,6 +320,7 @@ export async function generatePrescription(
               phase: base.phase,
               session: base.dayKey,
               deload_week: isDeload,
+              equipment_available: equipmentSummary(getSettings().equipment),
               exercises: context,
             }),
           },

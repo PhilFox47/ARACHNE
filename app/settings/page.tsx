@@ -4,7 +4,10 @@ import { isAuthed } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { apiKey, envModel } from "@/lib/nanogpt";
 import { SettingsForm } from "@/components/SettingsForm";
+import { EquipmentPicker } from "@/components/EquipmentPicker";
+import { ResetPanel } from "@/components/ResetPanel";
 import { BottomNav } from "@/components/BottomNav";
+import { addDays, todayISO } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +36,10 @@ export default async function Settings() {
         envModel={envModel()}
         hasKey={apiKey() !== null}
       />
+
+      <EquipmentPicker initial={s.equipment} />
+
+      <ResetPanel today={todayISO()} tomorrow={addDays(todayISO(), 1)} />
 
       <BottomNav />
     </main>

@@ -45,6 +45,10 @@ export interface Phase {
   weightFromKg: number | null;
   weightToKg: number | null;
   brief: string;
+  /** One line on what this phase is for. */
+  focus: string;
+  /** What actually changes here, relative to the phase before. */
+  changes: string[];
 }
 
 /**
@@ -66,6 +70,13 @@ export const PHASES: Phase[] = [
     weightToKg: 100,
     brief:
       "No deficit yet. Two weeks of measuring and tracking only. Without a baseline you won't know in month 6 whether you're making progress.",
+    focus: "Measure, don't change",
+    changes: [
+      "Day 1: weight, waist at navel height, chest, thigh, flexed upper arm — and four photos in the same light and the same spot.",
+      "Day 2: the baseline fitness test. Without it you won't know in month 6 whether you're improving.",
+      "Buy the kit. The doorframe pull-up bar first — lats are what fill the suit.",
+      "Track food honestly at maintenance and change nothing. Two new habits at once is the classic February dropout.",
+    ],
   },
   {
     id: 1,
@@ -80,6 +91,14 @@ export const PHASES: Phase[] = [
     weightToKg: 93,
     brief:
       "The goal is habit, not performance. Turning up five times a week for twelve weeks straight is the actual win. The muscle comes on its own.",
+    focus: "Habit, not performance",
+    changes: [
+      "Turning up five times a week for twelve weeks is the win. The muscle follows on its own.",
+      "Push-ups start elevated and walk down: table → chair → sofa edge → floor. Only advance at a clean 3×12.",
+      "Three dead hangs every Wednesday — grip and shoulder stability underpin everything later.",
+      "40 g of protein per meal, non-negotiable. Weigh daily, judge weekly.",
+      "The deficit starts in week 3, at 2,300 kcal.",
+    ],
   },
   {
     id: 2,
@@ -94,6 +113,15 @@ export const PHASES: Phase[] = [
     weightToKg: 88,
     brief:
       "Training now, not acclimatising. The movement patterns are in place — from here it's progression.",
+    focus: "Progression begins",
+    changes: [
+      "Negative pull-ups, 5 sets of 5 seconds, Wednesday and Friday. This is the phase's headline progression.",
+      "From your first real rep: grease the groove — 1–2 pull-ups in passing through the day, never to failure.",
+      "Push-ups move to the floor, then diamond, then archer. Pike push-ups enter as handstand preparation.",
+      "Dips move between two chairs; lunges become Bulgarian split squats; Nordic curl negatives are added.",
+      "Handstand practice becomes daily — five minutes, rest days included. It's a habit, not a training block.",
+      "Cartwheel, kip-up progression and the tuck L-sit join Friday. Thursday VR becomes intervals: 2 min hard / 1 min easy × 8.",
+    ],
   },
   {
     id: 3,
@@ -108,6 +136,16 @@ export const PHASES: Phase[] = [
     weightToKg: 84,
     brief:
       "The explosive work starts. You're light enough now that jumps and skills actually work.",
+    focus: "Explosive",
+    changes: [
+      "You're light enough now that jumps and skills actually work.",
+      "Clap push-ups and archer push-ups; pike push-ups go elevated toward the handstand push-up.",
+      "Pull-ups become explosive. Archer rows, pistol-squat progression to a chair, and broad jumps come in.",
+      "Roundoff, muscle-up progression, precision jumps and the wall run join Friday.",
+      "Mobility turns active: pancake, bridge push-up, active hip rotations.",
+      "Every second Thursday, swap VR for outdoor sprints — 8 × 30 s hard / 90 s walk.",
+      "Injury rule: everything new is learned slowly, on something soft, never at the tired end of a session.",
+    ],
   },
   {
     id: 4,
@@ -122,6 +160,15 @@ export const PHASES: Phase[] = [
     weightToKg: 80,
     brief:
       "The last 4 kg are the hardest. Smaller deficit, more resistance, thinner motivation after nine months. Discipline wins here, not enthusiasm.",
+    focus: "Optics and combination",
+    changes: [
+      "Shoulders and lats get priority — they build the V-silhouette that fills the suit. Lateral raises and pull-ups each get an extra volume set.",
+      "Core becomes daily and short: hollow hold, dragon flag negatives, hanging knee raises.",
+      "Skills combine into flows — roll → kip-up → jump → landing in the Spidey crouch. This is where it stops feeling like training.",
+      "If weight stalls three weeks or more: check steps, check tracking, then take one week at maintenance before returning to the deficit.",
+      "Never below 2,000 kcal. Below that you lose muscle, strength and hair rather than fat.",
+      "Final two weeks: back to ~2,400 kcal. You look fuller and more defined, and you don't start the rest of your life starving.",
+    ],
   },
 ];
 

@@ -98,6 +98,7 @@ export default async function JourneyPage() {
                   <span className={`display text-xl ${isCurrent ? "text-crimson" : "text-ink"}`}>
                     {p.phase.codename}
                   </span>
+                  <span className="text-xs text-muted">{p.phase.focus}</span>
                   <span className="label-xs">
                     {formatShort(p.startDate)} – {formatShort(p.endDate)} · {p.daysTotal} days
                   </span>
@@ -150,14 +151,35 @@ export default async function JourneyPage() {
                     />
                   </div>
                 </>
-              ) : (
-                <p className="text-sm leading-relaxed text-muted">{p.phase.brief}</p>
-              )}
+              ) : null}
+
+              <p className="border-l-2 border-l-edge pl-3 text-sm leading-relaxed text-muted">
+                {p.phase.brief}
+              </p>
+
+              {/* What actually changes here — the point of the screen. */}
+              <details open={isCurrent} className="flex flex-col gap-2">
+                <summary className="label-xs cursor-pointer select-none">
+                  What changes in this phase
+                </summary>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {p.phase.changes.map((c) => (
+                    <li key={c} className="flex gap-2.5">
+                      <span
+                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 ${
+                          isCurrent ? "bg-crimson" : "bg-cobalt"
+                        }`}
+                      />
+                      <span className="text-sm leading-relaxed text-ink">{c}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
 
               {unlocks.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 border-t border-edge pt-3">
                   <p className="label-xs">
-                    {p.status === "ahead" ? "Unlocks here" : "New in this phase"}
+                    {p.status === "ahead" ? "New movements unlocked here" : "New movements in this phase"}
                   </p>
                   <p className="text-xs leading-relaxed text-muted">{unlocks.join(" · ")}</p>
                 </div>

@@ -54,7 +54,13 @@ export function CountUp({
   }, [value, duration]);
 
   if (shown === null) {
-    return <span className={className}>&mdash;</span>;
+    // Scaled down relative to the parent: an em-dash at the hero size renders
+    // as a solid white bar, which reads as a broken layout rather than "no data".
+    return (
+      <span className={className}>
+        <span className="text-[0.4em] text-muted-dim">&mdash;</span>
+      </span>
+    );
   }
 
   const body = shown.toFixed(decimals);
