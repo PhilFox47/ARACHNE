@@ -46,9 +46,27 @@ export async function POST(req: Request) {
   }
 
   const dataUrl = `data:${stored.type};base64,${stored.buf.toString("base64")}`;
-  const result = await analyseMeal(dataUrl, hint ?? entry.description);
+
+  // Only ever pass something the user actually wrote. Falling back to
+  // `description` fed the placeholder straight into the prompt — the model was
+  // being told the meal was called "Analysing…".
+  const note = (hint ?? entry.userNote ?? "").trim();
+
+  // Persist the note before calling out. The entry was created the instant the
+  // photo was taken, which is before this text existed — and if the model then
+  // fails, the context the user typed must still survive for the retry.
+  if (note.length > 0 && note !== entry.userNote) {
+    db.update(foodEntries).set({ userNote: note }).where(eq(foodEntries.id, entryId)).run();
+  }
+
+  const result = await analyseMeal(dataUrl, note.length > 0 ? note : undefined);
 
   if (result.error) {
+    // Surface the note as the description so a failed entry reads as what you
+    // ate rather than "Analysing…" forever.
+    if (note.length > 0 && entry.description === "Analysing…") {
+      db.update(foodEntries).set({ description: note }).where(eq(foodEntries.id, entryId)).run();
+    }
     return NextResponse.json({ ok: true, analysed: false, error: result.error, model: result.model });
   }
 
@@ -60,7 +78,7 @@ export async function POST(req: Request) {
 
   db.update(foodEntries)
     .set({
-      description: result.description?.trim() || entry.description,
+      description: result.description?.trim() || entry.userNote || entry.description,
       portion: result.portion,
       kcal: scale(result.kcal),
       proteinG: scale(result.proteinG),

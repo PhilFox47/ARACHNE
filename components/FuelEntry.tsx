@@ -21,6 +21,7 @@ interface Entry {
   photoPath: string | null;
   aiConfidence: "low" | "medium" | "high" | null;
   edited: boolean;
+  userNote: string | null;
 }
 
 const time = (unix: number) =>
@@ -103,6 +104,12 @@ export function FuelEntryRow({ entry }: { entry: Entry }) {
             <Detail label="Salt" value={entry.saltG} unit="g" />
           </div>
 
+          {entry.userNote ? (
+            <p className="border-l-2 border-l-cobalt pl-2.5 text-xs leading-relaxed text-muted">
+              You said: {entry.userNote}
+            </p>
+          ) : null}
+
           <div className="flex flex-col gap-2">
             <input
               value={desc}
@@ -129,6 +136,26 @@ export function FuelEntryRow({ entry }: { entry: Entry }) {
               </button>
             </div>
           </div>
+
+          {entry.photoPath && entry.kcal === null ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  await fetch("/api/analyze-meal", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ entryId: entry.id, hint: desc.trim() || undefined }),
+                  });
+                  router.refresh();
+                })
+              }
+              className="tap display border border-cobalt px-4 py-2.5 text-xs tracking-widest text-cobalt-lift disabled:opacity-40"
+            >
+              {pending ? "Reading" : "Analyse this photo"}
+            </button>
+          ) : null}
 
           <div className="flex items-center justify-between">
             <button

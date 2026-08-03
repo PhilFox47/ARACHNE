@@ -171,8 +171,14 @@ export async function analyseMeal(
   if (!key) return { ...EMPTY, error: "NANOGPT_API_KEY is not set.", model };
   if (!model) return { ...EMPTY, error: "No vision model selected. Pick one in Settings.", model };
 
+  // The note outranks the image wherever they disagree. A photo cannot show
+  // diameter, how much was eaten, or what it was cooked in — if the user has
+  // told you, that is ground truth, not a hint to weigh against your own guess.
   const userText = hint?.trim()
-    ? `Estimate this meal. The user notes: "${hint.trim()}". Use it to resolve anything ambiguous in the photo.`
+    ? `Estimate this meal.\n\nThe user has told you the following about it:\n"${hint.trim()}"\n\n` +
+      `Treat that as ground truth. Where it states a size, quantity, portion eaten, ` +
+      `preparation or ingredient, use it exactly and do NOT substitute your own visual ` +
+      `estimate. Scale every number to the portion actually eaten, not the portion shown.`
     : "Estimate this meal.";
 
   try {

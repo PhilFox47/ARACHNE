@@ -136,6 +136,12 @@ export const foodEntries = sqliteTable(
     saltG: real("salt_g"),
     /** Free-text portion the model inferred, e.g. "500 ml can". */
     portion: text("portion"),
+    /**
+     * What you told the model before it looked. Kept separately from
+     * `description`, which the model overwrites — otherwise the context you
+     * supplied disappears the moment the estimate lands.
+     */
+    userNote: text("user_note"),
     mealType: text("meal_type", { enum: ["meal", "snack"] }).notNull(),
     photoPath: text("photo_path"),
     source: text("source", { enum: ["ai", "manual", "quick"] }).notNull(),

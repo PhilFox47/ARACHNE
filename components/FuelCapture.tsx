@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createEntry, quickLog } from "@/app/fuel/actions";
 import { WebLoader } from "./WebLoader";
@@ -34,6 +34,7 @@ export function FuelCapture({ quickItems }: { quickItems: QuickItem[] }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<null | "saving" | "reading">(null);
+  const [awaitingNote, setPending2] = useState<{ id: number; preview: string } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [pending, start] = useTransition();
@@ -58,22 +59,33 @@ export function FuelCapture({ quickItems }: { quickItems: QuickItem[] }) {
       return;
     }
 
-    // Save first. The entry exists before the model is ever called, so a slow
-    // or failed analysis can never cost you the log.
+    // Save first, before anyone types anything. The entry exists before the
+    // model is ever called, so a slow analysis — or abandoning the note sheet
+    // entirely — can never cost you the log.
     const created = await createEntry({ description: "Analysing…", photoDataUrl: dataUrl });
     if (!created.ok) {
       finish(created.error);
       return;
     }
 
-    setBusy("reading");
+    setBusy(null);
+    setPending2({ id: created.id, preview: dataUrl });
     router.refresh();
+  };
 
+  /**
+   * A photo can't show diameter, how much of it you ate, or the oil it was
+   * cooked in — and portion inference is where these estimates go wrong. One
+   * line of context is worth more than any amount of model tuning.
+   */
+  const analyse = async (entryId: number, hint: string) => {
+    setPending2(null);
+    setBusy("reading");
     try {
       const res = await fetch("/api/analyze-meal", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ entryId: created.id }),
+        body: JSON.stringify({ entryId, hint: hint.trim() || undefined }),
       });
       const body = await res.json();
       if (body.analysed) {
@@ -161,6 +173,13 @@ export function FuelCapture({ quickItems }: { quickItems: QuickItem[] }) {
         </button>
       </div>
 
+      {awaitingNote ? (
+        <NoteSheet
+          preview={awaitingNote.preview}
+          onAnalyse={(hint) => void analyse(awaitingNote.id, hint)}
+        />
+      ) : null}
+
       {quickItems.length > 0 ? (
         <div className="flex flex-col gap-2">
           <p className="label-xs">Again</p>
@@ -188,6 +207,97 @@ export function FuelCapture({ quickItems }: { quickItems: QuickItem[] }) {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Appears after the shot, before the model runs. The entry is already saved by
+ * this point, so there is no way to lose it here — the only thing at stake is
+ * how good the estimate will be.
+ */
+function NoteSheet({
+  preview,
+  onAnalyse,
+}: {
+  preview: string;
+  onAnalyse: (hint: string) => void;
+}) {
+  const [hint, setHint] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Focus without yanking the keyboard up on a phone the moment it appears —
+    // typing is optional, and forcing the keyboard makes it feel required.
+    ref.current?.focus({ preventScroll: true });
+  }, []);
+
+  /**
+   * Append, then put the caret back at the end. Without the explicit
+   * selection reset the input keeps its old caret position, so anything typed
+   * after tapping a chip lands in front of the word instead of after it.
+   */
+  const append = (word: string) => {
+    setHint((v) => {
+      const next = v.trim().length === 0 ? word : `${v.trim()}, ${word}`;
+      queueMicrotask(() => {
+        const el = ref.current;
+        if (!el) return;
+        el.focus({ preventScroll: true });
+        el.setSelectionRange(next.length, next.length);
+      });
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-base/80 backdrop-blur-sm">
+      <div className="pad-safe-b panel mx-auto flex w-full max-w-lg flex-col gap-3 border-t-2 border-t-crimson p-4">
+        <div className="flex items-start gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={preview} alt="" className="h-16 w-16 shrink-0 border border-edge object-cover" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="display text-base text-ink">Anything the photo misses?</p>
+            <p className="text-xs leading-relaxed text-muted">
+              Size, how much you ate, what it was cooked in. Optional — saved either way.
+            </p>
+          </div>
+        </div>
+
+        <input
+          ref={ref}
+          value={hint}
+          onChange={(e) => setHint(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onAnalyse(hint);
+          }}
+          enterKeyHint="done"
+          placeholder="e.g. 30 cm pizza, ate two thirds"
+          aria-label="Extra detail for the estimate"
+          className="tap border border-edge bg-panel-2 px-3 text-sm text-ink outline-none placeholder:text-muted-dim focus:border-cobalt"
+        />
+
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+          {["small", "large", "half of it", "homemade", "restaurant portion"].map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => append(w)}
+              className="shrink-0 border border-edge px-3 py-1.5 text-xs text-muted active:border-cobalt active:text-cobalt-lift"
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onAnalyse(hint)}
+          className="tap display w-full border border-crimson bg-crimson px-4 py-3 text-sm tracking-widest text-ink active:opacity-80"
+        >
+          {hint.trim() ? "Analyse with this" : "Analyse"}
+        </button>
+      </div>
     </div>
   );
 }

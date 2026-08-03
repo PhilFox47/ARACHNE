@@ -139,6 +139,14 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       sqlite.exec("ALTER TABLE trials ADD COLUMN walk_test_12min_m INTEGER");
     }
   },
+
+  // ── v6: the note the user adds before analysis ──
+  (sqlite) => {
+    const cols = (sqlite.pragma("table_info(food_entries)") as { name: string }[]).map((c) => c.name);
+    if (!cols.includes("user_note")) {
+      sqlite.exec("ALTER TABLE food_entries ADD COLUMN user_note TEXT");
+    }
+  },
 ];
 
 /**

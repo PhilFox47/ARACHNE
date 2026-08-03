@@ -40,6 +40,8 @@ export async function createEntry(input: {
   photoDataUrl?: string | null;
   mealType?: "meal" | "snack";
   date?: string;
+  /** Context the photo can't carry — size, portion eaten, hidden ingredients. */
+  userNote?: string | null;
 }) {
   await guard();
 
@@ -63,6 +65,7 @@ export async function createEntry(input: {
       normKey: normSync(description),
       mealType: input.mealType ?? suggestMealType(now),
       photoPath,
+      userNote: input.userNote?.trim() || null,
       source: input.photoDataUrl ? "ai" : "manual",
     })
     .returning({ id: foodEntries.id })
