@@ -135,7 +135,8 @@ meal photos. Set the winner as `NANOGPT_VISION_MODEL`.
 | Progression — XP, levels, disciplines, challenges, achievements | Done |
 | PATROL — week view, per-set logging, check-off, AI progression | Done; eight-week heatmap pending |
 | JOURNEY — phase overview, checkpoints, what's behind and ahead | Done |
-| FUEL — photo capture, nutrition estimates, daily log, quick-log | Done; weekly review pending |
+| FUEL — capture, nutrition estimates, daily log, quick-log, water | Done |
+| FUEL statistics — intake, snack split, water and timing over 7/30/90 days | Done |
 | THE TRIAL, checkpoints, SUIT CHECK | Not started |
 
 ### Progression
@@ -195,6 +196,13 @@ fibre, protein, salt — because that is what German packaging prints, so the mo
 format it has seen a great deal of. The prompt states German portions and packaging explicitly
 (500 ml cans, 250 g Magerquark, Brötchen at ~60 g); portion inference is where photo estimates go
 wrong, and a model defaulting to US sizes is off by 40% before it considers the food.
+
+`/fuel/stats` reviews intake over 7, 30 or 90 days: calories with a 7-day mean against the phase
+target, the snack-versus-meal split, water, hour-of-day distribution, per-weekday snack load, the
+snacks driving the most energy, and a week-by-week table.
+
+Averages count only days you actually logged. Treating an untracked day as a zero-calorie day would
+quietly flatter every number on the screen.
 
 Intake tracking is live from day one. Phase 0 prescribes no deficit, so FUEL frames those two weeks
 as calibration: track honestly and find out how close the estimates really are.

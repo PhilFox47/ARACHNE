@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -60,9 +61,14 @@ export default async function Fuel() {
     <main className="relative z-10 mx-auto flex max-w-lg flex-col gap-5 px-4 pb-28 pt-3">
       <header className="pad-safe-t flex items-baseline justify-between">
         <h1 className="display text-2xl text-ink">FUEL</h1>
-        <span className="label-xs tabular">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"}
-        </span>
+        <div className="flex items-baseline gap-3">
+          <span className="label-xs tabular">
+            {entries.length} {entries.length === 1 ? "entry" : "entries"}
+          </span>
+          <Link href="/fuel/stats" className="label-xs text-cobalt-lift underline">
+            Stats
+          </Link>
+        </div>
       </header>
 
       {isPhase0 ? (
@@ -140,6 +146,14 @@ export default async function Fuel() {
           </ul>
         )}
       </section>
+
+      <Link href="/fuel/stats" className="panel flex items-center justify-between p-4">
+        <span className="flex flex-col gap-1">
+          <span className="display text-sm text-ink">Intake over time</span>
+          <span className="label-xs">Calories, water, snack split, and when you actually eat</span>
+        </span>
+        <span className="text-crimson">&rarr;</span>
+      </Link>
 
       <p className="px-1 text-xs leading-relaxed text-muted-dim">
         Estimates assume German portions and packaging. The point is seeing what you actually eat across a
