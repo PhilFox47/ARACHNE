@@ -80,6 +80,7 @@ export async function updateEntry(
   id: number,
   patch: {
     description?: string;
+    portion?: string | null;
     kcal?: number | null;
     proteinG?: number | null;
     carbsG?: number | null;

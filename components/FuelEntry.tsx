@@ -24,27 +24,72 @@ interface Entry {
   userNote: string | null;
 }
 
+/** The EU declaration, in the order German packaging prints it. */
+const NUTRIENTS = [
+  { key: "kcal", label: "Energy", unit: "kcal", step: 10 },
+  { key: "fatG", label: "Fat", unit: "g", step: 0.5 },
+  { key: "saturatedFatG", label: "of which saturates", unit: "g", step: 0.5 },
+  { key: "carbsG", label: "Carbohydrate", unit: "g", step: 0.5 },
+  { key: "sugarG", label: "of which sugars", unit: "g", step: 0.5 },
+  { key: "fiberG", label: "Fibre", unit: "g", step: 0.5 },
+  { key: "proteinG", label: "Protein", unit: "g", step: 0.5 },
+  { key: "saltG", label: "Salt", unit: "g", step: 0.1 },
+] as const;
+
+type NutrientKey = (typeof NUTRIENTS)[number]["key"];
+
 const time = (unix: number) =>
   new Date(unix * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+const str = (v: number | null) => (v === null ? "" : String(v));
 
 /**
  * Editable, but never required to be edited. Tapping opens the detail; the
  * estimate stands on its own if you leave it alone.
+ *
+ * Every field of the declaration is editable, not just calories — a correction
+ * that can only fix energy leaves the protein target reading off a number you
+ * already know is wrong.
  */
 export function FuelEntryRow({ entry }: { entry: Entry }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
-  const [kcal, setKcal] = useState(entry.kcal === null ? "" : String(entry.kcal));
+
   const [desc, setDesc] = useState(entry.description);
+  const [portion, setPortion] = useState(entry.portion ?? "");
+  const [vals, setVals] = useState<Record<NutrientKey, string>>(() =>
+    Object.fromEntries(NUTRIENTS.map((n) => [n.key, str(entry[n.key])])) as Record<NutrientKey, string>,
+  );
+
+  const original = Object.fromEntries(NUTRIENTS.map((n) => [n.key, str(entry[n.key])])) as Record<
+    NutrientKey,
+    string
+  >;
+  const dirty =
+    desc !== entry.description ||
+    portion !== (entry.portion ?? "") ||
+    NUTRIENTS.some((n) => vals[n.key] !== original[n.key]);
+
+  const num = (v: string): number | null => {
+    const t = v.trim().replace(",", ".");
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null;
+  };
 
   const save = () => {
     start(async () => {
       await updateEntry(entry.id, {
         description: desc.trim() || entry.description,
-        kcal: kcal.trim() === "" ? null : Number(kcal),
+        portion: portion.trim() || null,
+        // Manual values are ground truth — the photo correction factor is not
+        // applied on top of a number you typed yourself.
+        ...(Object.fromEntries(NUTRIENTS.map((n) => [n.key, num(vals[n.key])])) as Record<
+          NutrientKey,
+          number | null
+        >),
       });
-      setOpen(false);
       router.refresh();
     });
   };
@@ -93,17 +138,7 @@ export function FuelEntryRow({ entry }: { entry: Entry }) {
       </button>
 
       {open ? (
-        <div className="flex flex-col gap-3 border-t border-edge p-3">
-          <div className="grid grid-cols-4 gap-x-3 gap-y-2">
-            <Detail label="Protein" value={entry.proteinG} unit="g" />
-            <Detail label="Carbs" value={entry.carbsG} unit="g" />
-            <Detail label="Fat" value={entry.fatG} unit="g" />
-            <Detail label="Sat. fat" value={entry.saturatedFatG} unit="g" />
-            <Detail label="Sugar" value={entry.sugarG} unit="g" />
-            <Detail label="Fibre" value={entry.fiberG} unit="g" />
-            <Detail label="Salt" value={entry.saltG} unit="g" />
-          </div>
-
+        <div className="flex flex-col gap-4 border-t border-edge p-3">
           {entry.userNote ? (
             <p className="border-l-2 border-l-cobalt pl-2.5 text-xs leading-relaxed text-muted">
               You said: {entry.userNote}
@@ -111,30 +146,82 @@ export function FuelEntryRow({ entry }: { entry: Entry }) {
           ) : null}
 
           <div className="flex flex-col gap-2">
+            <label className="label-xs" htmlFor={`desc-${entry.id}`}>
+              Description
+            </label>
             <input
+              id={`desc-${entry.id}`}
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
-              aria-label="Description"
               className="tap border border-edge bg-panel-2 px-3 text-sm text-ink outline-none focus:border-cobalt"
             />
-            <div className="flex gap-2">
-              <input
-                value={kcal}
-                onChange={(e) => setKcal(e.target.value)}
-                inputMode="numeric"
-                placeholder="kcal"
-                aria-label="Calories"
-                className="numeral tap min-w-0 flex-1 border border-edge bg-panel-2 px-3 text-lg text-ink outline-none focus:border-cobalt"
-              />
+            <label className="label-xs" htmlFor={`portion-${entry.id}`}>
+              Portion
+            </label>
+            <input
+              id={`portion-${entry.id}`}
+              value={portion}
+              onChange={(e) => setPortion(e.target.value)}
+              placeholder="e.g. 500 ml can, approx. 250 g"
+              className="tap border border-edge bg-panel-2 px-3 text-sm text-ink outline-none placeholder:text-muted-dim focus:border-cobalt"
+            />
+          </div>
+
+          {/* ── The declaration, all of it editable ── */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between">
+              <p className="label-xs">Nutrition</p>
+              {dirty ? <p className="label-xs text-crimson">Unsaved</p> : null}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {NUTRIENTS.map((n) => (
+                <label key={n.key} className="flex flex-col gap-1">
+                  <span className="label-xs leading-tight">{n.label}</span>
+                  <span className="flex items-baseline gap-1 border border-edge bg-panel-2 px-2">
+                    <input
+                      value={vals[n.key]}
+                      onChange={(e) => setVals((p) => ({ ...p, [n.key]: e.target.value }))}
+                      inputMode="decimal"
+                      step={n.step}
+                      placeholder="—"
+                      aria-label={`${n.label} in ${n.unit}`}
+                      className="numeral tap w-full min-w-0 bg-transparent text-base text-ink outline-none placeholder:text-muted-dim"
+                    />
+                    <span className="label-xs shrink-0">{n.unit}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <p className="text-xs leading-relaxed text-muted-dim">
+              Leave a field empty to clear it. Anything you type here is taken as-is — the photo correction
+              factor is only applied to the model&apos;s own estimates.
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={save}
+              disabled={pending || !dirty}
+              className="tap display flex-1 border border-crimson bg-crimson px-4 py-2.5 text-xs tracking-widest text-ink disabled:border-edge disabled:bg-transparent disabled:text-muted-dim"
+            >
+              {pending ? "Saving" : dirty ? "Save changes" : "No changes"}
+            </button>
+            {dirty ? (
               <button
                 type="button"
-                onClick={save}
-                disabled={pending}
-                className="tap display border border-crimson bg-crimson px-4 text-xs tracking-widest text-ink disabled:opacity-40"
+                onClick={() => {
+                  setDesc(entry.description);
+                  setPortion(entry.portion ?? "");
+                  setVals(original);
+                }}
+                className="tap display border border-edge px-4 text-xs tracking-widest text-muted"
               >
-                Save
+                Revert
               </button>
-            </div>
+            ) : null}
           </div>
 
           {entry.photoPath && entry.kcal === null ? (
@@ -188,16 +275,5 @@ export function FuelEntryRow({ entry }: { entry: Entry }) {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function Detail({ label, value, unit }: { label: string; value: number | null; unit: string }) {
-  return (
-    <span className="flex flex-col gap-0.5">
-      <span className="numeral text-base text-ink tabular">
-        {value === null ? "—" : `${Math.round(value * 10) / 10}${unit}`}
-      </span>
-      <span className="label-xs leading-tight">{label}</span>
-    </span>
   );
 }
