@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import { isAuthed } from "@/lib/auth";
 import { buildSeries, getHqStats, loadWeights } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
-import { formatShort, todayISO } from "@/lib/dates";
+import { formatShort, todayISO, weekIndex } from "@/lib/dates";
+import Link from "next/link";
+import { desc } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { photos } from "@/lib/db/schema";
 import { navyBodyFat } from "@/lib/plan";
 import { WeightChart } from "@/components/WeightChart";
 import { WeightEntry } from "@/components/WeightEntry";
@@ -20,6 +24,10 @@ export default async function Vitals() {
   const stats = getHqStats();
   const series = buildSeries(rows, settings.startDate);
   const recent = [...rows].reverse().slice(0, 30);
+
+  const wk = weekIndex(settings.startDate, todayISO());
+  const shotsThisWeek = db.select().from(photos).orderBy(desc(photos.weekIndex)).all();
+  const thisWeekCount = shotsThisWeek.filter((p) => p.weekIndex === wk).length;
 
   return (
     <main className="relative z-10 mx-auto flex max-w-lg flex-col gap-5 px-4 pb-28 pt-3">
@@ -70,6 +78,21 @@ export default async function Vitals() {
           Example: 110 cm waist, 40 cm neck &rarr; {navyBodyFat(110, 40, settings.heightCm)}% estimated
         </p>
       </section>
+
+      <Link
+        href="/suit-check"
+        className={`flex items-center justify-between p-4 ${thisWeekCount >= 4 ? "panel" : "panel-hot"}`}
+      >
+        <span className="flex flex-col gap-1">
+          <span className="display text-sm text-ink">Suit check</span>
+          <span className="label-xs">
+            {thisWeekCount >= 4
+              ? `Week ${wk + 1} complete · compare any two weeks`
+              : `Week ${wk + 1} · ${thisWeekCount} of 4 angles`}
+          </span>
+        </span>
+        <span className="text-crimson">&rarr;</span>
+      </Link>
 
       <section className="flex flex-col gap-2">
         <p className="label-xs">Log</p>

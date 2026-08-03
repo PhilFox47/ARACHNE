@@ -137,7 +137,8 @@ meal photos. Set the winner as `NANOGPT_VISION_MODEL`.
 | JOURNEY — phase overview, checkpoints, what's behind and ahead | Done |
 | FUEL — capture, nutrition estimates, daily log, quick-log, water | Done |
 | FUEL statistics — intake, snack split, water and timing over 7/30/90 days | Done |
-| THE TRIAL, checkpoints, SUIT CHECK | Not started |
+| SUIT CHECK — weekly photos, four angles, comparison wipe | Done |
+| THE TRIAL and checkpoints | Not started |
 
 ### Progression
 
@@ -183,6 +184,19 @@ the 12-minute walk, which is not part of THE TRIAL and is deliberately not score
 
 Water is logged in 250 ml taps against a configurable target — 2 L by default, the document asks for
 3. The point in Phase 0 is finding out whether the target is a change or already normal.
+
+### SUIT CHECK
+
+Weekly rather than monthly — 52 frames of time-lapse instead of 12. Four angles, each its own camera
+button so a set can be built across the day. One shot per angle per week; re-shooting replaces the
+file and deletes the old one, so a year doesn't accumulate orphans.
+
+Comparison overlays two weeks with a draggable wipe rather than placing them side by side. At phone
+width a side-by-side pair gives you two 180px images and tells you nothing; a full-width wipe is the
+only treatment where a few centimetres off a waist is actually visible. The clip is done with
+`clip-path`, so both sides are always the identical crop.
+
+`npx tsx scripts/seed-suit.ts` fills three weeks with placeholder frames for development.
 
 ### Equipment
 
