@@ -15,6 +15,8 @@ import { desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs } from "./db/schema";
 import { addDays, dayKeyOf, daysBetween } from "./dates";
+import { gateExercise, ownedKeys, upgradeExercise } from "./equipment";
+import { getSettings } from "./settings";
 import {
   BASELINE_MODE,
   BASELINE_PATROLS,
@@ -241,7 +243,113 @@ export function bestSecondsFor(keys: string[]): Map<string, number> {
   );
 }
 
-/** Coverage report — how much of the movement pool the fortnight has actually read. */
+export interface ProbeComparison {
+  key: string;
+  name: string;
+  metric: "reps" | "time";
+  first: number | null;
+  second: number | null;
+  delta: number | null;
+  /** Change as a share of the first reading. */
+  pct: number | null;
+}
+
+/**
+ * Week 1 against week 2, movement by movement.
+ *
+ * This is the point of running the sweep twice. A big jump usually means the
+ * first pass was cautious rather than that seven days made you stronger, and a
+ * drop usually means the first pass went too near failure — either way the
+ * second number is the one worth building on, and you can only tell by looking
+ * at both.
+ *
+ * Read from the logs rather than from the probe list, so a movement that got
+ * substituted for missing kit still appears under whatever you actually did.
+ */
+export function baselineComparison(startDate: string): ProbeComparison[] {
+  const w0End = addDays(startDate, 6);
+  const w1Start = addDays(startDate, 7);
+  const w1End = addDays(startDate, BASELINE_LAST_DAY);
+
+  const inWeek = (from: string, to: string, col: string) =>
+    sql<number | null>`MAX(CASE WHEN ${exerciseLogs.date} BETWEEN ${from} AND ${to} THEN ${sql.raw(col)} END)`;
+
+  const rows = db
+    .select({
+      key: exerciseLogs.exerciseKey,
+      name: sql<string>`MAX(${exerciseLogs.exerciseName})`,
+      firstReps: inWeek(startDate, w0End, "reps"),
+      firstSec: inWeek(startDate, w0End, "seconds"),
+      secondReps: inWeek(w1Start, w1End, "reps"),
+      secondSec: inWeek(w1Start, w1End, "seconds"),
+    })
+    .from(exerciseLogs)
+    .where(sql`${exerciseLogs.date} >= ${startDate} AND ${exerciseLogs.date} <= ${w1End}`)
+    .groupBy(exerciseLogs.exerciseKey)
+    .all();
+
+  const out: ProbeComparison[] = [];
+  for (const r of rows) {
+    const timed = r.firstSec !== null || r.secondSec !== null;
+    const first = timed ? r.firstSec : r.firstReps;
+    const second = timed ? r.secondSec : r.secondReps;
+    if (first === null && second === null) continue;
+    const delta = first !== null && second !== null ? second - first : null;
+    out.push({
+      key: r.key,
+      name: r.name,
+      metric: timed ? "time" : "reps",
+      first,
+      second,
+      delta,
+      pct: delta !== null && first ? Math.round((delta / first) * 100) : null,
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export interface StartingRung {
+  family: MovementFamily;
+  /** The variation the ladder puts you on for Phase 1. */
+  movement: string;
+  /** What you logged to earn it. */
+  evidence: string;
+  /** How far up the ladder that is. */
+  rung: number;
+  rungs: number;
+}
+
+/**
+ * What the fortnight concluded: the rung each ladder now starts you on. This is
+ * the deliverable of the whole two weeks, so it's worth stating outright rather
+ * than leaving it to be inferred from a session that quietly reads differently.
+ */
+export function startingRungs(): StartingRung[] {
+  const out: StartingRung[] = [];
+  for (const [family, s] of standings()) {
+    const ladder = LADDERS[family];
+    if (!ladder) continue;
+    const best =
+      s.bestReps !== null ? `${s.bestReps} reps` : s.bestSeconds !== null ? `${s.bestSeconds} s` : "logged";
+    out.push({
+      family,
+      movement: ladder[s.rung].name,
+      evidence: `${best} on ${s.movement.toLowerCase()}`,
+      rung: s.rung,
+      rungs: ladder.length,
+    });
+  }
+  return out;
+}
+
+/**
+ * Coverage report — how much of the movement pool the fortnight has actually
+ * read.
+ *
+ * Counted against the movements you can perform, not the full list: a dead hang
+ * with no bar is dropped rather than substituted, and leaving it in the total
+ * would show a permanent shortfall you have no way to close.
+ */
 export function baselineCoverage(startDate: string): {
   probes: number;
   measured: number;
@@ -255,6 +363,7 @@ export function baselineCoverage(startDate: string): {
     .where(sql`${exerciseLogs.date} >= ${from} AND ${exerciseLogs.date} <= ${to}`)
     .all();
   const done = new Set(rows.map((r) => r.exerciseKey));
+  const owned = ownedKeys(getSettings().equipment);
 
   const key = (s: string) =>
     s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
@@ -263,8 +372,12 @@ export function baselineCoverage(startDate: string): {
   let probes = 0;
   for (const p of BASELINE_PATROLS) {
     for (const probe of p.probes) {
+      const gate = gateExercise(probe.name, owned);
+      if (!gate.allowed && gate.substitute === null) continue;
+      const name = gate.allowed ? probe.name : gate.substitute!.name;
+      const up = upgradeExercise(name, "", owned);
       probes++;
-      if (!done.has(key(probe.name))) missing.push({ patrol: p.index, name: probe.name });
+      if (!done.has(key(up ? up.name : name))) missing.push({ patrol: p.index, name: up ? up.name : name });
     }
   }
   return { probes, measured: probes - missing.length, missing };

@@ -5,7 +5,7 @@ import { needsOnboarding } from "@/lib/onboarding";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { BASELINE_MODE, PHASES } from "@/lib/plan";
-import { baselineCoverage, baselineSchedule } from "@/lib/baseline";
+import { baselineComparison, baselineCoverage, baselineSchedule, startingRungs } from "@/lib/baseline";
 import { formatShort, todayISO } from "@/lib/dates";
 import { loadBaseline } from "./actions";
 import { BaselineForms } from "@/components/BaselineForms";
@@ -26,6 +26,9 @@ export default async function Baseline() {
   const today = todayISO();
   const schedule = baselineSchedule(s.startDate).filter((e) => e.slot !== null);
   const coverage = baselineCoverage(s.startDate);
+  const comparison = baselineComparison(s.startDate).filter((c) => c.first !== null);
+  const repeated = comparison.filter((c) => c.second !== null);
+  const rungs = startingRungs();
 
   return (
     <main className="relative z-10 mx-auto flex max-w-lg flex-col gap-5 px-4 pb-28 pt-3">
@@ -124,6 +127,88 @@ export default async function Baseline() {
           </p>
         )}
       </section>
+
+      {/* ── Week 1 against week 2 ── */}
+      {comparison.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="label-xs">Week 1 vs week 2</p>
+            <p className="label-xs tabular">
+              {repeated.length} of {comparison.length} repeated
+            </p>
+          </div>
+
+          <ul className="panel divide-y divide-edge">
+            {comparison.map((c) => (
+              <li key={c.key} className="flex items-baseline justify-between gap-3 px-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{c.name}</span>
+                <span className="flex shrink-0 items-baseline gap-2 tabular">
+                  <span className="numeral text-sm text-muted">
+                    {c.first}
+                    {c.metric === "time" ? "s" : ""}
+                  </span>
+                  <span className="text-muted-dim">&rarr;</span>
+                  <span className="numeral text-sm text-ink">
+                    {c.second === null ? "—" : `${c.second}${c.metric === "time" ? "s" : ""}`}
+                  </span>
+                  <span
+                    className={`numeral w-12 text-right text-xs ${
+                      c.delta === null
+                        ? "text-muted-dim"
+                        : c.delta > 0
+                          ? "text-cobalt-lift"
+                          : c.delta < 0
+                            ? "text-crimson"
+                            : "text-muted"
+                    }`}
+                  >
+                    {c.delta === null
+                      ? ""
+                      : `${c.delta > 0 ? "+" : ""}${c.delta}${c.metric === "time" ? "s" : ""}`}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="px-1 text-xs leading-relaxed text-muted-dim">
+            {repeated.length === 0
+              ? "Nothing repeated yet. Week 2 runs the same five patrols in the same order — the second number is the one the plan builds on."
+              : "A large jump usually means week 1 was cautious rather than that seven days made you stronger; a drop usually means week 1 went too close to failure. Either way, the second reading is the truer one."}
+          </p>
+        </section>
+      ) : null}
+
+      {/* ── What the fortnight concluded ── */}
+      {rungs.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <p className="label-xs">Where the plan starts you</p>
+          <ul className="panel divide-y divide-edge">
+            {rungs.map((r) => (
+              <li key={r.family} className="flex items-center gap-3 px-3 py-2.5">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-sm text-ink">{r.movement}</span>
+                  <span className="label-xs truncate">{r.evidence}</span>
+                </span>
+                {/* Rung on the ladder, so progress up it is visible at a glance. */}
+                <span className="flex shrink-0 gap-0.5" aria-label={`Rung ${r.rung + 1} of ${r.rungs}`}>
+                  {Array.from({ length: r.rungs }, (_, i) => (
+                    <span
+                      key={i}
+                      className={`h-4 w-1 ${i <= r.rung ? "bg-crimson" : "bg-panel-2"}`}
+                    />
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="px-1 text-xs leading-relaxed text-muted-dim">
+            From Phase 1 the plan prescribes these variations rather than the document&apos;s defaults, and
+            moves you up a rung on its own rule — a clean 3&times;12. Never more than one rung either side of
+            what the plan asked for.
+          </p>
+        </section>
+      ) : null}
 
       <BaselineForms
         initialTest={test as unknown as Record<string, number | null> | null}

@@ -271,9 +271,11 @@ const GATES: Gate[] = [
       note: "Substituted — nothing to press down on.",
     },
   },
-  // Floor skills need something soft. No mat, no tumbling.
+  // Tumbling needs something soft. Crawls deliberately aren't on this list —
+  // a bear crawl is hands and feet on the floor with nothing to land on, and
+  // gating it away costs the baseline sweep a movement for no reason.
   {
-    match: /shoulder roll|bear crawl|spider crawl|kip-?up|cartwheel|roundoff|bridge/i,
+    match: /shoulder roll|kip-?up|cartwheel|roundoff|bridge/i,
     needsAny: ["mat", "gym"],
     substitute: null,
   },
