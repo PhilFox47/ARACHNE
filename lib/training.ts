@@ -20,7 +20,15 @@ import { exerciseLogs, sessionPlans } from "./db/schema";
 import { apiKey, baseUrl } from "./nanogpt";
 import { activeVisionModel, getSettings } from "./settings";
 import { equipmentSummary, gateExercise, ownedKeys } from "./equipment";
-import { roundsForWeek, sessionFor, type DayKey, type Exercise, type PhaseId } from "./plan";
+import {
+  BASELINE_MODE,
+  isBaselinePhase,
+  roundsForWeek,
+  sessionFor,
+  type DayKey,
+  type Exercise,
+  type PhaseId,
+} from "./plan";
 import { stripFences } from "./vision";
 
 export type Metric = "reps" | "time";
@@ -77,7 +85,7 @@ export function exerciseKey(name: string): string {
  * Reads the plan's dose strings — "8–12", "3× 45 s", "10 per side",
  * "5× 5 s" — into something a form can prefill.
  */
-export function parseDose(dose: string, defaultSets: number): {
+export function parseDose(dose: string, defaultSets: number, baseline = false): {
   sets: number;
   metric: Metric;
   repRange: string | null;
@@ -98,7 +106,8 @@ export function parseDose(dose: string, defaultSets: number): {
   const single = rest.match(/(\d+)/);
 
   if (isTime) {
-    const secs = range ? Number(range[2]) : single ? Number(single[1]) : null;
+    // Baseline takes the bottom of the range; every other phase takes the top.
+    const secs = range ? Number(baseline ? range[1] : range[2]) : single ? Number(single[1]) : null;
     return {
       sets,
       metric: "time",
@@ -128,7 +137,8 @@ export function baselinePrescription(
   date: string,
 ): Prescription {
   const session = sessionFor(phase, dayKey);
-  const rounds = roundsForWeek(weekIdx);
+  const baseline = isBaselinePhase(phase);
+  const rounds = baseline ? BASELINE_MODE.rounds : roundsForWeek(weekIdx);
   const source: Exercise[] = session ? [...session.main, ...(session.extras ?? [])] : [];
   const owned = ownedKeys(getSettings().equipment);
 
@@ -152,7 +162,7 @@ export function baselinePrescription(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const p = parseDose(use.dose, rounds);
+    const p = parseDose(use.dose, rounds, baseline);
     exercises.push({
       key,
       name: use.name,
@@ -162,7 +172,7 @@ export function baselinePrescription(
       targetReps: p.reps,
       targetSeconds: p.seconds,
       targetWeightKg: null,
-      note: use.note,
+      note: baseline ? (use.note ? `${use.note} · Stop well short.` : "Stop well short.") : use.note,
       perSide: p.perSide,
       loaded: looksLoaded(use.name),
       substitutedFrom: gate.allowed ? null : e.name,
@@ -287,6 +297,11 @@ export async function generatePrescription(
   const withHist = withHistory(base);
 
   if (!key || !model || base.exercises.length === 0) return withHist;
+
+  // Phase 0 is measurement. Progressing a number you have not yet established
+  // is exactly the mistake this fortnight exists to prevent, so the model is
+  // not consulted at all.
+  if (isBaselinePhase(base.phase)) return withHist;
 
   const context = base.exercises.map((e) => ({
     name: e.name,

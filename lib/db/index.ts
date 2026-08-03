@@ -122,6 +122,23 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS session_plans_date_idx ON session_plans(date);
     `);
   },
+
+  // ── v5: water logging and the document's 12-minute walk test ──
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS water_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        ml INTEGER NOT NULL,
+        logged_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS water_date_idx ON water_logs(date);
+    `);
+    const cols = (sqlite.pragma("table_info(trials)") as { name: string }[]).map((c) => c.name);
+    if (!cols.includes("walk_test_12min_m")) {
+      sqlite.exec("ALTER TABLE trials ADD COLUMN walk_test_12min_m INTEGER");
+    }
+  },
 ];
 
 /**

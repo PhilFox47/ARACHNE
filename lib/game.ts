@@ -37,6 +37,8 @@ export const XP = {
   fullPatrolWeek: 400,
   foodEntry: 15,
   kcalOnTarget: 75,
+  /** Per day the water target is met. */
+  waterOnTarget: 40,
   proteinOnTarget: 75,
   suitCheck: 200,
   measurements: 250,
@@ -65,14 +67,14 @@ export const XP = {
 /**
  * Set from measurement, not estimate: `npx tsx scripts/tune-curve.ts` runs whole
  * simulated years through this engine and reports what they actually pay out.
- * A consistent year earns ~235k XP, which lands at level 49 here, leaving real
+ * A consistent year earns ~249k XP, which lands at level 49 here, leaving real
  * headroom to the cap. Re-run that script after changing anything in the XP
  * table above — this constant is only correct relative to those values.
  *
  * The first weight log is deliberately just short of level 2. One tap should
  * show visible progress, not hand out a level.
  */
-const LEVEL_K = 98;
+const LEVEL_K = 104;
 export const MAX_LEVEL = 60;
 
 export function xpForLevel(level: number): number {
@@ -232,6 +234,9 @@ export interface GameInput {
   abilities: { abilityKey: string; achieved: boolean }[];
   /** One entry per recorded set. */
   sets: { date: string }[];
+  /** Daily water totals, in ml. */
+  water: { date: string; ml: number }[];
+  waterTargetMl: number;
 }
 
 export interface LedgerRow {
@@ -952,6 +957,8 @@ export function computeGameState(input: GameInput): GameState {
     if (tot.kcal > 0 && tot.kcal <= kcal * 1.05) kcalDays++;
     if (tot.protein >= PROTEIN_PER_MEAL_G * 3) proteinDays++;
   }
+  const waterDays = input.water.filter((w) => w.ml >= input.waterTargetMl).length;
+  add("water", "Days on water target", waterDays * XP.waterOnTarget);
   add("kcal", "Days on calorie target", kcalDays * XP.kcalOnTarget);
   add("protein", "Days on protein target", proteinDays * XP.proteinOnTarget);
 
@@ -977,6 +984,7 @@ export function computeGameState(input: GameInput): GameState {
     ...doneSessions.map((s) => s.date),
     ...input.food.map((f) => f.date),
     ...input.sets.map((s) => s.date),
+    ...input.water.map((w) => w.date),
   ]);
   let quietDays = 0;
   const totalDays = Math.max(daysBetween(startDate, today), 0);

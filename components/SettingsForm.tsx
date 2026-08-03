@@ -22,6 +22,7 @@ export function SettingsForm({
   initial: {
     visionModel: string | null;
     photoCorrectionPct: number;
+    waterTargetMl: number;
     heightCm: number;
     startWeightKg: number;
     targetWeightKg: number;
@@ -51,6 +52,18 @@ export function SettingsForm({
         envModel={envModel}
         hasKey={hasKey}
         onSave={(id) => save("vision_model", id, "Model")}
+        pending={pending}
+      />
+
+      <NumberSetting
+        label="Water target"
+        hint="The plan document asks for 3 litres; this is the target you set. Logged in 250 ml taps on FUEL."
+        suffix="ml"
+        value={initial.waterTargetMl}
+        step={250}
+        min={500}
+        max={6000}
+        onSave={(v) => save("water_target_ml", v, "Water target")}
         pending={pending}
       />
 

@@ -75,7 +75,9 @@ export const PHASES: Phase[] = [
       "Day 1: weight, waist at navel height, chest, thigh, flexed upper arm — and four photos in the same light and the same spot.",
       "Day 2: the baseline fitness test. Without it you won't know in month 6 whether you're improving.",
       "Buy the kit. The doorframe pull-up bar first — lats are what fill the suit.",
-      "Track food honestly at maintenance and change nothing. Two new habits at once is the classic February dropout.",
+      "Track food honestly at maintenance and change nothing — including the snacking. A baseline you have already tidied up tells you nothing.",
+      "Log water too, so you find out whether the target is a change or already normal.",
+      "Train at the bottom of every range, two rounds, stopping three or four short. Soreness on day 3 costs you week 2.",
     ],
   },
   {
@@ -240,6 +242,33 @@ export const TRAINING_DAYS: DayKey[] = ["mon", "tue", "wed", "thu", "fri"];
 export const OFF_DUTY_DAYS: DayKey[] = ["sat", "sun"];
 
 export const SESSION_SHAPE = { warmupMin: 4, workMin: 22, cooldownMin: 4 } as const;
+
+/**
+ * Phase 0 trains, but it is not training — it is measurement. The document is
+ * blunt about why: "start at 70%… if you're flat on your back with muscle
+ * soreness in week 1, you don't train in week 2."
+ *
+ * So the first two weeks take the low end of every range, two rounds instead of
+ * three, and stop well short. What you log becomes the starting point the
+ * prescription builds on from Phase 1.
+ */
+export const BASELINE_MODE = {
+  rounds: 2,
+  rule: "Find your number, don't hit it. Stop three or four short of what you could do — this fortnight is measurement, and soreness on day 3 costs you week 2.",
+  fuelRule: "Eat exactly as you normally would and log all of it. A baseline you've already 'improved' tells you nothing.",
+} as const;
+
+export function isBaselinePhase(phase: PhaseId): boolean {
+  return phase === 0;
+}
+
+/**
+ * Your stated target. The document asks for 3 litres; 2 is the goal you set, so
+ * that's the default and the settings hint names the difference.
+ */
+export const WATER_TARGET_ML_DEFAULT = 2000;
+export const WATER_TARGET_ML_DOCUMENT = 3000;
+export const WATER_INCREMENTS_ML = [250, 500, 750] as const;
 
 /** Every 4th week. Document: "2 rounds instead of 3, no training to failure." */
 export function isLowProfileWeek(weekIndex: number): boolean {

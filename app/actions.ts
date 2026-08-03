@@ -49,6 +49,7 @@ export async function updateSetting(key: string, value: string | number) {
     "target_weight_kg",
     "photo_correction_pct",
     "vision_model",
+    "water_target_ml",
   ];
   if (!allowed.includes(key)) return { ok: false as const, error: "Unknown setting." };
   setSetting(key, value);

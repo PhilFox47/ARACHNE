@@ -146,6 +146,22 @@ export const foodEntries = sqliteTable(
   (t) => [index("food_date_idx").on(t.date), index("food_norm_idx").on(t.normKey)],
 );
 
+/**
+ * Water, logged in increments rather than as a daily total. An append-only log
+ * means "undo the last glass" is a delete, not arithmetic, and the timestamps
+ * show whether you drink steadily or panic-hydrate at 22:00.
+ */
+export const waterLogs = sqliteTable(
+  "water_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    date: text("date").notNull(),
+    ml: integer("ml").notNull(),
+    loggedAt: integer("logged_at").notNull(),
+  },
+  (t) => [index("water_date_idx").on(t.date)],
+);
+
 // ── THE TRIAL ────────────────────────────────────────────────
 
 export const trials = sqliteTable(
@@ -164,6 +180,8 @@ export const trials = sqliteTable(
     burpees3minReps: integer("burpees_3min_reps"),
     sitReachCm: real("sit_reach_cm"),
     circuitTotalSec: integer("circuit_total_sec"),
+    /** Document's day-2 baseline test only; not part of the ARACHNE Score. */
+    walkTest12MinM: integer("walk_test_12min_m"),
 
     /** Stored, not recomputed — a corrected target must not shift past scores. */
     score: integer("score"),
@@ -227,3 +245,4 @@ export type TrainingSession = typeof sessions.$inferSelect;
 export type FoodEntry = typeof foodEntries.$inferSelect;
 export type Trial = typeof trials.$inferSelect;
 export type Photo = typeof photos.$inferSelect;
+export type WaterLog = typeof waterLogs.$inferSelect;

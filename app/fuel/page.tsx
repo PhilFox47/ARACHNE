@@ -4,10 +4,13 @@ import { isAuthed } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { foodEntries } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
+import { getSettings } from "@/lib/settings";
 import { todayISO } from "@/lib/dates";
 import { PROTEIN_PER_MEAL_G } from "@/lib/plan";
 import { quickLogCandidates } from "./actions";
+import { waterForDate } from "./water";
 import { FuelCapture } from "@/components/FuelCapture";
+import { WaterTracker } from "@/components/WaterTracker";
 import { FuelEntryRow } from "@/components/FuelEntry";
 import { BottomNav } from "@/components/BottomNav";
 import { TensionLine } from "@/components/TensionLine";
@@ -28,6 +31,8 @@ export default async function Fuel() {
     .all();
 
   const quick = await quickLogCandidates();
+  const water = await waterForDate(today);
+  const settings = getSettings();
 
   type NutrientKey = "kcal" | "proteinG" | "carbsG" | "fatG" | "fiberG" | "sugarG" | "saltG";
   const sum = (f: NutrientKey) => entries.reduce((s, e) => s + (e[f] ?? 0), 0);
@@ -109,6 +114,8 @@ export default async function Fuel() {
           <Mini label="From snacks" value={snackPct} unit="%" accent={snackPct > 20} />
         </div>
       </section>
+
+      <WaterTracker initialMl={water.ml} targetMl={settings.waterTargetMl} date={today} />
 
       <FuelCapture quickItems={quick} />
 

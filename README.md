@@ -167,6 +167,22 @@ were mid-session. `Re-suggest` forces a fresh one.
 Every failure path falls back to the plan's own numbers with your last logged performance applied —
 no key, no model, a timeout or garbage JSON all produce a usable session rather than an error.
 
+### Phase 0 — the baseline fortnight
+
+The first two weeks are measurement, not training. The document is blunt about why: *start at 70%;
+if you're flat on your back with soreness in week 1, you don't train in week 2.*
+
+So in Phase 0 the prescription takes the **low end** of every range, two rounds instead of three, and
+every movement carries "stop well short". The model is not consulted at all — progressing a number
+you haven't established yet is exactly the mistake the fortnight exists to prevent. What you log
+becomes the starting point Phase 1 builds on.
+
+`/baseline` captures the document's day 1 measurements and day 2 six-test fitness baseline (including
+the 12-minute walk, which is not part of THE TRIAL and is deliberately not scored).
+
+Water is logged in 250 ml taps against a configurable target — 2 L by default, the document asks for
+3. The point in Phase 0 is finding out whether the target is a change or already normal.
+
 ### FUEL
 
 Photos are compressed to a 1200px max edge in the browser, then the entry is **saved before the

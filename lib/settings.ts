@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { settings } from "./db/schema";
-import { PHOTO_CORRECTION_DEFAULT_PCT, PROFILE } from "./plan";
+import { PHOTO_CORRECTION_DEFAULT_PCT, PROFILE, WATER_TARGET_ML_DEFAULT } from "./plan";
 import { todayISO } from "./dates";
 import { mergeEquipment, type EquipmentItem } from "./equipment";
 
@@ -11,6 +11,7 @@ export interface AppSettings {
   startWeightKg: number;
   targetWeightKg: number;
   photoCorrectionPct: number;
+  waterTargetMl: number;
   /** Overrides NANOGPT_VISION_MODEL when set, so the model is swappable in-app. */
   visionModel: string | null;
   equipment: EquipmentItem[];
@@ -21,6 +22,7 @@ const DEFAULTS: Omit<AppSettings, "startDate" | "visionModel" | "equipment"> = {
   startWeightKg: PROFILE.startWeightKg,
   targetWeightKg: PROFILE.targetWeightKg,
   photoCorrectionPct: PHOTO_CORRECTION_DEFAULT_PCT,
+  waterTargetMl: WATER_TARGET_ML_DEFAULT,
 };
 
 function readAll(): Record<string, string> {
@@ -41,6 +43,7 @@ export function getSettings(): AppSettings {
     startWeightKg: num("start_weight_kg", DEFAULTS.startWeightKg),
     targetWeightKg: num("target_weight_kg", DEFAULTS.targetWeightKg),
     photoCorrectionPct: num("photo_correction_pct", DEFAULTS.photoCorrectionPct),
+    waterTargetMl: num("water_target_ml", DEFAULTS.waterTargetMl),
     visionModel: raw.vision_model?.trim() || null,
     equipment: mergeEquipment(safeJson(raw.equipment)),
   };

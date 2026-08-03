@@ -28,6 +28,7 @@ export default async function Settings() {
         initial={{
           visionModel: s.visionModel,
           photoCorrectionPct: s.photoCorrectionPct,
+          waterTargetMl: s.waterTargetMl,
           heightCm: s.heightCm,
           startWeightKg: s.startWeightKg,
           targetWeightKg: s.targetWeightKg,

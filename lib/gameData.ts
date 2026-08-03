@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   abilities,
@@ -8,6 +8,7 @@ import {
   photos,
   sessions,
   trials,
+  waterLogs,
   weights,
 } from "./db/schema";
 import { todayISO } from "./dates";
@@ -74,6 +75,12 @@ export function loadGameState(): GameState {
       .from(abilities)
       .all(),
     sets: db.select({ date: exerciseLogs.date }).from(exerciseLogs).all(),
+    water: db
+      .select({ date: waterLogs.date, ml: sql<number>`SUM(${waterLogs.ml})` })
+      .from(waterLogs)
+      .groupBy(waterLogs.date)
+      .all(),
+    waterTargetMl: s.waterTargetMl,
   };
 
   return computeGameState(input);

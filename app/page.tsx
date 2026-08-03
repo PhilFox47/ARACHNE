@@ -14,6 +14,7 @@ import { TensionLine } from "@/components/TensionLine";
 import { BottomNav } from "@/components/BottomNav";
 import { LevelBar, StreakStrip } from "@/components/LevelBar";
 import { ChallengeList } from "@/components/Challenges";
+import { PHASES } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,24 @@ export default async function HQ() {
           />
         </div>
       </section>
+
+      {/* ── Phase 0 takes over the top slot: it's the only job for 14 days ── */}
+      {stats.phase.id === 0 ? (
+        <Link href="/baseline" className="swing panel-hot flex flex-col gap-2 p-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="label-xs text-crimson">Baseline · Phase 0</span>
+            <span className="label-xs tabular">
+              {Math.max(0, PHASES[0].endDay - stats.day + 1)} days left
+            </span>
+          </div>
+          <span className="display text-lg text-ink">Find your starting point</span>
+          <span className="text-sm leading-relaxed text-muted">
+            Measurements, the six-test fitness baseline, and two weeks of honest tracking. Train at the
+            bottom of every range and stop short — this fortnight is measurement, not progress.
+          </span>
+          <span className="label-xs text-crimson">Open baseline &rarr;</span>
+        </Link>
+      ) : null}
 
       {/* ── Progression ── */}
       <div className="swing flex flex-col gap-3" style={{ animationDelay: "50ms" }}>

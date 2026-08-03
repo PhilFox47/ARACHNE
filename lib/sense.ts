@@ -34,8 +34,8 @@ export function computeInsights(
     out.push({
       key: "phase0",
       tone: "neutral",
-      priority: 60,
-      text: `Setup phase — no deficit for another ${left} day${left === 1 ? "" : "s"}. Track honestly, change nothing.`,
+      priority: 96,
+      text: `Baseline phase — ${left} day${left === 1 ? "" : "s"} left. Eat as you normally would and log all of it, train at the bottom of every range, and stop short. The deficit starts after this.`,
     });
   }
 
