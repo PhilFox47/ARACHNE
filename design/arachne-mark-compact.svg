@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="ARACHNE">
+  <title>ARACHNE</title>
+  <!-- Small-size variant: inner ring dropped, strokes thickened, nodes enlarged.
+       Use at or below 48px (favicon, bottom-nav glyph, notification badge). -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="var(--mark-cobalt, #2B5CB8)" stroke-width="2.4" opacity="0.9">
+      <path d="M50 50 L81.11 18.89" />
+      <path d="M50 50 L94 50" />
+      <path d="M50 50 L50 94" />
+      <path d="M50 50 L6 50" />
+      <path d="M50 50 L18.89 18.89" />
+    </g>
+    <g stroke="var(--mark-cobalt, #2B5CB8)" stroke-width="2.8" opacity="0.8">
+      <path d="M50 6 L81.11 18.89 L94 50 L81.11 81.11" />
+      <path d="M50 94 L18.89 81.11 L6 50 L18.89 18.89 L50 6" />
+    </g>
+    <g stroke="var(--mark-crimson, #D42A3F)" stroke-width="4.6">
+      <path d="M50 50 L50 6" />
+      <path d="M50 50 L81.11 81.11" />
+      <path d="M50 50 L18.89 81.11" />
+    </g>
+  </g>
+  <g fill="var(--mark-crimson, #D42A3F)">
+    <circle cx="50" cy="6" r="4" />
+    <circle cx="81.11" cy="81.11" r="4" />
+    <circle cx="18.89" cy="81.11" r="4" />
+  </g>
+  <path d="M50 39 L61 50 L50 61 L39 50 Z" fill="var(--mark-crimson, #D42A3F)" />
+  <path d="M50 45.5 L54.5 50 L50 54.5 L45.5 50 Z" fill="var(--mark-base, #0A0D16)" />
+</svg>

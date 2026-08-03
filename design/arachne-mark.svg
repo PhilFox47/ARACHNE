@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="ARACHNE">
+  <title>ARACHNE</title>
+  <!-- Geometric orb-web mark. Straight chords (as in a real orb web), 8 spokes,
+       visible nodes. Crimson tripod (up / down-right / down-left) over a cobalt
+       octagonal lattice. Outer ring is deliberately snapped in one sector. -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- ── thin cobalt spokes ── -->
+    <g stroke="var(--mark-cobalt, #2B5CB8)" stroke-width="1.2" opacity="0.9">
+      <path d="M50 50 L81.11 18.89" />
+      <path d="M50 50 L94 50" />
+      <path d="M50 50 L50 94" />
+      <path d="M50 50 L6 50" />
+      <path d="M50 50 L18.89 18.89" />
+    </g>
+
+    <!-- ── outer chord ring (snapped between the down-right and down spokes) ── -->
+    <g stroke="var(--mark-cobalt, #2B5CB8)" stroke-width="1.6" opacity="0.75">
+      <path d="M50 6 L81.11 18.89" />
+      <path d="M81.11 18.89 L94 50" />
+      <path d="M94 50 L81.11 81.11" />
+      <path d="M81.11 81.11 L74.27 83.95" />
+      <path d="M50 94 L56.84 91.16" />
+      <path d="M50 94 L18.89 81.11" />
+      <path d="M18.89 81.11 L6 50" />
+      <path d="M6 50 L18.89 18.89" />
+      <path d="M18.89 18.89 L50 6" />
+    </g>
+
+    <!-- ── mid chord ring ── -->
+    <g stroke="var(--mark-cobalt, #2B5CB8)" stroke-width="1.3" opacity="0.6">
+      <path d="M50 20.08 L71.16 28.84 L79.92 50 L71.16 71.16 L50 79.92
+               L28.84 71.16 L20.08 50 L28.84 28.84 Z" />
+    </g>
+
+    <!-- ── inner chord ring ── -->
+    <g stroke="var(--mark-cobalt, #2B5CB8)" stroke-width="1.1" opacity="0.45">
+      <path d="M50 33.28 L61.82 38.18 L66.72 50 L61.82 61.82 L50 66.72
+               L38.18 61.82 L33.28 50 L38.18 38.18 Z" />
+    </g>
+
+    <!-- ── crimson tripod: the load-bearing lines ── -->
+    <g stroke="var(--mark-crimson, #D42A3F)" stroke-width="2.6">
+      <path d="M50 50 L50 6" />
+      <path d="M50 50 L81.11 81.11" />
+      <path d="M50 50 L18.89 81.11" />
+    </g>
+  </g>
+
+  <!-- ── nodes ── -->
+  <g fill="var(--mark-cobalt, #2B5CB8)" opacity="0.85">
+    <circle cx="81.11" cy="18.89" r="1.5" />
+    <circle cx="94" cy="50" r="1.5" />
+    <circle cx="50" cy="94" r="1.5" />
+    <circle cx="6" cy="50" r="1.5" />
+    <circle cx="18.89" cy="18.89" r="1.5" />
+  </g>
+  <g fill="var(--mark-crimson, #D42A3F)">
+    <circle cx="50" cy="6" r="2.4" />
+    <circle cx="81.11" cy="81.11" r="2.4" />
+    <circle cx="18.89" cy="81.11" r="2.4" />
+    <circle cx="50" cy="20.08" r="1.9" />
+    <circle cx="71.16" cy="71.16" r="1.9" />
+    <circle cx="28.84" cy="71.16" r="1.9" />
+  </g>
+
+  <!-- ── core ── -->
+  <path d="M50 42.5 L57.5 50 L50 57.5 L42.5 50 Z" fill="var(--mark-crimson, #D42A3F)" />
+  <path d="M50 46.6 L53.4 50 L50 53.4 L46.6 50 Z" fill="var(--mark-base, #0A0D16)" />
+</svg>
