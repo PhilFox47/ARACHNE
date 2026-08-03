@@ -1,6 +1,12 @@
 import { addDays, daysBetween, todayISO } from "./dates";
 import { CORRIDOR_TOLERANCE_KG, corridorTarget } from "./plan";
-import { rollingAverage, type HqStats } from "./stats";
+import {
+  buildComposition,
+  compositionSummary,
+  rollingAverage,
+  type HqStats,
+  type WeightRow,
+} from "./stats";
 
 export interface Insight {
   key: string;
@@ -21,10 +27,7 @@ export interface Insight {
  * Returns at most two. A wall of observations is nagging, and nagging gets an
  * app deleted in week three.
  */
-export function computeInsights(
-  stats: HqStats,
-  rows: { date: string; weightKg: number }[],
-): Insight[] {
+export function computeInsights(stats: HqStats, rows: WeightRow[]): Insight[] {
   const out: Insight[] = [];
   const today = todayISO();
 
@@ -85,6 +88,29 @@ export function computeInsights(
         tone: "neutral",
         priority: 55,
         text: `Today's reading sits ${Math.abs(spread).toFixed(1)} kg ${spread > 0 ? "above" : "below"} your average. Daily weight swings up to 2 kg on water alone — only the average counts.`,
+      });
+    }
+  }
+
+  // ── What the weight loss is actually made of ──
+  // Ranked above the corridor insights: being ahead of the line is a bad result
+  // if the missing kilos came off the wrong tissue.
+  const split = compositionSummary(buildComposition(rows));
+  if (split !== null && split.fatShare !== null) {
+    const share = Math.round(split.fatShare * 100);
+    if (split.leanDeltaKg <= -1 && share < 70) {
+      out.push({
+        key: "lean-loss",
+        tone: "warn",
+        priority: 93,
+        text: `Only ${share}% of the last ${split.spanDays} days' change came off as fat — lean mass is down ${Math.abs(split.leanDeltaKg).toFixed(1)} kg. Hit the protein target every day and slow the deficit before cutting it further.`,
+      });
+    } else if (share >= 85) {
+      out.push({
+        key: "fat-loss-clean",
+        tone: "good",
+        priority: 68,
+        text: `${share}% of the last ${split.spanDays} days' change was fat, with lean mass ${split.leanDeltaKg >= 0 ? "up" : "down only"} ${Math.abs(split.leanDeltaKg).toFixed(1)} kg. That is the deficit doing exactly what it's for.`,
       });
     }
   }

@@ -12,24 +12,38 @@ async function guard() {
   if (!(await isAuthed())) throw new Error("Not authorised.");
 }
 
-export async function logWeight(weightKg: number, date?: string) {
+export async function logWeight(weightKg: number, date?: string, bodyfatPct?: number | null) {
   await guard();
 
   if (!Number.isFinite(weightKg) || weightKg < 30 || weightKg > 300) {
     return { ok: false as const, error: "That reading is outside the plausible range." };
   }
 
+  // A scale that reports 3% or 70% has misread you, not measured you.
+  let bf: number | null = null;
+  if (bodyfatPct !== undefined && bodyfatPct !== null) {
+    if (!Number.isFinite(bodyfatPct) || bodyfatPct < 3 || bodyfatPct > 65) {
+      return { ok: false as const, error: "That body-fat reading is outside the plausible range." };
+    }
+    bf = Math.round(bodyfatPct * 10) / 10;
+  }
+
   const d = date ?? todayISO();
   const value = Math.round(weightKg * 10) / 10;
 
   db.insert(weights)
-    .values({ date: d, weightKg: value })
-    .onConflictDoUpdate({ target: weights.date, set: { weightKg: value } })
+    .values({ date: d, weightKg: value, bodyfatPct: bf })
+    .onConflictDoUpdate({
+      target: weights.date,
+      // Only overwrite the body fat when one was supplied, so logging weight
+      // from a scale without the feature doesn't wipe yesterday's reading.
+      set: bf === null ? { weightKg: value } : { weightKg: value, bodyfatPct: bf },
+    })
     .run();
 
   revalidatePath("/");
   revalidatePath("/vitals");
-  return { ok: true as const, weightKg: value, date: d };
+  return { ok: true as const, weightKg: value, date: d, bodyfatPct: bf };
 }
 
 export async function deleteWeight(date: string) {

@@ -77,7 +77,9 @@ export const PHASES: Phase[] = [
       "Buy the kit. The doorframe pull-up bar first — lats are what fill the suit.",
       "Track food honestly at maintenance and change nothing — including the snacking. A baseline you have already tidied up tells you nothing.",
       "Log water too, so you find out whether the target is a change or already normal.",
-      "Train at the bottom of every range, two rounds, stopping three or four short. Soreness on day 3 costs you week 2.",
+      "Week 1 is five baseline patrols covering every movement the year uses. No targets — you're measuring, and two or three reps left in the tank is close enough to a limit.",
+      "Week 2 repeats the same five in the same order. Two readings a week apart is a baseline; one is a guess.",
+      "From week 3 the plan picks each movement's starting variation from what you logged, rather than from what the document assumed.",
     ],
   },
   {
@@ -248,18 +250,393 @@ export const SESSION_SHAPE = { warmupMin: 4, workMin: 22, cooldownMin: 4 } as co
  * blunt about why: "start at 70%… if you're flat on your back with muscle
  * soreness in week 1, you don't train in week 2."
  *
- * So the first two weeks take the low end of every range, two rounds instead of
- * three, and stop well short. What you log becomes the starting point the
- * prescription builds on from Phase 1.
+ * So the first five patrols sweep the movement pool looking for numbers, two
+ * sets each, stopping short of failure. The second week runs the identical five
+ * again: one reading is a guess, two readings a week apart is a baseline, and
+ * the difference between them says whether the first week was honest.
  */
 export const BASELINE_MODE = {
   rounds: 2,
-  rule: "Find your number, don't hit it. Stop three or four short of what you could do — this fortnight is measurement, and soreness on day 3 costs you week 2.",
+  rule: "No targets this fortnight. Take each set to a clean technical limit with two or three left in you, and write down what you got — the plan is built from these numbers, so an inflated one only misprograms your own year.",
   fuelRule: "Eat exactly as you normally would and log all of it. A baseline you've already 'improved' tells you nothing.",
+  repeatRule: "Same five patrols as last week, same order. Match the numbers if you can — a big jump usually means week 1 was cautious rather than that you got stronger in seven days, and either way the plan wants the truer figure.",
 } as const;
 
 export function isBaselinePhase(phase: PhaseId): boolean {
   return phase === 0;
+}
+
+// ─────────────────────────────────────────────────────────────
+// The baseline sweep
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * A family is a slot in the week, not a muscle. Monday always has a horizontal
+ * press in it; which variation fills that slot is a question about you, and the
+ * baseline fortnight is how it gets answered.
+ */
+export type MovementFamily =
+  | "push"
+  | "vertical_push"
+  | "dip"
+  | "pull"
+  | "row"
+  | "squat"
+  | "hinge"
+  | "lunge"
+  | "core"
+  | "hold"
+  | "mobility"
+  | "conditioning"
+  | "jump"
+  | "handstand"
+  | "crawl";
+
+export interface BaselineProbe {
+  /** Movement name, taken from the plan's own pool. */
+  name: string;
+  family: MovementFamily;
+  metric: "reps" | "time";
+  sets: number;
+  /** How to run the test, in one line. */
+  how: string;
+  perSide?: boolean;
+  loaded?: boolean;
+}
+
+export interface BaselinePatrol {
+  /** 1-based, and the order they are issued in. */
+  index: number;
+  title: string;
+  blurb: string;
+  /** Which weekday session lends its warm-up and cooldown. */
+  mirrors: DayKey;
+  probes: BaselineProbe[];
+  /** Conditioning is a pick-one, exactly as Thursday is. */
+  pickOne?: boolean;
+  rule?: string;
+}
+
+/**
+ * Five patrols that between them touch every movement family the plan uses
+ * later. The ordering mirrors the plan's own week — press, range, pull,
+ * engine, skills — so consecutive patrols never hit the same tissue twice,
+ * which matters more than usual when every set is near a limit.
+ *
+ * These are assigned by patrol number rather than by weekday. Starting on a
+ * Thursday should not mean your baseline begins with conditioning and skips
+ * pressing entirely.
+ */
+export const BASELINE_PATROLS: BaselinePatrol[] = [
+  {
+    index: 1,
+    title: "Baseline · Press",
+    blurb: "Everything that pushes. Two sets each, and the number you write down is the one the year gets built on.",
+    mirrors: "mon",
+    probes: [
+      {
+        name: "Elevated push-ups",
+        family: "push",
+        metric: "reps",
+        sets: 2,
+        how: "Hands on a table or the sofa edge. Clean reps only — stop when the hips start to sag.",
+      },
+      {
+        name: "Pike push-ups",
+        family: "vertical_push",
+        metric: "reps",
+        sets: 2,
+        how: "Hips high, head between the hands. Zero is a perfectly good reading.",
+      },
+      {
+        name: "Dumbbell shoulder press",
+        family: "vertical_push",
+        metric: "reps",
+        sets: 2,
+        how: "Whatever dumbbells you have. Log the weight — that's half the measurement.",
+        loaded: true,
+      },
+      {
+        name: "Triceps dips on chair edge",
+        family: "dip",
+        metric: "reps",
+        sets: 2,
+        how: "Heels on the floor, shoulders down. Stop before the shoulder starts complaining.",
+      },
+      {
+        name: "Plank",
+        family: "core",
+        metric: "time",
+        sets: 2,
+        how: "It ends when the hips drop, not when it starts hurting.",
+      },
+    ],
+    rule: "Nothing today is meant to be hard for its own sake. You are taking a photograph of where you are, and a flattering photograph is useless.",
+  },
+  {
+    index: 2,
+    title: "Baseline · Range",
+    blurb: "What you can actually reach. Stiffness is a bigger problem than missing strength right now, and this is the patrol that finds out how big.",
+    mirrors: "tue",
+    probes: [
+      {
+        name: "Deep squat hold",
+        family: "hold",
+        metric: "time",
+        sets: 2,
+        how: "Heels flat on the floor. The clock stops the moment a heel lifts.",
+      },
+      {
+        name: "Cossack squat",
+        family: "mobility",
+        metric: "reps",
+        sets: 2,
+        how: "As deep as you go without rolling onto the edge of the foot.",
+        perSide: true,
+      },
+      {
+        name: "Spiderman lunge with rotation",
+        family: "mobility",
+        metric: "reps",
+        sets: 2,
+        how: "Reach for the ceiling and follow the hand with your eyes.",
+        perSide: true,
+      },
+      {
+        name: "Wall slides",
+        family: "mobility",
+        metric: "reps",
+        sets: 2,
+        how: "Wrists and lower back stay on the wall. Count only the reps where they do.",
+      },
+      {
+        name: "Couch stretch",
+        family: "mobility",
+        metric: "time",
+        sets: 2,
+        how: "How long you can hold it while still breathing normally.",
+        perSide: true,
+      },
+    ],
+    rule: "Never stretch into pain. Pulling yes, stabbing no. Breathe — mobility happens on the exhale.",
+  },
+  {
+    index: 3,
+    title: "Baseline · Pull",
+    blurb: "The half of your back that fills the suit, and the legs underneath it.",
+    mirrors: "wed",
+    probes: [
+      {
+        name: "Dead hang",
+        family: "pull",
+        metric: "time",
+        sets: 2,
+        how: "Hang until the grip goes, not until the arms do. Shoulders stay active.",
+      },
+      {
+        name: "Inverted rows",
+        family: "row",
+        metric: "reps",
+        sets: 2,
+        how: "Under a table or on the bar. Chest to the edge each rep.",
+      },
+      {
+        name: "Negative pull-ups",
+        family: "pull",
+        metric: "reps",
+        sets: 2,
+        how: "Jump up, lower as slowly as you can. Count only the ones you controlled all the way down.",
+      },
+      {
+        name: "Goblet squat",
+        family: "squat",
+        metric: "reps",
+        sets: 2,
+        how: "Both dumbbells at the chest. Log the weight alongside the reps.",
+        loaded: true,
+      },
+      {
+        name: "Romanian deadlift",
+        family: "hinge",
+        metric: "reps",
+        sets: 2,
+        how: "Stop the moment the lower back rounds. That's the number, whatever it is.",
+        loaded: true,
+      },
+      {
+        name: "Wall sit",
+        family: "hold",
+        metric: "time",
+        sets: 2,
+        how: "Thighs parallel. Ends when they aren't.",
+      },
+    ],
+  },
+  {
+    index: 4,
+    title: "Baseline · Engine",
+    blurb: "How long you last. One measured test, then twenty-five honest minutes of whatever you'll actually keep doing.",
+    mirrors: "thu",
+    pickOne: true,
+    probes: [
+      {
+        name: "Burpees",
+        family: "conditioning",
+        metric: "reps",
+        sets: 1,
+        how: "As many as you can in three minutes. Pace it — this is the one everyone blows up on.",
+      },
+      {
+        name: "Squat jumps",
+        family: "jump",
+        metric: "reps",
+        sets: 2,
+        how: "Land soft and quiet. When the landings get loud, the set is over.",
+      },
+    ],
+    rule: "The goal is being out of breath, not the high score. Log the 12-minute walk test on the BASELINE screen too if you haven't yet — it's the document's own day-2 measurement.",
+  },
+  {
+    index: 5,
+    title: "Baseline · Control",
+    blurb: "Balance, bracing and the floor skills everything later is built on.",
+    mirrors: "fri",
+    probes: [
+      {
+        name: "Wall handstand",
+        family: "handstand",
+        metric: "time",
+        sets: 2,
+        how: "Belly to the wall, walk the feet up as far as is comfortable. Time the hold.",
+      },
+      {
+        name: "Bear crawl",
+        family: "crawl",
+        metric: "time",
+        sets: 2,
+        how: "Knees a hand's width off the floor the whole time. That's what makes it hard.",
+      },
+      {
+        name: "Hollow hold",
+        family: "core",
+        metric: "time",
+        sets: 2,
+        how: "Lower back stays flat on the floor. It ends when the gap opens.",
+      },
+      {
+        name: "Spider crawl",
+        family: "crawl",
+        metric: "time",
+        sets: 2,
+        how: "Low — belly close to the floor.",
+      },
+      {
+        name: "Shoulder roll",
+        family: "mobility",
+        metric: "reps",
+        sets: 2,
+        how: "Slow, from a crouch, both sides. Count the ones that didn't land on the spine.",
+        perSide: true,
+      },
+    ],
+    rule: "The shoulder roll is the foundational parkour skill and your insurance against injury in everything that follows. Learn it slowly, on something soft.",
+  },
+];
+
+// ─────────────────────────────────────────────────────────────
+// Progression ladders
+// ─────────────────────────────────────────────────────────────
+
+export interface Rung {
+  name: string;
+  /** The dose the plan gives this variation. */
+  dose: string;
+  note?: string;
+  /** Matches logged movement names back onto this rung. */
+  match: RegExp;
+}
+
+/**
+ * The document's own progressions, written out as ordered rungs — "table →
+ * chair → sofa edge → floor" for pressing, dead hang → negatives → pull-ups for
+ * pulling. Its advance rule is equally explicit: "only move on at a clean 3×12."
+ *
+ * This is what the baseline fortnight buys. The plan decides that Monday has a
+ * horizontal press on it; these decide which one you can currently do.
+ */
+export const LADDER_ADVANCE_REPS = 12;
+
+export const LADDERS: Partial<Record<MovementFamily, Rung[]>> = {
+  push: [
+    { name: "Push-ups against a wall", dose: "8–12", note: "Hands on the wall, body in one line.", match: /wall push-?up/i },
+    { name: "Push-ups on a table", dose: "8–12", match: /push-?ups? on a table/i },
+    { name: "Push-ups on a chair", dose: "8–12", match: /push-?ups? on a chair|elevated push-?up/i },
+    { name: "Push-ups on the sofa edge", dose: "8–12", match: /sofa edge/i },
+    // Parallettes deepen the range rather than easing it, so a deficit push-up
+    // reads as the floor rung, never as an elevated one.
+    { name: "Push-ups", dose: "8–12", note: "On the floor.", match: /^push-?ups?$|deficit push-?up/i },
+    { name: "Diamond push-ups", dose: "8–12", match: /diamond/i },
+    { name: "Archer push-ups", dose: "8–10 per side", match: /archer push-?up/i },
+    { name: "Clap push-ups", dose: "3× 5–8", match: /clap push-?up/i },
+  ],
+  vertical_push: [
+    { name: "Pike push-ups on a chair", dose: "8–12", note: "Hands elevated — the easiest rung.", match: /pike push-?ups? on a chair/i },
+    { name: "Pike push-ups", dose: "8–12", match: /^pike push-?ups?$/i },
+    { name: "Pike push-ups elevated", dose: "8–12", note: "Feet up, toward the handstand push-up.", match: /pike push-?ups? elevated/i },
+    { name: "Handstand push-up negatives", dose: "5× 3", note: "Against the wall, lowering only.", match: /handstand push-?up/i },
+  ],
+  dip: [
+    { name: "Triceps dips on chair edge, feet forward", dose: "8–12", match: /feet forward/i },
+    { name: "Triceps dips on chair edge", dose: "8–12", match: /triceps dips/i },
+    { name: "Dips between two chairs", dose: "8–12", match: /dips between two chairs|ring dips/i },
+  ],
+  pull: [
+    { name: "Dead hang", dose: "3× to just short of letting go", match: /dead hang|ring hang/i },
+    { name: "Negative pull-ups", dose: "5× 5 s", match: /negative pull-?up/i },
+    { name: "Pull-ups", dose: "5× 3", match: /^pull-?ups?$/i },
+    { name: "Explosive pull-ups", dose: "5× 3", match: /explosive pull-?up/i },
+  ],
+  row: [
+    { name: "Inverted rows under a table", dose: "8–12", note: "Feet forward, body at an angle.", match: /under a table/i },
+    { name: "Inverted rows", dose: "8–12", match: /^inverted rows?$|ring rows?/i },
+    { name: "Archer rows", dose: "8–10 per side", match: /archer row/i },
+  ],
+};
+
+/**
+ * Which family a movement belongs to. Ordered most specific first — "archer
+ * rows" has to be caught before the generic row pattern, and "pike push-ups"
+ * before push-ups.
+ */
+const FAMILY_PATTERNS: [RegExp, MovementFamily][] = [
+  [/pike push-?up|shoulder press|handstand push-?up/i, "vertical_push"],
+  [/dip/i, "dip"],
+  [/push-?up/i, "push"],
+  [/pull-?up|muscle-?up|dead hang|ring hang/i, "pull"],
+  [/row/i, "row"],
+  [/squat jump|broad jump|precision jump/i, "jump"],
+  [/deadlift|hinge|good morning|nordic curl/i, "hinge"],
+  [/lunge|split squat/i, "lunge"],
+  [/squat/i, "squat"],
+  [/plank|hollow|dead bug|l-?sit|dragon flag|knee raise|ab wheel/i, "core"],
+  [/wall sit|hold|hang/i, "hold"],
+  [/handstand/i, "handstand"],
+  [/crawl/i, "crawl"],
+  [/burpee|interval|sprint|jump rope/i, "conditioning"],
+  [/stretch|slide|circle|rotation|switch|open book|thread|pancake|bridge|roll|cat-?cow|fold/i, "mobility"],
+];
+
+export function familyOf(name: string): MovementFamily | null {
+  for (const [re, fam] of FAMILY_PATTERNS) if (re.test(name)) return fam;
+  return null;
+}
+
+/** Where a named movement sits on its family's ladder, if it's on one at all. */
+export function rungOf(family: MovementFamily, name: string): number | null {
+  const ladder = LADDERS[family];
+  if (!ladder) return null;
+  const i = ladder.findIndex((r) => r.match.test(name));
+  return i === -1 ? null : i;
 }
 
 /**
@@ -268,7 +645,14 @@ export function isBaselinePhase(phase: PhaseId): boolean {
  */
 export const WATER_TARGET_ML_DEFAULT = 2000;
 export const WATER_TARGET_ML_DOCUMENT = 3000;
-export const WATER_INCREMENTS_ML = [250, 500, 750] as const;
+
+/**
+ * Glass, mug, bottle. Named after the things you actually drink out of rather
+ * than a tidy arithmetic ladder — a 350 ml mug is a real object and 500 ml is
+ * not, for most of what ends up in front of you.
+ */
+export const WATER_INCREMENTS_ML = [250, 350, 750] as const;
+export const WATER_CUSTOM_MAX_ML = 3000;
 
 /** Every 4th week. Document: "2 rounds instead of 3, no training to failure." */
 export function isLowProfileWeek(weekIndex: number): boolean {

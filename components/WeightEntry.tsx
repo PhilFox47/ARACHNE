@@ -9,17 +9,28 @@ import { logWeight } from "@/app/actions";
  *
  * Deliberately no confirmation dialog and no success screen — the number
  * updating in place is the confirmation.
+ *
+ * Body fat sits underneath as a second, smaller field. It's optional and stays
+ * out of the way until a scale has actually reported one, because a permanently
+ * empty box is a permanent reminder that you haven't filled it in.
  */
 export function WeightEntry({
   initial,
+  initialBodyfat,
   loggedToday,
   today,
 }: {
   initial: number | null;
+  /** Last known scale reading, used both to prefill and to decide visibility. */
+  initialBodyfat?: number | null;
   loggedToday: boolean;
   today: string;
 }) {
   const [value, setValue] = useState(initial !== null ? initial.toFixed(1) : "");
+  const [bf, setBf] = useState(
+    initialBodyfat !== null && initialBodyfat !== undefined ? initialBodyfat.toFixed(1) : "",
+  );
+  const [showBf, setShowBf] = useState(initialBodyfat !== null && initialBodyfat !== undefined);
   const [saved, setSaved] = useState(loggedToday);
   const [error, setError] = useState<string | null>(null);
   const [snap, setSnap] = useState(false);
@@ -39,9 +50,22 @@ export function WeightEntry({
       setError("Enter a weight first.");
       return;
     }
+
+    // An empty field means "no reading today", not "wipe the last one" — the
+    // action leaves the stored value alone when it gets null.
+    let fat: number | null = null;
+    if (showBf && bf.trim() !== "") {
+      const parsed = Number(bf.replace(",", "."));
+      if (!Number.isFinite(parsed)) {
+        setError("Body fat should be a percentage, e.g. 27.4.");
+        return;
+      }
+      fat = parsed;
+    }
+
     setError(null);
     start(async () => {
-      const res = await logWeight(kg, today);
+      const res = await logWeight(kg, today, fat);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -52,6 +76,14 @@ export function WeightEntry({
       if (navigator.vibrate) navigator.vibrate([12, 40, 18]);
     });
   };
+
+  const lean = (() => {
+    const kg = Number(value);
+    const pct = Number(bf.replace(",", "."));
+    if (!showBf || !Number.isFinite(kg) || !Number.isFinite(pct) || bf.trim() === "") return null;
+    if (pct < 3 || pct > 65) return null;
+    return { fat: (kg * pct) / 100, lean: kg - (kg * pct) / 100 };
+  })();
 
   return (
     <div className="panel flex flex-col gap-4 p-4">
@@ -101,6 +133,53 @@ export function WeightEntry({
           +
         </button>
       </div>
+
+      {/* ── Body fat, from the scale ── */}
+      {showBf ? (
+        <div className="flex flex-col gap-2 border-t border-edge pt-3">
+          <div className="flex items-center gap-3">
+            <label htmlFor="bodyfat" className="label-xs flex-1">
+              Body fat
+              <span className="ml-1.5 text-muted-dim">from the scale</span>
+            </label>
+            <span className="flex items-baseline gap-1 border border-edge bg-panel-2 px-3">
+              <input
+                id="bodyfat"
+                inputMode="decimal"
+                type="number"
+                step="0.1"
+                value={bf}
+                onChange={(e) => {
+                  setBf(e.target.value);
+                  setSaved(false);
+                }}
+                placeholder="—"
+                className="numeral tap w-20 min-w-0 bg-transparent text-right text-2xl text-ink outline-none placeholder:text-muted-dim"
+              />
+              <span className="label-xs shrink-0">%</span>
+            </span>
+          </div>
+
+          {lean ? (
+            <p className="label-xs tabular" aria-live="polite">
+              {lean.fat.toFixed(1)} kg fat · {lean.lean.toFixed(1)} kg lean
+            </p>
+          ) : (
+            <p className="text-xs leading-relaxed text-muted-dim">
+              Bioimpedance moves several points on hydration alone, so VITALS charts it as a weekly average.
+              It will not agree with the tape-measure estimate, and that&apos;s expected.
+            </p>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowBf(true)}
+          className="label-xs self-start underline"
+        >
+          + Add body fat
+        </button>
+      )}
 
       {error ? <p className="text-xs text-crimson">{error}</p> : null}
 

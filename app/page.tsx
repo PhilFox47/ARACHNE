@@ -140,8 +140,9 @@ export default async function HQ() {
           </div>
           <span className="display text-lg text-ink">Find your starting point</span>
           <span className="text-sm leading-relaxed text-muted">
-            Measurements, the six-test fitness baseline, and two weeks of honest tracking. Train at the
-            bottom of every range and stop short — this fortnight is measurement, not progress.
+            Measurements, the six-test fitness baseline, and five patrols that sweep every movement the year
+            uses — repeated once in week 2. No targets anywhere: this fortnight is measurement, and the plan
+            from week 3 is built out of what you record here.
           </span>
           <span className="label-xs text-crimson">Open baseline &rarr;</span>
         </Link>
@@ -157,6 +158,7 @@ export default async function HQ() {
       <div className="swing" style={{ animationDelay: "60ms" }}>
         <WeightEntry
           initial={stats.latest?.weightKg ?? settings.startWeightKg}
+          initialBodyfat={stats.latestBodyfat?.pct ?? null}
           loggedToday={stats.loggedToday}
           today={todayISO()}
         />

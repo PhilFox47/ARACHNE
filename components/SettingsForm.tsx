@@ -57,7 +57,7 @@ export function SettingsForm({
 
       <NumberSetting
         label="Water target"
-        hint="The plan document asks for 3 litres; this is the target you set. Logged in 250 ml taps on FUEL."
+        hint="The plan document asks for 3 litres; this is the target you set. FUEL logs it in 250, 350 or 750 ml taps, or any amount you type."
         suffix="ml"
         value={initial.waterTargetMl}
         step={250}

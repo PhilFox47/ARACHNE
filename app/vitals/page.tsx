@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { isAuthed } from "@/lib/auth";
-import { buildSeries, getHqStats, loadWeights } from "@/lib/stats";
+import { buildComposition, buildSeries, compositionSummary, getHqStats, loadWeights } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { formatShort, todayISO, weekIndex } from "@/lib/dates";
 import Link from "next/link";
@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
 import { navyBodyFat } from "@/lib/plan";
 import { WeightChart } from "@/components/WeightChart";
+import { CompositionChart } from "@/components/CompositionChart";
 import { WeightEntry } from "@/components/WeightEntry";
 import { CountUp } from "@/components/CountUp";
 import { BottomNav } from "@/components/BottomNav";
@@ -23,6 +24,8 @@ export default async function Vitals() {
   const rows = loadWeights();
   const stats = getHqStats();
   const series = buildSeries(rows, settings.startDate);
+  const composition = buildComposition(rows);
+  const split = compositionSummary(composition);
   const recent = [...rows].reverse().slice(0, 30);
 
   const wk = weekIndex(settings.startDate, todayISO());
@@ -58,24 +61,69 @@ export default async function Vitals() {
       <div className="swing" style={{ animationDelay: "60ms" }}>
         <WeightEntry
           initial={stats.latest?.weightKg ?? settings.startWeightKg}
+          initialBodyfat={stats.latestBodyfat?.pct ?? null}
           loggedToday={stats.loggedToday}
           today={todayISO()}
         />
       </div>
 
-      {/* Measurements land in Phase 4 — this states the plan rather than
-          pretending the screen is finished. */}
+      {/* ── Composition ── */}
+      <section className="panel flex flex-col gap-3 p-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="label-xs">Composition</p>
+          {stats.latestBodyfat ? (
+            <p className="label-xs tabular">
+              {stats.latestBodyfat.pct.toFixed(1)}% on {formatShort(stats.latestBodyfat.date)}
+            </p>
+          ) : null}
+        </div>
+
+        <CompositionChart points={composition} height={200} />
+
+        {split ? (
+          <>
+            <div className="grid grid-cols-3 border border-edge">
+              <Cell
+                label="Fat mass"
+                value={split.fatDeltaKg}
+                good={split.fatDeltaKg < 0}
+              />
+              <Cell label="Lean mass" value={split.leanDeltaKg} good={split.leanDeltaKg >= 0} bordered />
+              <div className="flex flex-col gap-1.5 border-l border-edge p-2.5">
+                <span className="numeral text-2xl text-ink tabular">
+                  {split.fatShare === null ? "—" : `${Math.round(split.fatShare * 100)}%`}
+                </span>
+                <span className="label-xs leading-tight">Of change was fat</span>
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-dim">
+              Across {split.spanDays} days. Losing weight is easy; losing it from the right tissue is the
+              whole job. Anything at or above 75% fat is the deficit working as intended — if lean mass is
+              falling instead, the answer is more protein and less hurry, not fewer calories.
+            </p>
+          </>
+        ) : (
+          <p className="text-xs leading-relaxed text-muted-dim">
+            Log the body-fat reading with your weight for a fortnight and this splits the line into fat and
+            lean mass — the number that decides whether the deficit is working or eating your muscle.
+          </p>
+        )}
+      </section>
+
+      {/* Two body-fat numbers exist, they disagree, and pretending otherwise
+          would be worse than explaining it. */}
       <section className="panel flex flex-col gap-2 p-4">
-        <p className="label-xs">Measurements</p>
-        <p className="text-sm text-muted">
-          Waist, neck, chest, thigh and upper arm arrive with THE TRIAL. Body fat is estimated from waist
-          and neck by the US Navy formula
-          {settings.heightCm ? ` at ${settings.heightCm} cm` : ""} — a few percentage points of error either
-          way, so the trend across months is what means anything, not the number.
+        <p className="label-xs">Two body-fat numbers</p>
+        <p className="text-sm leading-relaxed text-muted">
+          The scale measures bioimpedance — fast, daily, and swayed by how hydrated you are. The tape measure
+          feeds the US Navy formula from waist and neck
+          {settings.heightCm ? ` at ${settings.heightCm} cm` : ""}, which is slower but not affected by last
+          night&apos;s water. They will disagree by several points. Neither is corrected against the other;
+          each is tracked on its own, and it&apos;s the direction that counts.
         </p>
         {/* Worked example so the formula is verifiable before any data exists. */}
         <p className="label-xs text-muted-dim">
-          Example: 110 cm waist, 40 cm neck &rarr; {navyBodyFat(110, 40, settings.heightCm)}% estimated
+          Navy example: 110 cm waist, 40 cm neck &rarr; {navyBodyFat(110, 40, settings.heightCm)}% estimated
         </p>
       </section>
 
@@ -105,7 +153,12 @@ export default async function Vitals() {
             {recent.map((r) => (
               <li key={r.date} className="flex items-baseline justify-between px-4 py-2.5">
                 <span className="text-sm text-muted">{formatShort(r.date)}</span>
-                <span className="numeral text-lg text-ink tabular">{r.weightKg.toFixed(1)}</span>
+                <span className="flex items-baseline gap-3">
+                  {r.bodyfatPct !== null ? (
+                    <span className="numeral text-sm text-crimson tabular">{r.bodyfatPct.toFixed(1)}%</span>
+                  ) : null}
+                  <span className="numeral text-lg text-ink tabular">{r.weightKg.toFixed(1)}</span>
+                </span>
               </li>
             ))}
           </ul>
@@ -114,5 +167,27 @@ export default async function Vitals() {
 
       <BottomNav />
     </main>
+  );
+}
+
+function Cell({
+  label,
+  value,
+  good,
+  bordered,
+}: {
+  label: string;
+  value: number;
+  good: boolean;
+  bordered?: boolean;
+}) {
+  return (
+    <div className={`flex flex-col gap-1.5 p-2.5 ${bordered ? "border-l border-edge" : ""}`}>
+      <span className={`numeral text-2xl tabular ${good ? "text-cobalt-lift" : "text-crimson"}`}>
+        {value > 0 ? "+" : ""}
+        {value.toFixed(1)}
+      </span>
+      <span className="label-xs leading-tight">{label}</span>
+    </div>
   );
 }

@@ -4,6 +4,8 @@ import { isAuthed } from "@/lib/auth";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { BASELINE_MODE, PHASES } from "@/lib/plan";
+import { baselineCoverage, baselineSchedule } from "@/lib/baseline";
+import { formatShort, todayISO } from "@/lib/dates";
 import { loadBaseline } from "./actions";
 import { BaselineForms } from "@/components/BaselineForms";
 import { BottomNav } from "@/components/BottomNav";
@@ -19,6 +21,9 @@ export default async function Baseline() {
   const { test, meas } = await loadBaseline();
   const phase0 = PHASES[0];
   const daysLeft = Math.max(0, phase0.endDay - stats.day + 1);
+  const today = todayISO();
+  const schedule = baselineSchedule(s.startDate).filter((e) => e.slot !== null);
+  const coverage = baselineCoverage(s.startDate);
 
   return (
     <main className="relative z-10 mx-auto flex max-w-lg flex-col gap-5 px-4 pb-28 pt-3">
@@ -44,7 +49,8 @@ export default async function Baseline() {
         <ul className="flex flex-col gap-2">
           {[
             "Eat exactly as you normally would and log all of it. A baseline you've already tidied up tells you nothing.",
-            "Train at the bottom of every range, two rounds, stopping three or four short. Soreness on day 3 costs you week 2.",
+            "Five patrols in week 1 cover every movement the year uses. No targets on any of them — you're taking a reading, not setting a record.",
+            "Week 2 repeats the same five. Two readings a week apart is a baseline; one is a guess.",
             `Drink to ${(s.waterTargetMl / 1000).toFixed(1)} L and log it, so you know whether that's a change or already normal.`,
             "The deficit starts in week 3. Not before.",
           ].map((t) => (
@@ -54,6 +60,60 @@ export default async function Baseline() {
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* ── The sweep ── */}
+      <section className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="label-xs">The sweep</p>
+          <p className="label-xs tabular">
+            {coverage.measured} / {coverage.probes} movements measured
+          </p>
+        </div>
+
+        <ul className="panel divide-y divide-edge">
+          {schedule.map(({ date, slot }) => (
+            <li key={date}>
+              <Link
+                href={`/patrol/${date}`}
+                className="flex items-center gap-3 px-3 py-2.5"
+              >
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center border text-xs ${
+                    date < today
+                      ? "border-crimson-dim text-crimson"
+                      : date === today
+                        ? "border-crimson bg-crimson text-ink"
+                        : "border-edge text-muted-dim"
+                  }`}
+                >
+                  {slot!.patrol.index}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-sm text-ink">{slot!.patrol.title}</span>
+                  <span className="label-xs">
+                    {formatShort(date)} · {slot!.patrol.probes.length} movements
+                    {slot!.round === 1 ? " · repeat" : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 text-crimson">&rarr;</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        {coverage.missing.length > 0 ? (
+          <p className="px-1 text-xs leading-relaxed text-muted-dim">
+            Still unmeasured: {coverage.missing.slice(0, 6).map((m) => m.name).join(", ")}
+            {coverage.missing.length > 6 ? ` and ${coverage.missing.length - 6} more` : ""}. Anything left
+            blank keeps the document&apos;s own starting numbers instead of yours.
+          </p>
+        ) : (
+          <p className="px-1 text-xs leading-relaxed text-cobalt-lift">
+            Every movement measured. From week 3 the plan places each one on the rung your own numbers
+            justify.
+          </p>
+        )}
       </section>
 
       <BaselineForms

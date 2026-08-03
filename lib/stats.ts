@@ -12,6 +12,13 @@ import {
 } from "./plan";
 import { getSettings } from "./settings";
 
+export interface WeightRow {
+  date: string;
+  weightKg: number;
+  /** Bioimpedance, straight off the scale. Null on days it wasn't recorded. */
+  bodyfatPct: number | null;
+}
+
 export interface WeightPoint {
   date: string;
   day: number;
@@ -32,7 +39,9 @@ export interface HqStats {
   kcalTarget: number;
   inTaper: boolean;
   avg7: number | null;
-  latest: { date: string; weightKg: number } | null;
+  latest: WeightRow | null;
+  /** Most recent scale body-fat reading, however many days back it was. */
+  latestBodyfat: { date: string; pct: number } | null;
   deltaFromStart: number | null;
   corridorTarget: number;
   corridorDelta: number | null;
@@ -58,12 +67,96 @@ export function rollingAverage(
   return inWindow.reduce((s, r) => s + r.weightKg, 0) / inWindow.length;
 }
 
-export function loadWeights(): { date: string; weightKg: number }[] {
+export function loadWeights(): WeightRow[] {
   return db
-    .select({ date: weights.date, weightKg: weights.weightKg })
+    .select({ date: weights.date, weightKg: weights.weightKg, bodyfatPct: weights.bodyfatPct })
     .from(weights)
     .orderBy(asc(weights.date))
     .all();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Body composition
+// ─────────────────────────────────────────────────────────────
+
+export interface CompositionPoint {
+  date: string;
+  day: number;
+  /** Smoothed, because a single bioimpedance reading is not worth plotting. */
+  bodyfatPct: number;
+  fatKg: number;
+  leanKg: number;
+}
+
+/**
+ * Splits the weight into fat and lean mass. This is the number the plan document
+ * actually worries about — twenty kilos off the scale is a success or a failure
+ * depending entirely on which tissue left.
+ *
+ * Both series are smoothed over the same trailing week. Bioimpedance swings
+ * several points on hydration alone, so a daily fat-mass line would be mostly
+ * noise dressed up as biology.
+ */
+export function buildComposition(rows: WeightRow[], windowDays = 7): CompositionPoint[] {
+  const withBf = rows.filter((r) => r.bodyfatPct !== null);
+  if (withBf.length === 0) return [];
+
+  const out: CompositionPoint[] = [];
+  const startDate = rows[0].date;
+
+  for (const r of withBf) {
+    const from = addDays(r.date, -(windowDays - 1));
+    const window = withBf.filter((w) => w.date >= from && w.date <= r.date);
+    const bf = window.reduce((s, w) => s + (w.bodyfatPct ?? 0), 0) / window.length;
+    const kg = window.reduce((s, w) => s + w.weightKg, 0) / window.length;
+    const fat = (kg * bf) / 100;
+    out.push({
+      date: r.date,
+      day: daysBetween(startDate, r.date),
+      bodyfatPct: round1(bf),
+      fatKg: round1(fat),
+      leanKg: round1(kg - fat),
+    });
+  }
+  return out;
+}
+
+export interface CompositionSummary {
+  first: CompositionPoint;
+  latest: CompositionPoint;
+  fatDeltaKg: number;
+  leanDeltaKg: number;
+  bodyfatDeltaPct: number;
+  /**
+   * Share of the total weight change that came off as fat. Above 1 means lean
+   * mass went up while fat came down — the best outcome there is.
+   */
+  fatShare: number | null;
+  spanDays: number;
+}
+
+export function compositionSummary(points: CompositionPoint[]): CompositionSummary | null {
+  // Two readings a day apart say nothing. A fortnight is the shortest span on
+  // which a composition change is distinguishable from scale noise.
+  if (points.length < 2) return null;
+  const first = points[0];
+  const latest = points[points.length - 1];
+  const spanDays = latest.day - first.day;
+  if (spanDays < 14) return null;
+
+  const fatDeltaKg = round1(latest.fatKg - first.fatKg);
+  const leanDeltaKg = round1(latest.leanKg - first.leanKg);
+  const totalDelta = fatDeltaKg + leanDeltaKg;
+
+  return {
+    first,
+    latest,
+    fatDeltaKg,
+    leanDeltaKg,
+    bodyfatDeltaPct: round1(latest.bodyfatPct - first.bodyfatPct),
+    fatShare: Math.abs(totalDelta) < 0.5 ? null : round1((fatDeltaKg / totalDelta) * 100) / 100,
+    spanDays,
+  };
 }
 
 /**
@@ -104,6 +197,9 @@ export function getHqStats(): HqStats {
 
   const avg7 = rollingAverage(rows, today);
   const latest = rows.length ? rows[rows.length - 1] : null;
+  // Searched backwards rather than read off `latest` — a scale used without the
+  // body-fat feature one morning shouldn't blank the figure.
+  const lastBf = [...rows].reverse().find((r) => r.bodyfatPct !== null) ?? null;
   const target = corridorTarget(day);
   const { kcal, taper } = kcalTargetForDay(day);
 
@@ -127,6 +223,7 @@ export function getHqStats(): HqStats {
     inTaper: taper,
     avg7: avg7 === null ? null : round1(avg7),
     latest,
+    latestBodyfat: lastBf ? { date: lastBf.date, pct: lastBf.bodyfatPct! } : null,
     deltaFromStart: avg7 === null ? null : round1(avg7 - s.startWeightKg),
     corridorTarget: round1(target),
     corridorDelta: corridorDelta === null ? null : round1(corridorDelta),

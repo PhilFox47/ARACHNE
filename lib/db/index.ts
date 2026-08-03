@@ -147,6 +147,14 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       sqlite.exec("ALTER TABLE food_entries ADD COLUMN user_note TEXT");
     }
   },
+
+  // ── v7: daily body-fat reading from a bioimpedance scale ──
+  (sqlite) => {
+    const cols = (sqlite.pragma("table_info(weights)") as { name: string }[]).map((c) => c.name);
+    if (!cols.includes("bodyfat_pct")) {
+      sqlite.exec("ALTER TABLE weights ADD COLUMN bodyfat_pct REAL");
+    }
+  },
 ];
 
 /**

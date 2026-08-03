@@ -21,7 +21,6 @@ import { apiKey, baseUrl } from "./nanogpt";
 import { activeVisionModel, getSettings } from "./settings";
 import { equipmentSummary, gateExercise, ownedKeys, upgradeExercise } from "./equipment";
 import {
-  BASELINE_MODE,
   isBaselinePhase,
   roundsForWeek,
   sessionFor,
@@ -29,6 +28,15 @@ import {
   type Exercise,
   type PhaseId,
 } from "./plan";
+import {
+  baselineEndDate,
+  baselineSlotFor,
+  bestSecondsFor,
+  placeOnLadder,
+  seedHoldTarget,
+  standings,
+  type Standing,
+} from "./baseline";
 import { stripFences } from "./vision";
 
 export type Metric = "reps" | "time";
@@ -136,23 +144,37 @@ export function baselinePrescription(
   weekIdx: number,
   date: string,
 ): Prescription {
+  const settings = getSettings();
+  const owned = ownedKeys(settings.equipment);
+
+  if (isBaselinePhase(phase)) {
+    return sweepPrescription(settings.startDate, date, dayKey, phase, owned);
+  }
+
   const session = sessionFor(phase, dayKey);
-  const baseline = isBaselinePhase(phase);
-  const rounds = baseline ? BASELINE_MODE.rounds : roundsForWeek(weekIdx);
+  const rounds = roundsForWeek(weekIdx);
   const source: Exercise[] = session ? [...session.main, ...(session.extras ?? [])] : [];
-  const owned = ownedKeys(getSettings().equipment);
+
+  // Where the ladders currently put you. Computed once for the whole session —
+  // it's one grouped query, and it must not change between two exercises.
+  const st = standings();
 
   const exercises: PrescribedExercise[] = [];
   const seen = new Set<string>();
 
   for (const e of source) {
+    // Ladder placement runs before gating, so the equipment rules are applied
+    // to the variation you'll actually be doing rather than the one the plan
+    // named for a beginner you may no longer be.
+    const placed = placeOnLadder(e.name, e.dose, e.note ?? null, st);
+
     // Gate before prescribing. Opening a session and finding work you
     // physically cannot do is worse than a substitution.
-    const gate = gateExercise(e.name, owned);
+    const gate = gateExercise(placed.name, owned);
     if (!gate.allowed && gate.substitute === null) continue;
 
     let use = gate.allowed
-      ? { name: e.name, dose: e.dose, note: e.note ?? null }
+      ? { name: placed.name, dose: placed.dose, note: placed.note }
       : { name: gate.substitute!.name, dose: gate.substitute!.dose, note: gate.substitute!.note };
 
     // Gating only goes down. If better kit is owned, use it — a ring dip is
@@ -167,7 +189,7 @@ export function baselinePrescription(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const p = parseDose(use.dose, rounds, baseline);
+    const p = parseDose(use.dose, rounds, false);
     exercises.push({
       key,
       name: use.name,
@@ -177,14 +199,96 @@ export function baselinePrescription(
       targetReps: p.reps,
       targetSeconds: p.seconds,
       targetWeightKg: null,
-      note: baseline ? (use.note ? `${use.note} · Stop well short.` : "Stop well short.") : use.note,
+      note: use.note,
       perSide: p.perSide,
       loaded: looksLoaded(use.name),
       substitutedFrom: use.name === e.name ? null : e.name,
     });
   }
 
-  return { date, dayKey, phase, source: "plan", model: null, exercises };
+  return {
+    date,
+    dayKey,
+    phase,
+    source: "plan",
+    model: null,
+    exercises: seedHolds(exercises),
+  };
+}
+
+/**
+ * Holds get their number from your own tested maximum rather than the
+ * document's, because there's no easier variation of a plank to drop you onto.
+ * `seedHoldTarget` keeps the result between the plan's figure and double it.
+ */
+function seedHolds(exercises: PrescribedExercise[]): PrescribedExercise[] {
+  const timed = exercises.filter((e) => e.metric === "time");
+  if (timed.length === 0) return exercises;
+
+  const bests = bestSecondsFor(timed.map((e) => e.key));
+  return exercises.map((e) =>
+    e.metric === "time"
+      ? { ...e, targetSeconds: seedHoldTarget(e.targetSeconds, bests.get(e.key) ?? null) }
+      : e,
+  );
+}
+
+/**
+ * The baseline fortnight's own prescription: the five-patrol sweep, with no
+ * targets at all.
+ *
+ * A prefilled number is a suggestion, and a suggestion is exactly what this
+ * fortnight must not contain — the whole point is to find out what you can do,
+ * not to check whether you can do what the document expected.
+ */
+function sweepPrescription(
+  startDate: string,
+  date: string,
+  dayKey: DayKey,
+  phase: PhaseId,
+  owned: Set<string>,
+): Prescription {
+  const empty: Prescription = { date, dayKey, phase, source: "plan", model: null, exercises: [] };
+  const slot = baselineSlotFor(startDate, date);
+  if (slot === null) return empty;
+
+  const exercises: PrescribedExercise[] = [];
+  const seen = new Set<string>();
+
+  for (const probe of slot.patrol.probes) {
+    const gate = gateExercise(probe.name, owned);
+    if (!gate.allowed && gate.substitute === null) continue;
+
+    let name = gate.allowed ? probe.name : gate.substitute!.name;
+    let note = gate.allowed ? probe.how : `${gate.substitute!.note} ${probe.how}`;
+
+    const up = upgradeExercise(name, "", owned);
+    if (up) {
+      name = up.name;
+      note = `${up.note} ${probe.how}`;
+    }
+
+    const key = exerciseKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    exercises.push({
+      key,
+      name,
+      sets: probe.sets,
+      metric: probe.metric,
+      repRange: null,
+      targetReps: null,
+      targetSeconds: null,
+      targetWeightKg: null,
+      note,
+      perSide: probe.perSide ?? false,
+      loaded: probe.loaded ?? looksLoaded(name),
+      substitutedFrom: name === probe.name ? null : probe.name,
+    });
+  }
+
+  return { ...empty, exercises };
 }
 
 export interface ExerciseHistoryRow {
@@ -196,7 +300,7 @@ export interface ExerciseHistoryRow {
 }
 
 /** Best set per session for one movement, most recent first. */
-export function exerciseHistory(key: string, limit = 4): ExerciseHistoryRow[] {
+export function exerciseHistory(key: string, limit = 4, after?: string): ExerciseHistoryRow[] {
   return db
     .select({
       date: exerciseLogs.date,
@@ -206,19 +310,37 @@ export function exerciseHistory(key: string, limit = 4): ExerciseHistoryRow[] {
       totalSets: sql<number>`COUNT(*)`,
     })
     .from(exerciseLogs)
-    .where(eq(exerciseLogs.exerciseKey, key))
+    .where(
+      after
+        ? and(eq(exerciseLogs.exerciseKey, key), sql`${exerciseLogs.date} > ${after}`)
+        : eq(exerciseLogs.exerciseKey, key),
+    )
     .groupBy(exerciseLogs.date)
     .orderBy(desc(exerciseLogs.date))
     .limit(limit)
     .all();
 }
 
+/**
+ * The window of logs that counts as "what you did last time".
+ *
+ * The baseline fortnight is excluded from every later phase. Those sets were
+ * max attempts taken under an explicit instruction not to train, so reading one
+ * back as last session's working number would turn every plank from Phase 1
+ * onwards into a max hold. They still feed the ladders, which is what they were
+ * recorded for.
+ */
+function historyWindow(phase: PhaseId): string | undefined {
+  return isBaselinePhase(phase) ? undefined : baselineEndDate(getSettings().startDate);
+}
+
 /** Applies the last session's numbers so a repeat session isn't a blank form. */
 function withHistory(p: Prescription): Prescription {
+  const after = historyWindow(p.phase);
   return {
     ...p,
     exercises: p.exercises.map((e) => {
-      const hist = exerciseHistory(e.key, 1);
+      const hist = exerciseHistory(e.key, 1, after);
       if (hist.length === 0) return e;
       const last = hist[0];
       return {
@@ -257,6 +379,9 @@ RULES — these are not yours to change:
 - Bodyweight movements take weight null unless history shows added load.
 - You are told what equipment the athlete owns. Pick loads and variations that
   fit it. Never prescribe a load they have no way to produce.
+- You are also given "baseline": what the athlete managed on each movement
+  family during their first fortnight of testing. Use it to judge how hard to
+  push a movement with no recent history. It is context, not a target.
 
 Return ONLY a JSON object. No markdown, no code fences, no commentary.
 
@@ -272,6 +397,15 @@ Return ONLY a JSON object. No markdown, no code fences, no commentary.
     }
   ]
 }`;
+
+/** Ladder standings, flattened for the prompt. */
+function baselineContext(): Record<string, { movement: string; best_reps: number | null; best_seconds: number | null }> {
+  const out: Record<string, { movement: string; best_reps: number | null; best_seconds: number | null }> = {};
+  for (const [family, s] of standings() as Map<string, Standing>) {
+    out[family] = { movement: s.movement, best_reps: s.bestReps, best_seconds: s.bestSeconds };
+  }
+  return out;
+}
 
 interface AiExercise {
   name?: unknown;
@@ -308,13 +442,14 @@ export async function generatePrescription(
   // not consulted at all.
   if (isBaselinePhase(base.phase)) return withHist;
 
+  const after = historyWindow(base.phase);
   const context = base.exercises.map((e) => ({
     name: e.name,
     metric: e.metric,
     plan_sets: e.sets,
     plan_reps: e.repRange,
     per_side: e.perSide,
-    history: exerciseHistory(e.key, 4).map((h) => ({
+    history: exerciseHistory(e.key, 4, after).map((h) => ({
       date: h.date,
       best_reps: h.bestReps,
       best_weight_kg: h.bestWeightKg,
@@ -341,6 +476,9 @@ export async function generatePrescription(
               session: base.dayKey,
               deload_week: isDeload,
               equipment_available: equipmentSummary(getSettings().equipment),
+              // The fortnight's findings, so the model isn't guessing at a
+              // fitness level the database already knows.
+              baseline: baselineContext(),
               exercises: context,
             }),
           },

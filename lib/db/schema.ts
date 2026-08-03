@@ -17,6 +17,13 @@ export const weights = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     date: text("date").notNull(),
     weightKg: real("weight_kg").notNull(),
+    /**
+     * Bioimpedance reading straight off the scale. Kept here rather than in
+     * `measurements` because it arrives daily with the weight, while the
+     * measurements table is the monthly tape-and-formula record — the two
+     * disagree by several points and conflating them would hide that.
+     */
+    bodyfatPct: real("bodyfat_pct"),
     createdAt: integer("created_at").notNull().default(now),
   },
   (t) => [uniqueIndex("weights_date_idx").on(t.date)],

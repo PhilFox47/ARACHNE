@@ -9,14 +9,18 @@ import { addDays, dayKeyOf, formatShort, todayISO, weekIndex } from "@/lib/dates
 import { getSettings } from "@/lib/settings";
 import { loadGameState } from "@/lib/gameData";
 import {
+  BASELINE_MODE,
+  BASELINE_PATROLS,
   PROFILE,
   SESSION_SHAPE,
+  isBaselinePhase,
   isLowProfileWeek,
   phaseForDay,
   roundsForWeek,
   sessionFor,
   type DayKey,
 } from "@/lib/plan";
+import { baselineCoverage, baselineSession, baselineSlotFor } from "@/lib/baseline";
 import { conditioningOptions } from "@/lib/training";
 import { WeekPlan, type DayPlan } from "@/components/WeekPlan";
 import { BottomNav } from "@/components/BottomNav";
@@ -31,6 +35,16 @@ const DAY_NAMES: Record<DayKey, string> = {
   fri: "FRI",
   sat: "SAT",
   sun: "SUN",
+};
+
+const DAY_LONG: Record<DayKey, string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+  sun: "Sunday",
 };
 
 export default async function Patrol({
@@ -53,7 +67,6 @@ export default async function Patrol({
 
   const weekStart = addDays(settings.startDate, week * 7);
   const lowProfile = isLowProfileWeek(week);
-  const rounds = roundsForWeek(week);
 
   // The phase is read from the week's own first day, so browsing ahead shows
   // the exercises that will actually apply then rather than today's.
@@ -78,11 +91,17 @@ export default async function Patrol({
   // document's fixed five, so it has to be substituted in here too.
   const conditioning = conditioningOptions(weekPhase.id).map((o) => `${o.label} — ${o.detail}`);
 
+  const baselineWeek = isBaselinePhase(weekPhase.id);
+  const rounds = baselineWeek ? BASELINE_MODE.rounds : roundsForWeek(week);
+
   const days: DayPlan[] = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i);
     const dk = dayKeyOf(date);
     const row = byDate.get(date);
-    const planned = sessionFor(weekPhase.id, dk);
+    // Phase 0 runs the sweep, assigned by patrol number rather than weekday.
+    const planned = baselineWeek
+      ? baselineSession(settings.startDate, date)
+      : sessionFor(weekPhase.id, dk);
     const session =
       planned && planned.options ? { ...planned, options: conditioning } : planned;
     return {
@@ -101,6 +120,13 @@ export default async function Patrol({
   const doneThisWeek = days.filter((d) => d.completed).length;
 
   const trainingCount = days.filter((d) => d.session !== null).length;
+
+  const coverage = baselineCoverage(settings.startDate);
+  // Where patrol 1 actually landed, which is only Monday if you started on one.
+  const firstPatrolDay =
+    Array.from({ length: 7 }, (_, i) => addDays(settings.startDate, i)).find(
+      (d) => baselineSlotFor(settings.startDate, d)?.patrol.index === 1,
+    ) ?? null;
 
   return (
     <main className="relative z-10 mx-auto flex max-w-lg flex-col gap-5 px-4 pb-28 pt-3">
@@ -154,7 +180,29 @@ export default async function Patrol({
         <Stat value={doneThisWeek} label={`Done / ${trainingCount}`} bordered />
       </section>
 
-      {lowProfile ? (
+      {baselineWeek ? (
+        <div className="panel-hot flex flex-col gap-2.5 p-3.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="label-xs text-crimson">
+              {week === 0 ? "Baseline sweep" : "Baseline repeat"}
+            </p>
+            <p className="label-xs tabular">
+              {coverage.measured} / {coverage.probes} measured
+            </p>
+          </div>
+          <p className="text-sm leading-relaxed text-ink">
+            {week === 0
+              ? `${BASELINE_PATROLS.length} patrols, ${coverage.probes} movements between them, no targets anywhere. They exist to find out what you can currently do — everything after week 2 is built on these numbers.`
+              : BASELINE_MODE.repeatRule}
+          </p>
+          {firstPatrolDay && week === 0 ? (
+            <p className="text-xs leading-relaxed text-muted">
+              You started on a {DAY_LONG[dayKeyOf(settings.startDate)]}, so patrol 1 lands on{" "}
+              {DAY_LONG[dayKeyOf(firstPatrolDay)]} and the rest follow in order from there.
+            </p>
+          ) : null}
+        </div>
+      ) : lowProfile ? (
         <div className="panel-hot flex flex-col gap-1 p-3.5">
           <p className="label-xs text-crimson">Low profile week</p>
           <p className="text-sm text-ink">

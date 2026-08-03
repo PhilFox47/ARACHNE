@@ -6,7 +6,16 @@ import { db } from "@/lib/db";
 import { sessions } from "@/lib/db/schema";
 import { dayKeyOf, daysBetween, formatShort, todayISO, weekIndex } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
-import { SESSION_SHAPE, isLowProfileWeek, phaseForDay, sessionFor, type DayKey } from "@/lib/plan";
+import {
+  BASELINE_MODE,
+  SESSION_SHAPE,
+  isBaselinePhase,
+  isLowProfileWeek,
+  phaseForDay,
+  sessionFor,
+  type DayKey,
+} from "@/lib/plan";
+import { baselineSession, baselineSlotFor } from "@/lib/baseline";
 import {
   baselinePrescription,
   conditioningOptions,
@@ -31,7 +40,12 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
   const dk = dayKeyOf(date) as DayKey;
   const phase = phaseForDay(day);
   const wk = weekIndex(settings.startDate, date);
-  const planSession = sessionFor(phase.id, dk);
+
+  // Phase 0 runs the sweep, and the sweep is assigned by patrol number rather
+  // than weekday — so the session for a date can't be looked up from `dk`.
+  const baseline = isBaselinePhase(phase.id);
+  const slot = baseline ? baselineSlotFor(settings.startDate, date) : null;
+  const planSession = baseline ? baselineSession(settings.startDate, date) : sessionFor(phase.id, dk);
 
   const row = db.select().from(sessions).where(eq(sessions.date, date)).get();
   const rx = storedPrescription(date) ?? baselinePrescription(phase.id, dk, wk, date);
@@ -66,36 +80,42 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
             missed one. An optional 45-minute walk is the only thing on the list.
           </p>
         </section>
-      ) : rx.exercises.length === 0 ? (
-        <section className="panel flex flex-col gap-3 p-4">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="label-xs">Pick one</p>
-            {!hasVrHeadset() ? <p className="label-xs text-crimson">No headset</p> : null}
-          </div>
-          <ul className="flex flex-col divide-y divide-edge border border-edge">
-            {conditioningOptions(phase.id).map((o) => (
-              <li key={o.label} className="flex flex-col gap-0.5 px-3 py-2">
-                <span className="text-sm text-ink">{o.label}</span>
-                <span className="text-xs leading-relaxed text-muted-dim">{o.detail}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-muted-dim">
-            {planSession.rule ?? "25 minutes unbroken, heart rate high."}
-          </p>
-          <SessionLogger
-            date={date}
-            initialPrescription={rx}
-            initialLogged={logged}
-            personalBests={pbs}
-            completed={row?.completed ?? false}
-            initialRpe={row?.rpe ?? null}
-            initialNote={row?.note ?? null}
-            isDeload={isLowProfileWeek(wk)}
-          />
-        </section>
       ) : (
         <>
+          {slot ? (
+            <section className="panel-hot flex flex-col gap-2 p-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="label-xs text-crimson">
+                  Patrol {slot.patrol.index} of 5 · {slot.round === 0 ? "sweep" : "repeat"}
+                </p>
+                <p className="label-xs">No targets</p>
+              </div>
+              <p className="text-sm leading-relaxed text-ink">{planSession.blurb}</p>
+              <p className="text-xs leading-relaxed text-muted">{BASELINE_MODE.rule}</p>
+            </section>
+          ) : null}
+
+          {/* Pick-one lists — Thursday, and the baseline Engine patrol. */}
+          {planSession.options ? (
+            <section className="panel flex flex-col gap-3 p-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="label-xs">Pick one</p>
+                {!hasVrHeadset() ? <p className="label-xs text-crimson">No headset</p> : null}
+              </div>
+              <ul className="flex flex-col divide-y divide-edge border border-edge">
+                {conditioningOptions(phase.id).map((o) => (
+                  <li key={o.label} className="flex flex-col gap-0.5 px-3 py-2">
+                    <span className="text-sm text-ink">{o.label}</span>
+                    <span className="text-xs leading-relaxed text-muted-dim">{o.detail}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-dim">
+                {planSession.rule ?? "25 minutes unbroken, heart rate high."}
+              </p>
+            </section>
+          ) : null}
+
           {planSession.warmup ? (
             <details className="panel p-3">
               <summary className="label-xs cursor-pointer select-none">
@@ -139,7 +159,7 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
             </details>
           ) : null}
 
-          {planSession.rule ? (
+          {planSession.rule && !planSession.options ? (
             <p className="border-l-2 border-l-crimson pl-3 text-sm leading-relaxed text-muted">
               {planSession.rule}
             </p>

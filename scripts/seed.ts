@@ -32,7 +32,16 @@ const rnd = () => {
 };
 
 let drift = 0.4;
-const rows: { date: string; weightKg: number }[] = [];
+const rows: { date: string; weightKg: number; bodyfatPct: number | null }[] = [];
+
+/**
+ * Composition is modelled backwards from lean mass rather than by picking a
+ * body-fat percentage per day: a real deficit holds lean roughly flat and takes
+ * the loss out of fat, so lean drifts slowly and the percentage falls out of it.
+ * Bioimpedance noise then goes on top, which is what makes the smoothing on the
+ * composition chart worth having.
+ */
+let leanKg = 72;
 
 for (let d = 0; d <= DAYS; d++) {
   // Skip the odd day — a real log has gaps, and the rolling average needs to
@@ -46,7 +55,13 @@ for (let d = 0; d <= DAYS; d++) {
   const noise = (rnd() - 0.5) * 0.85;
   const kg = Math.round((target + drift + noise) * 10) / 10;
 
-  rows.push({ date: addDays(start, d), weightKg: kg });
+  leanKg -= 0.006 + (rnd() - 0.5) * 0.004;
+  const trueBf = ((kg - leanKg) / kg) * 100;
+  // One morning in six the scale gets stepped on before it has a reading.
+  const bodyfatPct =
+    rnd() < 0.17 ? null : Math.round((trueBf + (rnd() - 0.5) * 1.6) * 10) / 10;
+
+  rows.push({ date: addDays(start, d), weightKg: kg, bodyfatPct });
 }
 
 if (force) {
@@ -57,7 +72,10 @@ if (force) {
 for (const r of rows) {
   db.insert(weights)
     .values(r)
-    .onConflictDoUpdate({ target: weights.date, set: { weightKg: r.weightKg } })
+    .onConflictDoUpdate({
+      target: weights.date,
+      set: { weightKg: r.weightKg, bodyfatPct: r.bodyfatPct },
+    })
     .run();
 }
 
