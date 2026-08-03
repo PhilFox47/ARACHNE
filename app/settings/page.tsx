@@ -5,6 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { apiKey, envModel } from "@/lib/nanogpt";
 import { SettingsForm } from "@/components/SettingsForm";
 import { EquipmentPicker } from "@/components/EquipmentPicker";
+import { VrGamesPicker } from "@/components/VrGamesPicker";
 import { ResetPanel } from "@/components/ResetPanel";
 import { BottomNav } from "@/components/BottomNav";
 import { addDays, todayISO } from "@/lib/dates";
@@ -39,6 +40,11 @@ export default async function Settings() {
       />
 
       <EquipmentPicker initial={s.equipment} />
+
+      <VrGamesPicker
+        initial={s.vrGames}
+        hasHeadset={s.equipment.some((e) => e.key === "vr" && e.owned)}
+      />
 
       <ResetPanel today={todayISO()} tomorrow={addDays(todayISO(), 1)} />
 

@@ -3,7 +3,7 @@ import { db } from "./db";
 import { settings } from "./db/schema";
 import { PHOTO_CORRECTION_DEFAULT_PCT, PROFILE, WATER_TARGET_ML_DEFAULT } from "./plan";
 import { todayISO } from "./dates";
-import { mergeEquipment, type EquipmentItem } from "./equipment";
+import { mergeEquipment, mergeVrGames, type EquipmentItem, type VrGame } from "./equipment";
 
 export interface AppSettings {
   startDate: string;
@@ -15,9 +15,10 @@ export interface AppSettings {
   /** Overrides NANOGPT_VISION_MODEL when set, so the model is swappable in-app. */
   visionModel: string | null;
   equipment: EquipmentItem[];
+  vrGames: VrGame[];
 }
 
-const DEFAULTS: Omit<AppSettings, "startDate" | "visionModel" | "equipment"> = {
+const DEFAULTS: Omit<AppSettings, "startDate" | "visionModel" | "equipment" | "vrGames"> = {
   heightCm: PROFILE.heightCm,
   startWeightKg: PROFILE.startWeightKg,
   targetWeightKg: PROFILE.targetWeightKg,
@@ -46,6 +47,7 @@ export function getSettings(): AppSettings {
     waterTargetMl: num("water_target_ml", DEFAULTS.waterTargetMl),
     visionModel: raw.vision_model?.trim() || null,
     equipment: mergeEquipment(safeJson(raw.equipment)),
+    vrGames: mergeVrGames(safeJson(raw.vr_games)),
   };
 }
 
@@ -60,6 +62,10 @@ function safeJson(v: string | undefined): unknown {
 
 export function setEquipment(items: EquipmentItem[]): void {
   setSetting("equipment", JSON.stringify(items));
+}
+
+export function setVrGames(games: VrGame[]): void {
+  setSetting("vr_games", JSON.stringify(games));
 }
 
 /** Database setting wins over the environment variable. */

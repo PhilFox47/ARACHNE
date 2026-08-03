@@ -54,6 +54,22 @@ export const EQUIPMENT_CATALOGUE: EquipmentDef[] = [
   { key: "gym", label: "Gym membership", defaultOwned: false },
   { key: "bench", label: "Bench or step", defaultOwned: false },
   { key: "kettlebell", label: "Kettlebell", defaultOwned: false },
+  {
+    key: "parallettes",
+    label: "Parallettes or push-up bars",
+    note: "Deeper push-ups, and the L-sit gets far easier to learn.",
+    defaultOwned: false,
+  },
+  { key: "ab_wheel", label: "Ab wheel", defaultOwned: false },
+  { key: "jump_rope", label: "Jump rope", note: "A conditioning option that needs no headset.", defaultOwned: false },
+  { key: "weight_vest", label: "Weighted vest", note: "Loads bodyweight movements once they get easy.", defaultOwned: false },
+  {
+    key: "outdoor_bars",
+    label: "Outdoor bars or playground",
+    note: "Park bars cover everything a doorframe bar does, and more.",
+    defaultOwned: false,
+  },
+  { key: "space", label: "Room to move", note: "Cartwheels, broad jumps and rolls need floor.", defaultOwned: true },
 ];
 
 export interface EquipmentItem {
@@ -125,8 +141,8 @@ interface Gate {
  * a missing bar costs you vertical pulling, so the replacement is the closest
  * horizontal pull available rather than something unrelated.
  */
-const BAR = ["pullup_bar", "rings", "gym"];
-const LOAD = ["dumbbells", "heavy_dumbbells", "kettlebell", "bands", "gym"];
+const BAR = ["pullup_bar", "rings", "gym", "outdoor_bars"];
+const LOAD = ["dumbbells", "heavy_dumbbells", "kettlebell", "bands", "gym", "weight_vest"];
 
 /**
  * One rule per movement rather than one per equipment type. A generic
@@ -218,6 +234,43 @@ const GATES: Gate[] = [
       note: "Substituted — nothing to elevate the rear foot on.",
     },
   },
+  {
+    match: /pistol squat/i,
+    needsAny: ["bench", "gym", "space"],
+    substitute: {
+      name: "Split squat",
+      dose: "10 per side",
+      note: "Substituted — nothing to sit back to.",
+    },
+  },
+  {
+    match: /inverted row/i,
+    // A sturdy table is enough, so this only fails with nothing at all.
+    needsAny: ["pullup_bar", "rings", "gym", "outdoor_bars", "bench", "space"],
+    substitute: {
+      name: "Prone back extension",
+      dose: "12–15",
+      note: "Substituted — nothing to row under. Keeps the posterior chain working.",
+    },
+  },
+  {
+    match: /broad jump|precision jump|squat jump|wall run/i,
+    needsAny: ["space", "gym", "outdoor_bars"],
+    substitute: {
+      name: "Calf raises",
+      dose: "15–20",
+      note: "Substituted — no room to jump.",
+    },
+  },
+  {
+    match: /l-?sit/i,
+    needsAny: ["parallettes", "rings", "gym", "space"],
+    substitute: {
+      name: "Seated leg lifts",
+      dose: "10",
+      note: "Substituted — nothing to press down on.",
+    },
+  },
   // Floor skills need something soft. No mat, no tumbling.
   {
     match: /shoulder roll|bear crawl|spider crawl|kip-?up|cartwheel|roundoff|bridge/i,
@@ -225,6 +278,125 @@ const GATES: Gate[] = [
     substitute: null,
   },
 ];
+
+// ─────────────────────────────────────────────────────────────
+// Upgrades
+// ─────────────────────────────────────────────────────────────
+
+interface Upgrade {
+  match: RegExp;
+  /** All of these must be owned. */
+  needs: string[];
+  to: { name: string; dose?: string; note: string };
+}
+
+/**
+ * Gating only ever goes downward. Upgrades are the other half: if you own
+ * something better, the session should use it rather than leave the kit in a
+ * cupboard.
+ *
+ * Every upgrade stays inside the same movement pattern the plan prescribed —
+ * a ring dip is still a dip. Equipment changes how a movement is loaded, never
+ * which movement the day is for.
+ */
+const UPGRADES: Upgrade[] = [
+  {
+    match: /triceps dips on chair edge|dips between two chairs/i,
+    needs: ["rings"],
+    to: { name: "Ring dips", note: "Rings — harder through the shoulder, and kinder to the wrist." },
+  },
+  {
+    match: /inverted row/i,
+    needs: ["rings"],
+    to: { name: "Ring rows", note: "Rings — free rotation, so the shoulder tracks naturally." },
+  },
+  {
+    match: /^push-?ups?$|elevated push-?ups/i,
+    needs: ["parallettes"],
+    to: { name: "Deficit push-ups on parallettes", note: "Parallettes — deeper range, neutral wrists." },
+  },
+  {
+    match: /l-?sit tuck|^l-?sit$/i,
+    needs: ["parallettes"],
+    to: { name: "L-sit on parallettes", note: "Parallettes — clearance, so the progression actually moves." },
+  },
+  {
+    match: /hollow hold/i,
+    needs: ["ab_wheel"],
+    to: { name: "Ab wheel rollouts", dose: "8–10", note: "Ab wheel — the loaded version of the same brace." },
+  },
+  {
+    match: /dead hang/i,
+    needs: ["rings"],
+    to: { name: "Ring hang", note: "Rings — the shoulder is free to rotate under load." },
+  },
+];
+
+export interface UpgradeResult {
+  name: string;
+  dose: string | null;
+  note: string;
+}
+
+/** Returns a better variant when the kit for it is owned. */
+export function upgradeExercise(name: string, dose: string, owned: Set<string>): UpgradeResult | null {
+  for (const u of UPGRADES) {
+    if (!u.match.test(name)) continue;
+    if (!u.needs.every((k) => owned.has(k))) continue;
+    return { name: u.to.name, dose: u.to.dose ?? dose, note: u.to.note };
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// VR games
+// ─────────────────────────────────────────────────────────────
+
+export interface VrGame {
+  key: string;
+  label: string;
+  /** How the plan says to use it. */
+  howTo: string;
+  owned: boolean;
+  custom: boolean;
+}
+
+/** Seeded from the document's own Thursday list. */
+export const VR_CATALOGUE: Omit<VrGame, "owned" | "custom">[] = [
+  { key: "supernatural", label: "Supernatural", howTo: "Flow or Boxing, intensity “Intense”" },
+  { key: "beat_saber", label: "Beat Saber", howTo: "7–8 songs on Expert without a break, full-body — not just wrists" },
+  { key: "thrill", label: "Thrill of the Fight", howTo: "3× 3-min rounds. Harder than it looks." },
+  { key: "bodycombat", label: "Les Mills Bodycombat", howTo: "One full session" },
+  { key: "fitxr", label: "FitXR", howTo: "One full class" },
+];
+
+export function defaultVrGames(): VrGame[] {
+  return VR_CATALOGUE.map((g) => ({ ...g, owned: true, custom: false }));
+}
+
+export function mergeVrGames(stored: unknown): VrGame[] {
+  const saved = Array.isArray(stored) ? (stored as Partial<VrGame>[]) : null;
+  if (saved === null) return defaultVrGames();
+
+  const byKey = new Map(saved.filter((g) => typeof g?.key === "string").map((g) => [g.key as string, g]));
+
+  const catalogue = VR_CATALOGUE.map((g) => {
+    const s = byKey.get(g.key);
+    return { ...g, owned: typeof s?.owned === "boolean" ? s.owned : true, custom: false };
+  });
+
+  const custom = saved
+    .filter((g) => g.custom === true && typeof g.key === "string" && typeof g.label === "string")
+    .map((g) => ({
+      key: g.key as string,
+      label: g.label as string,
+      howTo: typeof g.howTo === "string" ? g.howTo : "25 minutes, heart rate high",
+      owned: g.owned !== false,
+      custom: true,
+    }));
+
+  return [...catalogue, ...custom];
+}
 
 export interface GateResult {
   allowed: boolean;

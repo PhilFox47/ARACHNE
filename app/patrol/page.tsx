@@ -17,6 +17,7 @@ import {
   sessionFor,
   type DayKey,
 } from "@/lib/plan";
+import { conditioningOptions } from "@/lib/training";
 import { WeekPlan, type DayPlan } from "@/components/WeekPlan";
 import { BottomNav } from "@/components/BottomNav";
 
@@ -73,10 +74,17 @@ export default async function Patrol({
     .all();
   const byDate = new Map(rows.map((r) => [r.date, r]));
 
+  // Thursday's pick-one list is driven by the VR games you own, not the
+  // document's fixed five, so it has to be substituted in here too.
+  const conditioning = conditioningOptions(weekPhase.id).map((o) => `${o.label} — ${o.detail}`);
+
   const days: DayPlan[] = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i);
     const dk = dayKeyOf(date);
     const row = byDate.get(date);
+    const planned = sessionFor(weekPhase.id, dk);
+    const session =
+      planned && planned.options ? { ...planned, options: conditioning } : planned;
     return {
       dayKey: dk,
       dayName: DAY_NAMES[dk],
@@ -84,7 +92,7 @@ export default async function Patrol({
       dateLabel: formatShort(date).split(" ")[0],
       isToday: date === today,
       isPast: date < today,
-      session: sessionFor(weekPhase.id, dk),
+      session,
       completed: row?.completed ?? false,
       setsLogged: row?.setsLogged ?? 0,
     };

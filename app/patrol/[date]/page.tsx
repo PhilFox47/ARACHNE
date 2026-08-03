@@ -9,6 +9,8 @@ import { getSettings } from "@/lib/settings";
 import { SESSION_SHAPE, isLowProfileWeek, phaseForDay, sessionFor, type DayKey } from "@/lib/plan";
 import {
   baselinePrescription,
+  conditioningOptions,
+  hasVrHeadset,
   loggedSets,
   personalBest,
   storedPrescription,
@@ -66,11 +68,15 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
         </section>
       ) : rx.exercises.length === 0 ? (
         <section className="panel flex flex-col gap-3 p-4">
-          <p className="label-xs">Pick one</p>
-          <ul className="flex flex-col gap-1.5">
-            {(planSession.options ?? []).map((o) => (
-              <li key={o} className="text-sm text-ink">
-                {o}
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="label-xs">Pick one</p>
+            {!hasVrHeadset() ? <p className="label-xs text-crimson">No headset</p> : null}
+          </div>
+          <ul className="flex flex-col divide-y divide-edge border border-edge">
+            {conditioningOptions(phase.id).map((o) => (
+              <li key={o.label} className="flex flex-col gap-0.5 px-3 py-2">
+                <span className="text-sm text-ink">{o.label}</span>
+                <span className="text-xs leading-relaxed text-muted-dim">{o.detail}</span>
               </li>
             ))}
           </ul>

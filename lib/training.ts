@@ -19,7 +19,7 @@ import { db } from "./db";
 import { exerciseLogs, sessionPlans } from "./db/schema";
 import { apiKey, baseUrl } from "./nanogpt";
 import { activeVisionModel, getSettings } from "./settings";
-import { equipmentSummary, gateExercise, ownedKeys } from "./equipment";
+import { equipmentSummary, gateExercise, ownedKeys, upgradeExercise } from "./equipment";
 import {
   BASELINE_MODE,
   isBaselinePhase,
@@ -151,9 +151,14 @@ export function baselinePrescription(
     const gate = gateExercise(e.name, owned);
     if (!gate.allowed && gate.substitute === null) continue;
 
-    const use = gate.allowed
+    let use = gate.allowed
       ? { name: e.name, dose: e.dose, note: e.note ?? null }
       : { name: gate.substitute!.name, dose: gate.substitute!.dose, note: gate.substitute!.note };
+
+    // Gating only goes down. If better kit is owned, use it — a ring dip is
+    // still a dip, so this stays inside the movement the plan prescribed.
+    const up = upgradeExercise(use.name, use.dose, owned);
+    if (up) use = { name: up.name, dose: up.dose ?? use.dose, note: up.note };
 
     const key = exerciseKey(use.name);
     // Sets are keyed by movement, so the same movement twice in one session
@@ -175,7 +180,7 @@ export function baselinePrescription(
       note: baseline ? (use.note ? `${use.note} · Stop well short.` : "Stop well short.") : use.note,
       perSide: p.perSide,
       loaded: looksLoaded(use.name),
-      substitutedFrom: gate.allowed ? null : e.name,
+      substitutedFrom: use.name === e.name ? null : e.name,
     });
   }
 
@@ -467,4 +472,60 @@ export function sessionVolume(sessionId: number): number {
     .where(and(eq(exerciseLogs.sessionId, sessionId), sql`${exerciseLogs.weightKg} IS NOT NULL`))
     .all();
   return rows.reduce((s, r) => s + (r.reps ?? 0) * (r.weightKg ?? 0), 0);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Conditioning
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Thursday's pick-one list, built from the games you actually own rather than
+ * the document's fixed five.
+ *
+ * With no headset it falls back to the plan's own non-VR conditioning — the
+ * outdoor sprint intervals it prescribes from Phase 3 — so the session still
+ * happens rather than listing software you can't run.
+ */
+export function conditioningOptions(phase: PhaseId): { label: string; detail: string }[] {
+  const s = getSettings();
+  const owned = ownedKeys(s.equipment);
+  const hasVr = owned.has("vr");
+  const games = s.vrGames.filter((g) => g.owned);
+
+  const out: { label: string; detail: string }[] = [];
+
+  if (hasVr && games.length > 0) {
+    for (const g of games) out.push({ label: g.label, detail: g.howTo });
+  }
+
+  // Always available, and the document's own Phase 3 alternative.
+  out.push({
+    label: "Outdoor sprint intervals",
+    detail: "8× 30 s hard / 90 s walk. The plan swaps this in from Phase 3 anyway.",
+  });
+
+  if (owned.has("jump_rope")) {
+    out.push({ label: "Jump rope intervals", detail: "10× 1 min on / 30 s off." });
+  }
+  if (owned.has("gym")) {
+    out.push({ label: "Rower or bike intervals", detail: "2 min hard / 1 min easy × 8." });
+  }
+  if (out.length === 1) {
+    out.push({ label: "Brisk walk or run", detail: "25 minutes unbroken, heart rate up." });
+  }
+
+  // Phase 2 onward the plan makes this interval work rather than steady state.
+  if (phase >= 2) {
+    out.unshift({
+      label: "Intervals, whichever you pick",
+      detail: "2 min all-out / 1 min easy × 8.",
+    });
+  }
+
+  return out;
+}
+
+/** Whether a headset is even in play, for the copy on the session screen. */
+export function hasVrHeadset(): boolean {
+  return ownedKeys(getSettings().equipment).has("vr");
 }

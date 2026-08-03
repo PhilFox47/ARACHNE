@@ -19,8 +19,8 @@ import {
   weights,
 } from "@/lib/db/schema";
 import { isAuthed } from "@/lib/auth";
-import { setEquipment, setSetting } from "@/lib/settings";
-import { mergeEquipment, type EquipmentItem } from "@/lib/equipment";
+import { setEquipment, setSetting, setVrGames } from "@/lib/settings";
+import { mergeEquipment, mergeVrGames, type EquipmentItem, type VrGame } from "@/lib/equipment";
 import { UPLOAD_DIR } from "@/lib/photos";
 import { todayISO } from "@/lib/dates";
 
@@ -37,6 +37,17 @@ export async function saveEquipment(items: EquipmentItem[]) {
   // days not yet done are stale. Drop them; they regenerate on next open.
   db.delete(sessionPlans).run();
 
+  revalidatePath("/settings");
+  revalidatePath("/patrol");
+  return { ok: true as const };
+}
+
+export async function saveVrGames(games: VrGame[]) {
+  await guard();
+  setVrGames(mergeVrGames(games));
+  // Thursday's options come from this list, so any cached prescription for a
+  // conditioning day is now stale.
+  db.delete(sessionPlans).run();
   revalidatePath("/settings");
   revalidatePath("/patrol");
   return { ok: true as const };

@@ -184,6 +184,30 @@ the 12-minute walk, which is not part of THE TRIAL and is deliberately not score
 Water is logged in 250 ml taps against a configurable target — 2 L by default, the document asks for
 3. The point in Phase 0 is finding out whether the target is a change or already normal.
 
+### Equipment
+
+`lib/equipment.ts` drives what actually gets prescribed, in two directions.
+
+**Gating** swaps a movement you can't perform for a named substitute, in code, every time — one rule
+per movement rather than per equipment type, chosen to keep the training effect. No bar swaps
+vertical pulling for inverted rows; no load turns a goblet squat into slow-tempo bodyweight squats
+and a shoulder press into pike push-ups. A dead hang with no bar is dropped outright, because there
+is no honest bar-free version.
+
+**Upgrades** go the other way: own rings and dips become ring dips, rows become ring rows, the dead
+hang becomes a ring hang; own parallettes and push-ups gain depth and the L-sit becomes learnable.
+Every upgrade stays inside the movement pattern the plan prescribed — a ring dip is still a dip.
+Equipment changes how a movement is loaded, never which movement the day is for.
+
+Substitutions that collide with something already prescribed are dropped rather than duplicated,
+since sets are keyed by movement and duplicates would overwrite each other's logs.
+
+Thursday's pick-one list is built from the VR games you own, managed in Settings alongside the
+equipment. With no headset it falls back to the plan's own outdoor sprint intervals, plus jump rope
+or a rower if you have them, so the session still happens rather than listing software you can't run.
+
+Changing either list clears cached prescriptions so they regenerate.
+
 ### FUEL
 
 Photos are compressed to a 1200px max edge in the browser, then the entry is **saved before the
