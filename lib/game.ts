@@ -43,7 +43,14 @@ export const XP = {
   checkpointPassed: 2500,
   challengeWeekly: 250,
   challengeMonthly: 800,
-  achievement: 300,
+  /**
+   * Tiered, not flat. A first-step marker like "log your first reading" and a
+   * year-long grind like "250 sessions" are both achievements, but paying them
+   * the same makes the opening tap worth as much as the whole year.
+   */
+  achievementTrivial: 50,
+  achievementMilestone: 500,
+  achievementMajor: 2000,
   /** Per quiet day beyond the grace period. */
   decayPerDay: -30,
   decayGraceDays: 3,
@@ -54,11 +61,16 @@ export const XP = {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * K is picked so a consistent year lands around level 50 — roughly a level a
- * week, fast early and slowing down. Cap is above that so twelve good months
- * doesn't hit a ceiling in month ten.
+ * Set from measurement, not estimate: `npx tsx scripts/tune-curve.ts` runs whole
+ * simulated years through this engine and reports what they actually pay out.
+ * A consistent year earns ~190k XP, which lands at level 49 here, leaving real
+ * headroom to the cap. Re-run that script after changing anything in the XP
+ * table above — this constant is only correct relative to those values.
+ *
+ * The first weight log is deliberately just short of level 2. One tap should
+ * show visible progress, not hand out a level.
  */
-const LEVEL_K = 35;
+const LEVEL_K = 80;
 export const MAX_LEVEL = 60;
 
 export function xpForLevel(level: number): number {
@@ -240,6 +252,8 @@ export interface Achievement {
   name: string;
   description: string;
   unlocked: boolean;
+  tier: "trivial" | "milestone" | "major";
+  xp: number;
   /** Present when the achievement has a natural progress bar. */
   progress?: { current: number; target: number };
 }
@@ -692,11 +706,22 @@ function buildChallenges(ctx: Omit<ChallengeCtx, "rng">, count: number, periodKe
 // Achievements
 // ─────────────────────────────────────────────────────────────
 
+type AchievementTier = "trivial" | "milestone" | "major";
+
 interface AchievementDef {
   key: string;
   name: string;
   description: string;
+  tier: AchievementTier;
   evaluate: (i: GameInput, d: Derived) => { unlocked: boolean; current?: number; target?: number };
+}
+
+function achievementXp(tier: AchievementTier): number {
+  return tier === "major"
+    ? XP.achievementMajor
+    : tier === "milestone"
+      ? XP.achievementMilestone
+      : XP.achievementTrivial;
 }
 
 interface Derived {
@@ -716,120 +741,140 @@ const ACHIEVEMENTS: AchievementDef[] = [
     key: "first_web",
     name: "First Web",
     description: "Log your first reading.",
+    tier: "trivial",
     evaluate: (i) => ({ unlocked: i.weights.length > 0 }),
   },
   {
     key: "first_patrol",
     name: "Out the Window",
     description: "Complete your first session.",
+    tier: "trivial",
     evaluate: (_i, d) => ({ unlocked: d.sessionsDone > 0 }),
   },
   {
     key: "streak_7",
     name: "Seven",
     description: "A 7-session patrol streak.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.patrolStreak >= 7, current: d.patrolStreak, target: 7 }),
   },
   {
     key: "streak_25",
     name: "Five Clean Weeks",
     description: "A 25-session patrol streak.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.patrolStreak >= 25, current: d.patrolStreak, target: 25 }),
   },
   {
     key: "streak_50",
     name: "Nobody's Watching",
     description: "A 50-session patrol streak. Nobody's watching. You went anyway.",
+    tier: "major",
     evaluate: (_i, d) => ({ unlocked: d.patrolStreak >= 50, current: d.patrolStreak, target: 50 }),
   },
   {
     key: "log_30",
     name: "Thirty Mornings",
     description: "Thirty consecutive days on the scale.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.logStreak >= 30, current: d.logStreak, target: 30 }),
   },
   {
     key: "sessions_50",
     name: "Fifty Out",
     description: "Fifty sessions completed.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.sessionsDone >= 50, current: d.sessionsDone, target: 50 }),
   },
   {
     key: "sessions_150",
     name: "One Fifty",
     description: "A hundred and fifty sessions completed.",
+    tier: "major",
     evaluate: (_i, d) => ({ unlocked: d.sessionsDone >= 150, current: d.sessionsDone, target: 150 }),
   },
   {
     key: "sessions_250",
     name: "The Whole Year",
     description: "Two hundred and fifty sessions completed.",
+    tier: "major",
     evaluate: (_i, d) => ({ unlocked: d.sessionsDone >= 250, current: d.sessionsDone, target: 250 }),
   },
   {
     key: "clean_week",
     name: "Clean Week",
     description: "Every session in a single week.",
+    tier: "trivial",
     evaluate: (_i, d) => ({ unlocked: d.fullWeeks >= 1 }),
   },
   {
     key: "clean_month",
     name: "Four in a Row",
     description: "Four full patrol weeks.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.fullWeeks >= 4, current: d.fullWeeks, target: 4 }),
   },
   {
     key: "kg_5",
     name: "Five Down",
     description: "Five kilograms off the starting weight.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.lostKg >= 5, current: Math.max(0, Math.round(d.lostKg)), target: 5 }),
   },
   {
     key: "kg_10",
     name: "Halfway Suit",
     description: "Ten kilograms off. Halfway.",
+    tier: "major",
     evaluate: (_i, d) => ({ unlocked: d.lostKg >= 10, current: Math.max(0, Math.round(d.lostKg)), target: 10 }),
   },
   {
     key: "kg_20",
     name: "Suit-Ready",
     description: "Twenty kilograms. The number on the plan.",
+    tier: "major",
     evaluate: (_i, d) => ({ unlocked: d.lostKg >= 20, current: Math.max(0, Math.round(d.lostKg)), target: 20 }),
   },
   {
     key: "first_trial",
     name: "Benchmarked",
     description: "Complete your first TRIAL.",
+    tier: "trivial",
     evaluate: (_i, d) => ({ unlocked: d.trialCount >= 1 }),
   },
   {
     key: "trials_all",
     name: "Twelve Trials",
     description: "Every monthly benchmark, start to finish.",
+    tier: "major",
     evaluate: (_i, d) => ({ unlocked: d.trialCount >= 12, current: d.trialCount, target: 12 }),
   },
   {
     key: "score_300",
     name: "Measurable",
     description: "An ARACHNE Score of 300.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: (d.bestScore ?? 0) >= 300, current: d.bestScore ?? 0, target: 300 }),
   },
   {
     key: "score_600",
     name: "Target Met",
     description: "An ARACHNE Score of 600 — every station at its month-12 target.",
+    tier: "major",
     evaluate: (_i, d) => ({ unlocked: (d.bestScore ?? 0) >= 600, current: d.bestScore ?? 0, target: 600 }),
   },
   {
     key: "first_pullup",
     name: "First Blood",
     description: "One clean pull-up. From zero.",
+    tier: "milestone",
     evaluate: (i) => ({ unlocked: i.trials.some((t) => (t.pullupsReps ?? 0) >= 1) }),
   },
   {
     key: "pullups_12",
     name: "Twelve",
     description: "Twelve clean pull-ups — the month-12 target.",
+    tier: "major",
     evaluate: (i) => {
       const best = i.trials.reduce((m, t) => Math.max(m, t.pullupsReps ?? 0), 0);
       return { unlocked: best >= 12, current: best, target: 12 };
@@ -839,24 +884,28 @@ const ACHIEVEMENTS: AchievementDef[] = [
     key: "suit_4",
     name: "Four Angles",
     description: "A complete SUIT CHECK.",
+    tier: "trivial",
     evaluate: (_i, d) => ({ unlocked: d.photoWeeks >= 1 }),
   },
   {
     key: "suit_12",
     name: "Time Lapse",
     description: "Twelve weeks of SUIT CHECK. Now scroll back.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.photoWeeks >= 12, current: d.photoWeeks, target: 12 }),
   },
   {
     key: "ability_1",
     name: "New Trick",
     description: "Unlock your first ABILITY.",
+    tier: "trivial",
     evaluate: (_i, d) => ({ unlocked: d.abilitiesDone >= 1 }),
   },
   {
     key: "ability_5",
     name: "Moveset",
     description: "Five ABILITIES unlocked.",
+    tier: "milestone",
     evaluate: (_i, d) => ({ unlocked: d.abilitiesDone >= 5, current: d.abilitiesDone, target: 5 }),
   },
 ];
@@ -1024,12 +1073,18 @@ export function computeGameState(input: GameInput): GameState {
       name: a.name,
       description: a.description,
       unlocked: r.unlocked,
+      tier: a.tier,
+      xp: achievementXp(a.tier),
       progress:
         r.target !== undefined ? { current: Math.min(r.current ?? 0, r.target), target: r.target } : undefined,
     };
   });
 
-  add("achievements", "Achievements", achievements.filter((a) => a.unlocked).length * XP.achievement);
+  add(
+    "achievements",
+    "Achievements",
+    achievements.filter((a) => a.unlocked).reduce((s, a) => s + a.xp, 0),
+  );
 
   // ── Totals ──
   const xp = Math.max(0, ledger.reduce((s, r) => s + r.xp, 0));

@@ -75,8 +75,24 @@ export default async function Progress() {
           {[...unlocked, ...locked].map((a) => (
             <li key={a.key} className="flex flex-col gap-1.5 px-3 py-2.5">
               <div className="flex items-baseline justify-between gap-3">
-                <span className={`display text-sm ${a.unlocked ? "text-crimson" : "text-muted-dim"}`}>
-                  {a.name}
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className={`display text-sm ${a.unlocked ? "text-crimson" : "text-muted-dim"}`}>
+                    {a.name}
+                  </span>
+                  {/* The value is stated up front — a first-step marker and a
+                      year-long grind are both achievements, and it should be
+                      obvious which one you just cleared. */}
+                  <span
+                    className={`shrink-0 text-[0.5rem] uppercase tracking-widest ${
+                      a.tier === "major"
+                        ? "text-crimson"
+                        : a.tier === "milestone"
+                          ? "text-cobalt-lift"
+                          : "text-muted-dim"
+                    }`}
+                  >
+                    {a.xp} XP
+                  </span>
                 </span>
                 {a.progress && !a.unlocked ? (
                   <span className="label-xs tabular">
