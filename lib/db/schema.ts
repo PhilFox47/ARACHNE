@@ -77,6 +77,17 @@ export const foodEntries = sqliteTable(
     proteinG: real("protein_g"),
     carbsG: real("carbs_g"),
     fatG: real("fat_g"),
+    /**
+     * The rest of the EU mandatory nutrition declaration — the exact set
+     * printed on every German package, so the model is estimating against a
+     * format it has seen a great deal of. Salt, not sodium, for the same reason.
+     */
+    saturatedFatG: real("saturated_fat_g"),
+    sugarG: real("sugar_g"),
+    fiberG: real("fiber_g"),
+    saltG: real("salt_g"),
+    /** Free-text portion the model inferred, e.g. "500 ml can". */
+    portion: text("portion"),
     mealType: text("meal_type", { enum: ["meal", "snack"] }).notNull(),
     photoPath: text("photo_path"),
     source: text("source", { enum: ["ai", "manual", "quick"] }).notNull(),

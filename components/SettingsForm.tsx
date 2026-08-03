@@ -166,8 +166,11 @@ function ModelPicker({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [manual, setManual] = useState(current ?? "");
+  const [query, setQuery] = useState("");
 
   const active = current ?? envModel;
+  const q = query.trim().toLowerCase();
+  const shown = models === null ? null : q === "" ? models : models.filter((m) => m.id.toLowerCase().includes(q));
 
   const load = async () => {
     setLoading(true);
@@ -211,13 +214,24 @@ function ModelPicker({
         <div className="py-4">
           <WebLoader label="Reading model list" />
         </div>
-      ) : models ? (
+      ) : shown ? (
         <>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search — try “gemma”"
+            aria-label="Search models"
+            className="tap border border-edge bg-panel-2 px-3 text-sm text-ink outline-none placeholder:text-muted-dim focus:border-cobalt"
+          />
           <p className="text-xs text-muted-dim">
-            {models.length} vision-capable models, cheapest first. Cost is estimated per 1,000 meal photos.
+            {shown.length} of {models!.length} vision-capable models, cheapest first. Cost is estimated per
+            1,000 meal photos.
           </p>
+          {shown.length === 0 ? (
+            <p className="text-sm text-muted">Nothing matches “{query}”.</p>
+          ) : null}
           <ul className="flex max-h-80 flex-col divide-y divide-edge overflow-y-auto border border-edge">
-            {models.map((m) => {
+            {shown.map((m) => {
               const selected = m.id === active;
               return (
                 <li key={m.id}>

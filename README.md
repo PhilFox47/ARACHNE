@@ -129,12 +129,41 @@ meal photos. Set the winner as `NANOGPT_VISION_MODEL`.
 
 ## Build status
 
-| Phase | |
+| Area | |
 |---|---|
-| **1 — Foundation, Docker, VITALS core** | Done |
-| 2 — PATROL | Sessions render read-only; logging, streak and heatmap pending |
-| 3 — FUEL | Targets only |
-| 4 — THE TRIAL, checkpoints, SUIT CHECK | Not started |
+| Foundation, Docker, VITALS core | Done |
+| Progression — XP, levels, disciplines, challenges, achievements | Done |
+| PATROL — full week view, all four phases, week navigation | Done; check-off, RPE and heatmap pending |
+| FUEL — photo capture, nutrition estimates, daily log, quick-log | Done; weekly review pending |
+| THE TRIAL, checkpoints, SUIT CHECK | Not started |
+
+### Progression
+
+Level and ARACHNE Score are deliberately separate. Score says how capable you are and only moves at
+THE TRIAL; level says how much work you've put in and moves every day. Capability plateaus for weeks
+at a time while effort keeps paying out — that gap is where people quit.
+
+Everything is derived from the database on read. There is no stored XP to drift out of sync, and
+changing a rule retroactively fixes history. Tune the values at the top of `lib/game.ts`.
+
+Weekly and monthly challenges are generated from a seed derived from the period key, so the set is
+stable within a period and different the next. Nothing rerolls on refresh.
+
+### FUEL
+
+Photos are compressed to a 1200px max edge in the browser, then the entry is **saved before the
+model is called**. A slow or failed analysis can never cost you the log — the row keeps its
+description with null macros. `/api/analyze-meal` returns 200 even on failure for exactly this
+reason.
+
+Estimates cover the full EU mandatory nutrition declaration — energy, fat, saturates, carbs, sugars,
+fibre, protein, salt — because that is what German packaging prints, so the model is working in a
+format it has seen a great deal of. The prompt states German portions and packaging explicitly
+(500 ml cans, 250 g Magerquark, Brötchen at ~60 g); portion inference is where photo estimates go
+wrong, and a model defaulting to US sizes is off by 40% before it considers the food.
+
+Intake tracking is live from day one. Phase 0 prescribes no deficit, so FUEL frames those two weeks
+as calibration: track honestly and find out how close the estimates really are.
 
 ---
 

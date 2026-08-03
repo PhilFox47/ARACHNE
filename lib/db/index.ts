@@ -74,6 +74,19 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       }
     }
   },
+
+  // ── v3: full EU nutrition declaration on food entries ──
+  (sqlite) => {
+    const cols = (sqlite.pragma("table_info(food_entries)") as { name: string }[]).map((c) => c.name);
+    const add = (name: string, type: string) => {
+      if (!cols.includes(name)) sqlite.exec(`ALTER TABLE food_entries ADD COLUMN ${name} ${type}`);
+    };
+    add("saturated_fat_g", "REAL");
+    add("sugar_g", "REAL");
+    add("fiber_g", "REAL");
+    add("salt_g", "REAL");
+    add("portion", "TEXT");
+  },
 ];
 
 function migrate(sqlite: Database.Database) {
