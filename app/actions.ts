@@ -61,14 +61,17 @@ export async function updateSetting(key: string, value: string | number) {
     "height_cm",
     "start_weight_kg",
     "target_weight_kg",
+    "total_days",
     "photo_correction_pct",
     "vision_model",
     "water_target_ml",
   ];
   if (!allowed.includes(key)) return { ok: false as const, error: "Unknown setting." };
   setSetting(key, value);
-  revalidatePath("/");
-  revalidatePath("/vitals");
-  revalidatePath("/settings");
+  // The course settings reshape phases, the corridor and the checkpoints, so
+  // every screen that reads a plan number is stale after one of them changes.
+  for (const p of ["/", "/vitals", "/settings", "/patrol", "/journey", "/fuel", "/progress"]) {
+    revalidatePath(p);
+  }
   return { ok: true as const };
 }

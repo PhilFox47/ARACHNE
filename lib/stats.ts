@@ -2,14 +2,8 @@ import { asc } from "drizzle-orm";
 import { db } from "./db";
 import { weights } from "./db/schema";
 import { addDays, daysBetween, todayISO } from "./dates";
-import {
-  CORRIDOR_TOLERANCE_KG,
-  PROFILE,
-  corridorTarget,
-  kcalTargetForDay,
-  phaseForDay,
-  type Phase,
-} from "./plan";
+import { CORRIDOR_TOLERANCE_KG, type Phase } from "./plan";
+import { corridorTarget, courseTotalDays, kcalTargetForDay, phaseForDay } from "./course";
 import { getSettings } from "./settings";
 
 export interface WeightRow {
@@ -165,7 +159,7 @@ export function compositionSummary(points: CompositionPoint[]): CompositionSumma
  */
 export function buildSeries(rows: { date: string; weightKg: number }[], startDate: string): WeightPoint[] {
   const today = todayISO();
-  const lastDay = Math.min(Math.max(daysBetween(startDate, today), 0), PROFILE.totalDays);
+  const lastDay = Math.min(Math.max(daysBetween(startDate, today), 0), courseTotalDays());
   const byDate = new Map(rows.map((r) => [r.date, r.weightKg]));
 
   const out: WeightPoint[] = [];
@@ -217,7 +211,7 @@ export function getHqStats(): HqStats {
   return {
     startDateISO: s.startDate,
     day,
-    totalDays: PROFILE.totalDays,
+    totalDays: courseTotalDays(),
     phase: phaseForDay(day),
     kcalTarget: kcal,
     inTaper: taper,

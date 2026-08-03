@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { buildSeries, getHqStats, loadWeights } from "@/lib/stats";
 import { computeInsights } from "@/lib/sense";
 import { getSettings, ensureStartDate } from "@/lib/settings";
@@ -20,6 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HQ() {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   ensureStartDate();
   const settings = getSettings();
@@ -158,7 +160,8 @@ export default async function HQ() {
       <div className="swing" style={{ animationDelay: "60ms" }}>
         <WeightEntry
           initial={stats.latest?.weightKg ?? settings.startWeightKg}
-          initialBodyfat={stats.latestBodyfat?.pct ?? null}
+          bodyfatToday={stats.loggedToday ? (stats.latest?.bodyfatPct ?? null) : null}
+          tracksBodyfat={stats.latestBodyfat !== null}
           loggedToday={stats.loggedToday}
           today={todayISO()}
         />

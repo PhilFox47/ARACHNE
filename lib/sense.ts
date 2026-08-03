@@ -1,5 +1,6 @@
 import { addDays, daysBetween, todayISO } from "./dates";
-import { CORRIDOR_TOLERANCE_KG, corridorTarget } from "./plan";
+import { CORRIDOR_TOLERANCE_KG } from "./plan";
+import { corridorTarget } from "./course";
 import {
   buildComposition,
   compositionSummary,

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { buildJourney, newMovementsIn } from "@/lib/journey";
 import { loadGameState } from "@/lib/gameData";
 import { formatShort } from "@/lib/dates";
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function JourneyPage() {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const j = buildJourney();
   const game = loadGameState();

@@ -11,12 +11,11 @@ type Summary = Awaited<ReturnType<typeof progressSummary>>;
  * type RESET. Destructive and irreversible, so it should take deliberate effort
  * — but it's still reachable in under ten seconds when you actually mean it.
  */
-export function ResetPanel({ today, tomorrow }: { today: string; tomorrow: string }) {
+export function ResetPanel() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [confirmText, setConfirmText] = useState("");
-  const [startDate, setStartDate] = useState(tomorrow);
   const [deleteImages, setDeleteImages] = useState(true);
   const [result, setResult] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -34,18 +33,21 @@ export function ResetPanel({ today, tomorrow }: { today: string; tomorrow: strin
 
   const run = () => {
     start(async () => {
-      const res = await resetProgress(confirmText, { startDate, deleteImages });
+      const res = await resetProgress(confirmText, { deleteImages });
       if (!res.ok) {
         setResult(res.error);
         return;
       }
       setResult(
-        `Cleared ${total} records${res.imagesRemoved ? ` and ${res.imagesRemoved} images` : ""}. Day 0 is now ${res.startDate}.`,
+        `Cleared ${total} records${res.imagesRemoved ? ` and ${res.imagesRemoved} images` : ""}. Setting up again.`,
       );
       setConfirmText("");
       setOpen(false);
       setSummary(null);
       if (navigator.vibrate) navigator.vibrate([20, 60, 20]);
+      // Onboarding is armed again, so send them straight into it rather than
+      // back to a HQ that no longer knows what they weigh.
+      router.replace("/onboarding");
       router.refresh();
     });
   };
@@ -55,8 +57,8 @@ export function ResetPanel({ today, tomorrow }: { today: string; tomorrow: strin
       <div className="panel flex flex-col gap-3 p-4">
         <p className="label-xs">Reset progress</p>
         <p className="text-sm text-muted">
-          Clears every reading, session, set, meal, trial and photo, and re-pins day 0. Your settings —
-          model, equipment, height, targets — are kept.
+          Clears every reading, session, set, meal, trial and photo, and starts onboarding again so you
+          re-measure and re-set the goal. Your kit, model and correction factor are kept.
         </p>
         {result ? <p className="text-sm text-cobalt-lift">{result}</p> : null}
         <button
@@ -95,27 +97,11 @@ export function ResetPanel({ today, tomorrow }: { today: string; tomorrow: strin
         <p className="text-sm text-muted">Counting…</p>
       )}
 
-      <div className="flex flex-col gap-2">
-        <p className="label-xs">Day 0 becomes</p>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { v: today, l: "Today" },
-            { v: tomorrow, l: "Tomorrow" },
-          ].map((o) => (
-            <button
-              key={o.v}
-              type="button"
-              onClick={() => setStartDate(o.v)}
-              className={`tap flex flex-col items-center justify-center border py-2 ${
-                startDate === o.v ? "border-crimson bg-crimson/15 text-crimson" : "border-edge text-muted"
-              }`}
-            >
-              <span className="display text-sm">{o.l}</span>
-              <span className="text-[0.6rem] tabular">{o.v}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Day 0 is chosen in onboarding, which runs immediately after this. One
+          screen owns that decision rather than two disagreeing about it. */}
+      <p className="text-xs leading-relaxed text-muted-dim">
+        Onboarding opens straight after, where you set day 0, re-measure, and choose the goal and timeframe.
+      </p>
 
       <button
         type="button"

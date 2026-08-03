@@ -17,11 +17,10 @@ import {
   CORRIDOR_TOLERANCE_KG,
   PROTEIN_PER_MEAL_G,
   TRAINING_DAYS,
-  corridorTarget,
   isLowProfileWeek,
-  kcalTargetForDay,
   type DayKey,
 } from "./plan";
+import { corridorTarget, kcalTargetForDay } from "./course";
 
 // ─────────────────────────────────────────────────────────────
 // XP table — tune freely, nothing else depends on the values

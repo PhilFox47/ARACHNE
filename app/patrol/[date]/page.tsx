@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { sessions } from "@/lib/db/schema";
 import { dayKeyOf, daysBetween, formatShort, todayISO, weekIndex } from "@/lib/dates";
@@ -11,10 +12,10 @@ import {
   SESSION_SHAPE,
   isBaselinePhase,
   isLowProfileWeek,
-  phaseForDay,
   sessionFor,
   type DayKey,
 } from "@/lib/plan";
+import { phaseForDay } from "@/lib/course";
 import { baselineSession, baselineSlotFor } from "@/lib/baseline";
 import {
   baselinePrescription,
@@ -31,6 +32,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SessionPage({ params }: { params: Promise<{ date: string }> }) {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const { date } = await params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) notFound();

@@ -8,7 +8,6 @@ import { EquipmentPicker } from "@/components/EquipmentPicker";
 import { VrGamesPicker } from "@/components/VrGamesPicker";
 import { ResetPanel } from "@/components/ResetPanel";
 import { BottomNav } from "@/components/BottomNav";
-import { addDays, todayISO } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +32,7 @@ export default async function Settings() {
           heightCm: s.heightCm,
           startWeightKg: s.startWeightKg,
           targetWeightKg: s.targetWeightKg,
+          totalDays: s.totalDays,
           startDate: s.startDate,
         }}
         envModel={envModel()}
@@ -46,7 +46,7 @@ export default async function Settings() {
         hasHeadset={s.equipment.some((e) => e.key === "vr" && e.owned)}
       />
 
-      <ResetPanel today={todayISO()} tomorrow={addDays(todayISO(), 1)} />
+      <ResetPanel />
 
       <BottomNav />
     </main>

@@ -4,15 +4,13 @@ import { exerciseLogs, sessions, trials, weights } from "./db/schema";
 import { addDays, daysBetween, todayISO } from "./dates";
 import { getSettings } from "./settings";
 import {
-  CHECKPOINTS,
-  PHASES,
-  PROFILE,
   TRAINING_DAYS,
   sessionFor,
   type Checkpoint,
   type Phase,
   type PhaseId,
 } from "./plan";
+import { courseCheckpoints, coursePhases, courseTotalDays } from "./course";
 
 export interface PhaseProgress {
   phase: Phase;
@@ -79,7 +77,7 @@ export function buildJourney(): Journey {
     .orderBy(asc(weights.date))
     .all();
 
-  const phases: PhaseProgress[] = PHASES.map((phase) => {
+  const phases: PhaseProgress[] = coursePhases().map((phase) => {
     const startDate = addDays(settings.startDate, phase.startDay);
     const endDate = addDays(settings.startDate, phase.endDay);
     const daysTotal = phase.endDay - phase.startDay + 1;
@@ -128,7 +126,7 @@ export function buildJourney(): Journey {
     };
   });
 
-  const checkpoints: CheckpointProgress[] = CHECKPOINTS.map((cp) => {
+  const checkpoints: CheckpointProgress[] = courseCheckpoints().map((cp) => {
     const date = addDays(settings.startDate, cp.day);
     const reached = day >= cp.day;
     const weightActual = reached ? averageNear(allWeights, date) : null;
@@ -165,8 +163,8 @@ export function buildJourney(): Journey {
 
   return {
     day,
-    totalDays: PROFILE.totalDays,
-    progress: Math.min(1, day / PROFILE.totalDays),
+    totalDays: courseTotalDays(),
+    progress: Math.min(1, day / courseTotalDays()),
     phases,
     checkpoints,
     totals: {

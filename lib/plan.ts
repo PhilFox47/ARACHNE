@@ -183,17 +183,160 @@ export const TAPER = { days: 14, kcal: 2400 } as const;
 export const KCAL_FLOOR = 2000;
 export const MAINTENANCE_KCAL = 2400;
 
-export function phaseForDay(day: number): Phase {
-  const clamped = Math.max(0, Math.min(day, PROFILE.totalDays));
-  return PHASES.find((p) => clamped >= p.startDay && clamped <= p.endDay) ?? PHASES[PHASES.length - 1];
+// ─────────────────────────────────────────────────────────────
+// Course — the document's shape, fitted to your own numbers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Everything above is the document as written: a 100 kg man reaching 80 kg in
+ * twelve months. Your start weight, goal and timeframe are yours to set, so the
+ * schedule below is expressed as the document's *proportions* and stretched
+ * onto whatever course you actually chose.
+ *
+ * With the document's own numbers this is the identity transform — every phase
+ * boundary, corridor anchor and calorie target comes out exactly as printed.
+ */
+export interface CourseConfig {
+  startWeightKg: number;
+  targetWeightKg: number;
+  totalDays: number;
+}
+
+export const DOCUMENT_COURSE: CourseConfig = {
+  startWeightKg: PROFILE.startWeightKg,
+  targetWeightKg: PROFILE.targetWeightKg,
+  totalDays: PROFILE.totalDays,
+};
+
+/**
+ * Eight weeks is the shortest run in which the four phases are still
+ * distinguishable from each other; two years is past the point where a plan
+ * written as a twelve-month arc means anything.
+ */
+export const MIN_TOTAL_DAYS = 56;
+export const MAX_TOTAL_DAYS = 730;
+
+/**
+ * Above roughly 1% of body weight per week the loss stops being mostly fat.
+ * The document never states the figure, but its whole argument — 40 g of
+ * protein a meal, never below 2,000 kcal, "faster loss is more muscle lost" —
+ * is an argument for staying under it.
+ */
+export const MAX_WEEKLY_LOSS_FRACTION = 0.01;
+
+export function normaliseCourse(c: Partial<CourseConfig>): CourseConfig {
+  const startWeightKg = clamp(c.startWeightKg ?? DOCUMENT_COURSE.startWeightKg, 35, 300);
+  const targetWeightKg = clamp(c.targetWeightKg ?? DOCUMENT_COURSE.targetWeightKg, 35, 300);
+  const totalDays = Math.round(
+    clamp(c.totalDays ?? DOCUMENT_COURSE.totalDays, MIN_TOTAL_DAYS, MAX_TOTAL_DAYS),
+  );
+  return { startWeightKg, targetWeightKg, totalDays };
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  if (!Number.isFinite(n)) return lo;
+  return Math.max(lo, Math.min(hi, n));
+}
+
+/** Implied average loss per week, and whether it's faster than is sensible. */
+export function courseRate(c: CourseConfig): { kgPerWeek: number; tooFast: boolean } {
+  const weeks = c.totalDays / 7;
+  const kgPerWeek = weeks > 0 ? (c.startWeightKg - c.targetWeightKg) / weeks : 0;
+  return {
+    kgPerWeek: Math.round(kgPerWeek * 100) / 100,
+    tooFast: kgPerWeek > c.startWeightKg * MAX_WEEKLY_LOSS_FRACTION,
+  };
+}
+
+/**
+ * Phase 0 is a fixed fortnight whatever the total — the baseline sweep needs
+ * two weeks to run twice, and that has nothing to do with how long the year is.
+ * The remaining four keep the document's proportions of what's left.
+ */
+const PHASE_END_FRACTIONS = PHASES.slice(1).map(
+  (p) => (p.endDay - PHASES[0].endDay) / (PROFILE.totalDays - PHASES[0].endDay),
+);
+
+/** Share of the total loss the document has banked by the end of each phase. */
+const PHASE_LOSS_FRACTIONS = PHASES.slice(1).map(
+  (p) =>
+    (PROFILE.startWeightKg - (p.weightToKg ?? PROFILE.targetWeightKg)) /
+    (PROFILE.startWeightKg - PROFILE.targetWeightKg),
+);
+
+/**
+ * The calorie ladder is stated for a 100 kg man and nothing in the document
+ * generalises it, so it's scaled by body weight and by nothing else — the
+ * relative deficits are preserved exactly. Clamped, because a factor far from 1
+ * means the document is being applied to someone it wasn't written for, and a
+ * wrong number should at least be a conservatively wrong one.
+ */
+function kcalScale(c: CourseConfig): number {
+  return clamp(c.startWeightKg / PROFILE.startWeightKg, 0.7, 1.3);
+}
+
+const round50 = (n: number) => Math.round(n / 50) * 50;
+
+export function phasesFor(config: CourseConfig): Phase[] {
+  const c = normaliseCourse(config);
+  const totalLoss = c.startWeightKg - c.targetWeightKg;
+  const span = c.totalDays - PHASES[0].endDay;
+  const scale = kcalScale(c);
+
+  return PHASES.map((p, i) => {
+    if (i === 0) {
+      return {
+        ...p,
+        kcal: round50(p.kcal * scale),
+        weightFromKg: c.startWeightKg,
+        weightToKg: c.startWeightKg,
+      };
+    }
+    const endDay = PHASES[0].endDay + Math.round(PHASE_END_FRACTIONS[i - 1] * span);
+    const prevEnd =
+      i === 1 ? PHASES[0].endDay : PHASES[0].endDay + Math.round(PHASE_END_FRACTIONS[i - 2] * span);
+    const from = i === 1 ? c.startWeightKg : c.startWeightKg - PHASE_LOSS_FRACTIONS[i - 2] * totalLoss;
+    return {
+      ...p,
+      startDay: prevEnd + 1,
+      endDay,
+      kcal: round50(p.kcal * scale),
+      proteinG: p.proteinG === null ? null : Math.round(p.proteinG * scale),
+      weightFromKg: round1(from),
+      weightToKg: round1(c.startWeightKg - PHASE_LOSS_FRACTIONS[i - 1] * totalLoss),
+    };
+  });
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+export function phaseForDayIn(config: CourseConfig, day: number): Phase {
+  const phases = phasesFor(config);
+  const clamped = Math.max(0, Math.min(day, normaliseCourse(config).totalDays));
+  return (
+    phases.find((p) => clamped >= p.startDay && clamped <= p.endDay) ?? phases[phases.length - 1]
+  );
+}
+
+export function taperFor(config: CourseConfig): { days: number; kcal: number } {
+  return { days: TAPER.days, kcal: round50(TAPER.kcal * kcalScale(config)) };
 }
 
 /** Calorie target for a day, accounting for the closing taper. */
-export function kcalTargetForDay(day: number): { kcal: number; taper: boolean } {
-  if (day > PROFILE.totalDays - TAPER.days && day <= PROFILE.totalDays) {
-    return { kcal: TAPER.kcal, taper: true };
-  }
-  return { kcal: phaseForDay(day).kcal, taper: false };
+export function kcalTargetForDayIn(
+  config: CourseConfig,
+  day: number,
+): { kcal: number; taper: boolean } {
+  const c = normaliseCourse(config);
+  const t = taperFor(c);
+  if (day > c.totalDays - t.days && day <= c.totalDays) return { kcal: t.kcal, taper: true };
+  return { kcal: phaseForDayIn(c, day).kcal, taper: false };
+}
+
+export function kcalFloorFor(config: CourseConfig): number {
+  return round50(KCAL_FLOOR * kcalScale(config));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -219,19 +362,40 @@ export const CORRIDOR_ANCHORS: ReadonlyArray<{ day: number; kg: number }> = [
 
 export const CORRIDOR_TOLERANCE_KG = 1.5;
 
+/**
+ * The anchors above are the document's own; these are the same anchors for a
+ * course you configured. Both are the phase boundaries — day 0, the end of the
+ * flat baseline fortnight, then the closing weight of each phase — so the two
+ * agree exactly when the course is the document's.
+ */
+export function corridorAnchorsFor(config: CourseConfig): { day: number; kg: number }[] {
+  const c = normaliseCourse(config);
+  const phases = phasesFor(c);
+  // Flat through the first day of the deficit, not the last day of Phase 0 —
+  // the document's own anchor is day 14, and the difference is the 90 g the
+  // corridor would otherwise have already asked for before the cut begins.
+  const out = [
+    { day: 0, kg: c.startWeightKg },
+    { day: phases[1].startDay, kg: c.startWeightKg },
+  ];
+  for (const p of phases.slice(1)) out.push({ day: p.endDay, kg: p.weightToKg ?? c.targetWeightKg });
+  return out;
+}
+
 /** Target weight on a given day, interpolated between anchors. */
-export function corridorTarget(day: number): number {
-  const d = Math.max(0, Math.min(day, PROFILE.totalDays));
-  for (let i = 0; i < CORRIDOR_ANCHORS.length - 1; i++) {
-    const a = CORRIDOR_ANCHORS[i];
-    const b = CORRIDOR_ANCHORS[i + 1];
+export function corridorTargetIn(config: CourseConfig, day: number): number {
+  const anchors = corridorAnchorsFor(config);
+  const d = Math.max(0, Math.min(day, anchors[anchors.length - 1].day));
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const a = anchors[i];
+    const b = anchors[i + 1];
     if (d >= a.day && d <= b.day) {
       const span = b.day - a.day;
       if (span === 0) return a.kg;
       return a.kg + ((b.kg - a.kg) * (d - a.day)) / span;
     }
   }
-  return CORRIDOR_ANCHORS[CORRIDOR_ANCHORS.length - 1].kg;
+  return anchors[anchors.length - 1].kg;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1085,6 +1249,35 @@ export const CHECKPOINTS: Checkpoint[] = [
 
 export function checkpointForMonth(month: number): Checkpoint | undefined {
   return CHECKPOINTS.find((c) => c.month === month);
+}
+
+/**
+ * The four checkpoints, moved onto your course. They sit at the quarter points
+ * of the document's year and at the end of Phases 1–4, which is the same thing
+ * — so they ride the scaled phase boundaries rather than being re-derived.
+ *
+ * Only the day and the weight move. The performance targets are the document's
+ * and stay exactly as printed: how long you take to reach 80 kg has no bearing
+ * on how many push-ups 80 kg should be able to do.
+ */
+export function checkpointsFor(config: CourseConfig): Checkpoint[] {
+  const c = normaliseCourse(config);
+  const phases = phasesFor(c);
+
+  return CHECKPOINTS.map((cp, i) => {
+    const phase = phases[i + 1];
+    const weightKg = round1(phase.weightToKg ?? c.targetWeightKg);
+    // The document quotes each waist against a specific weight and offers no
+    // formula, so the waist rides the weight it was quoted against.
+    const waistCm = round1((cp.waistCm * weightKg) / cp.weightKg);
+    return {
+      ...cp,
+      day: phase.endDay,
+      weightKg,
+      waistCm,
+      waistLabel: `~${waistCm} cm`,
+    };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────

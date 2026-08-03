@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { loadGameState } from "@/lib/gameData";
 import { getHqStats } from "@/lib/stats";
 import { rankForScore } from "@/lib/plan";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Progress() {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const game = loadGameState();
   const stats = getHqStats();

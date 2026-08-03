@@ -103,9 +103,11 @@ export async function resetProgress(
     db.delete(t).run();
   }
 
-  // Keep configuration, drop run state.
+  // Keep configuration, drop run state. `onboarded_at` goes with the run: a
+  // reset is a fresh start, and a fresh start deserves to be asked again what
+  // it weighs and where it's going rather than inheriting the last run's answers.
   db.delete(settings)
-    .where(inArray(settings.key, ["start_date"]))
+    .where(inArray(settings.key, ["start_date", "onboarded_at"]))
     .run();
 
   const start =

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { buildComposition, buildSeries, compositionSummary, getHqStats, loadWeights } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { formatShort, todayISO, weekIndex } from "@/lib/dates";
@@ -19,6 +20,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Vitals() {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const settings = getSettings();
   const rows = loadWeights();
@@ -61,7 +63,8 @@ export default async function Vitals() {
       <div className="swing" style={{ animationDelay: "60ms" }}>
         <WeightEntry
           initial={stats.latest?.weightKg ?? settings.startWeightKg}
-          initialBodyfat={stats.latestBodyfat?.pct ?? null}
+          bodyfatToday={stats.loggedToday ? (stats.latest?.bodyfatPct ?? null) : null}
+          tracksBodyfat={stats.latestBodyfat !== null}
           loggedToday={stats.loggedToday}
           today={todayISO()}
         />

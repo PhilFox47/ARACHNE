@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateSetting } from "@/app/actions";
+import { MAX_TOTAL_DAYS, MIN_TOTAL_DAYS } from "@/lib/plan";
 import { WebLoader } from "./WebLoader";
 import { TensionLine } from "./TensionLine";
 
@@ -26,6 +27,7 @@ export function SettingsForm({
     heightCm: number;
     startWeightKg: number;
     targetWeightKg: number;
+    totalDays: number;
     startDate: string;
   };
   envModel: string | null;
@@ -116,12 +118,25 @@ export function SettingsForm({
             pending={pending}
             bare
           />
+          <NumberSetting
+            label="Timeframe"
+            hint="The document's own run is 365 days. Change it and the four phases, the corridor and the checkpoints all stretch to fit — the calorie ladder scales by body weight only, so check it still looks sane afterwards."
+            suffix="days"
+            value={initial.totalDays}
+            step={7}
+            min={MIN_TOTAL_DAYS}
+            max={MAX_TOTAL_DAYS}
+            onSave={(v) => save("total_days", v, "Timeframe")}
+            pending={pending}
+            bare
+          />
           <div className="flex flex-col gap-2">
             <p className="label-xs">Day 0</p>
             <p className="text-sm text-ink tabular">{initial.startDate}</p>
             <p className="text-xs text-muted-dim">
-              Every phase boundary, checkpoint and corridor anchor is measured from this date. Change it with{" "}
-              <code className="text-cobalt-lift">npm run db:reset</code>.
+              Every phase boundary, checkpoint and corridor anchor is measured from this date, which is why
+              it isn&apos;t editable here — moving it would silently rewrite every judgement already made
+              against it. Resetting progress starts onboarding again and lets you re-pin it.
             </p>
           </div>
         </div>

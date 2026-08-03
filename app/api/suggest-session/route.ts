@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { daysBetween, dayKeyOf, weekIndex } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
-import { isLowProfileWeek, phaseForDay, type DayKey } from "@/lib/plan";
+import { isLowProfileWeek, type DayKey } from "@/lib/plan";
+import { phaseForDay } from "@/lib/course";
 import {
   baselinePrescription,
   generatePrescription,

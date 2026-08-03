@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { asc } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
 import { addDays, formatShort } from "@/lib/dates";
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Compare() {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const s = getSettings();
   const rows = db.select().from(photos).orderBy(asc(photos.weekIndex)).all();

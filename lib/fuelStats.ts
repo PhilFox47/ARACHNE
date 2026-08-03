@@ -3,7 +3,8 @@ import { db } from "./db";
 import { foodEntries, waterLogs } from "./db/schema";
 import { addDays, daysBetween, todayISO } from "./dates";
 import { getSettings } from "./settings";
-import { PROTEIN_PER_MEAL_G, kcalTargetForDay, phaseForDay } from "./plan";
+import { PROTEIN_PER_MEAL_G } from "./plan";
+import { kcalTargetForDay, phaseForDay } from "./course";
 
 export interface DayNutrition {
   date: string;

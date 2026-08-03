@@ -16,21 +16,28 @@ import { logWeight } from "@/app/actions";
  */
 export function WeightEntry({
   initial,
-  initialBodyfat,
+  bodyfatToday,
+  tracksBodyfat,
   loggedToday,
   today,
 }: {
   initial: number | null;
-  /** Last known scale reading, used both to prefill and to decide visibility. */
-  initialBodyfat?: number | null;
+  /**
+   * Today's reading only. Weight prefills from yesterday because you nudge it
+   * to today's figure; a body-fat percentage is read off a display, and
+   * prefilling yesterday's would quietly invite you to log it twice.
+   */
+  bodyfatToday?: number | null;
+  /** Whether the scale has ever reported one — decides if the field is shown. */
+  tracksBodyfat?: boolean;
   loggedToday: boolean;
   today: string;
 }) {
   const [value, setValue] = useState(initial !== null ? initial.toFixed(1) : "");
   const [bf, setBf] = useState(
-    initialBodyfat !== null && initialBodyfat !== undefined ? initialBodyfat.toFixed(1) : "",
+    bodyfatToday !== null && bodyfatToday !== undefined ? bodyfatToday.toFixed(1) : "",
   );
-  const [showBf, setShowBf] = useState(initialBodyfat !== null && initialBodyfat !== undefined);
+  const [showBf, setShowBf] = useState(tracksBodyfat === true);
   const [saved, setSaved] = useState(loggedToday);
   const [error, setError] = useState<string | null>(null);
   const [snap, setSnap] = useState(false);

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
 import { addDays, formatShort, todayISO, weekIndex } from "@/lib/dates";
@@ -19,6 +20,7 @@ export default async function SuitCheck({
   searchParams: Promise<{ week?: string }>;
 }) {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const s = getSettings();
   const today = todayISO();

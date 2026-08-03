@@ -41,6 +41,8 @@ export function SessionLogger({
   const [suggesting, setSuggesting] = useState(false);
   const [, start] = useTransition();
 
+  const isBaseline = initialPrescription.phase === 0;
+
   // Ask for a prescription once, on first open, if none has been issued yet.
   const fetchRx = useCallback(
     async (regenerate: boolean) => {
@@ -112,22 +114,29 @@ export function SessionLogger({
       <ImpactBurst at={burst} onDone={() => setBurst(null)} />
 
       {/* ── Prescription source ── */}
+      {/* Phase 0 has no prescription to argue with: the model is not consulted
+          and there is nothing to re-suggest, so offering the button would be a
+          control that does nothing. */}
       <div className="flex items-center justify-between gap-3">
         <p className="label-xs">
-          {suggesting
-            ? "Adjusting to your history"
-            : rx.source === "ai"
-              ? "Adjusted from your last sessions"
-              : "Plan baseline"}
+          {isBaseline
+            ? "Measurement · record what you get"
+            : suggesting
+              ? "Adjusting to your history"
+              : rx.source === "ai"
+                ? "Adjusted from your last sessions"
+                : "Plan baseline"}
         </p>
-        <button
-          type="button"
-          onClick={() => void fetchRx(true)}
-          disabled={suggesting}
-          className="label-xs underline disabled:opacity-40"
-        >
-          Re-suggest
-        </button>
+        {isBaseline ? null : (
+          <button
+            type="button"
+            onClick={() => void fetchRx(true)}
+            disabled={suggesting}
+            className="label-xs underline disabled:opacity-40"
+          >
+            Re-suggest
+          </button>
+        )}
       </div>
 
       {isDeload ? (
@@ -138,7 +147,7 @@ export function SessionLogger({
         </div>
       ) : null}
 
-      {suggesting && rx.source === "plan" ? (
+      {suggesting && rx.source === "plan" && !isBaseline ? (
         <div className="panel py-6">
           <WebLoader label="Reading your history" />
         </div>

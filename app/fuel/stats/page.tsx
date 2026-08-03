@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { buildFuelStats } from "@/lib/fuelStats";
 import { PROTEIN_PER_MEAL_G } from "@/lib/plan";
 import { CountUp } from "@/components/CountUp";
@@ -24,6 +25,7 @@ export default async function FuelStats({
   searchParams: Promise<{ days?: string }>;
 }) {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const params = await searchParams;
   const requested = Number(params.days);

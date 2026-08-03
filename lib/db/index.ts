@@ -155,6 +155,20 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       sqlite.exec("ALTER TABLE weights ADD COLUMN bodyfat_pct REAL");
     }
   },
+
+  // ── v8: onboarding ──
+  // A database that already has a start date has already been through setup,
+  // whatever form that setup took. Back-filling the flag here is what stops the
+  // new flow ambushing a run that's been going for months.
+  (sqlite) => {
+    const started = sqlite.prepare("SELECT value FROM settings WHERE key = 'start_date'").get() as
+      | { value: string }
+      | undefined;
+    if (!started) return;
+    sqlite
+      .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('onboarded_at', ?)")
+      .run(String(Math.floor(Date.now() / 1000)));
+  },
 ];
 
 /**

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { and, gte, lte, sql } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { sessions } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
@@ -11,15 +12,14 @@ import { loadGameState } from "@/lib/gameData";
 import {
   BASELINE_MODE,
   BASELINE_PATROLS,
-  PROFILE,
   SESSION_SHAPE,
   isBaselinePhase,
   isLowProfileWeek,
-  phaseForDay,
   roundsForWeek,
   sessionFor,
   type DayKey,
 } from "@/lib/plan";
+import { courseTotalDays, phaseForDay } from "@/lib/course";
 import { baselineCoverage, baselineSession, baselineSlotFor } from "@/lib/baseline";
 import { conditioningOptions } from "@/lib/training";
 import { WeekPlan, type DayPlan } from "@/components/WeekPlan";
@@ -53,6 +53,7 @@ export default async function Patrol({
   searchParams: Promise<{ week?: string }>;
 }) {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const settings = getSettings();
   const stats = getHqStats();
@@ -60,7 +61,7 @@ export default async function Patrol({
   const today = todayISO();
 
   const currentWeek = weekIndex(settings.startDate, today);
-  const maxWeek = Math.floor(PROFILE.totalDays / 7);
+  const maxWeek = Math.floor(courseTotalDays() / 7);
   const params = await searchParams;
   const requested = Number(params.week);
   const week = Number.isInteger(requested) ? Math.max(0, Math.min(requested, maxWeek)) : currentWeek;

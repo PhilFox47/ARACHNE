@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { foodEntries } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
@@ -20,6 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Fuel() {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const stats = getHqStats();
   const today = todayISO();

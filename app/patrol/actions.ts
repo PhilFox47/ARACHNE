@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { exerciseLogs, sessions } from "@/lib/db/schema";
 import { isAuthed } from "@/lib/auth";
 import { dayKeyOf } from "@/lib/dates";
-import { phaseForDay } from "@/lib/plan";
+import { phaseForDay } from "@/lib/course";
 import { daysBetween } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 

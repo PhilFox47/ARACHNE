@@ -9,7 +9,8 @@
 import { db } from "../lib/db";
 import { foodEntries, sessions, weights } from "../lib/db/schema";
 import { addDays, dayKeyOf, toISODate } from "../lib/dates";
-import { TRAINING_DAYS, corridorTarget, phaseForDay, type DayKey } from "../lib/plan";
+import { TRAINING_DAYS, type DayKey } from "../lib/plan";
+import { corridorTarget, phaseForDay } from "../lib/course";
 import { setSetting } from "../lib/settings";
 
 const DAYS = 70;

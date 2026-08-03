@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isAuthed } from "@/lib/auth";
+import { needsOnboarding } from "@/lib/onboarding";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { BASELINE_MODE, PHASES } from "@/lib/plan";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Baseline() {
   if (!(await isAuthed())) redirect("/login");
+  if (needsOnboarding()) redirect("/onboarding");
 
   const stats = getHqStats();
   const s = getSettings();
@@ -72,8 +74,15 @@ export default async function Baseline() {
         </div>
 
         <ul className="panel divide-y divide-edge">
-          {schedule.map(({ date, slot }) => (
+          {schedule.map(({ date, slot }, i) => (
             <li key={date}>
+              {/* The repeat week is the same five patrols again, so it needs a
+                  seam — otherwise the list reads as ten different sessions. */}
+              {i > 0 && slot!.round !== schedule[i - 1].slot!.round ? (
+                <p className="label-xs border-b border-edge bg-panel-2 px-3 py-1.5 text-cobalt-lift">
+                  Week 2 · the same five again
+                </p>
+              ) : null}
               <Link
                 href={`/patrol/${date}`}
                 className="flex items-center gap-3 px-3 py-2.5"

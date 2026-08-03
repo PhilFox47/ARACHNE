@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { settings } from "./db/schema";
-import { PHOTO_CORRECTION_DEFAULT_PCT, PROFILE, WATER_TARGET_ML_DEFAULT } from "./plan";
+import { MAX_TOTAL_DAYS, MIN_TOTAL_DAYS, PHOTO_CORRECTION_DEFAULT_PCT, PROFILE, WATER_TARGET_ML_DEFAULT } from "./plan";
 import { todayISO } from "./dates";
 import { mergeEquipment, mergeVrGames, type EquipmentItem, type VrGame } from "./equipment";
 
@@ -10,18 +10,23 @@ export interface AppSettings {
   heightCm: number;
   startWeightKg: number;
   targetWeightKg: number;
+  /** Length of the run, in days. The document's own is 365. */
+  totalDays: number;
   photoCorrectionPct: number;
   waterTargetMl: number;
+  /** Set once onboarding has been completed, and cleared by a reset. */
+  onboardedAt: number | null;
   /** Overrides NANOGPT_VISION_MODEL when set, so the model is swappable in-app. */
   visionModel: string | null;
   equipment: EquipmentItem[];
   vrGames: VrGame[];
 }
 
-const DEFAULTS: Omit<AppSettings, "startDate" | "visionModel" | "equipment" | "vrGames"> = {
+const DEFAULTS = {
   heightCm: PROFILE.heightCm,
   startWeightKg: PROFILE.startWeightKg,
   targetWeightKg: PROFILE.targetWeightKg,
+  totalDays: PROFILE.totalDays,
   photoCorrectionPct: PHOTO_CORRECTION_DEFAULT_PCT,
   waterTargetMl: WATER_TARGET_ML_DEFAULT,
 };
@@ -43,8 +48,12 @@ export function getSettings(): AppSettings {
     heightCm: num("height_cm", DEFAULTS.heightCm),
     startWeightKg: num("start_weight_kg", DEFAULTS.startWeightKg),
     targetWeightKg: num("target_weight_kg", DEFAULTS.targetWeightKg),
+    totalDays: Math.round(
+      Math.max(MIN_TOTAL_DAYS, Math.min(MAX_TOTAL_DAYS, num("total_days", DEFAULTS.totalDays))),
+    ),
     photoCorrectionPct: num("photo_correction_pct", DEFAULTS.photoCorrectionPct),
     waterTargetMl: num("water_target_ml", DEFAULTS.waterTargetMl),
+    onboardedAt: raw.onboarded_at ? num("onboarded_at", 0) || null : null,
     visionModel: raw.vision_model?.trim() || null,
     equipment: mergeEquipment(safeJson(raw.equipment)),
     vrGames: mergeVrGames(safeJson(raw.vr_games)),
