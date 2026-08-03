@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env.local
+data
+backups
+drizzle
+docs
+*.tar.gz
+*.log
+README.md

@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   ARACHNE design tokens
+   Dark only, by design. This is a wall-crawler's field console,
+   not a document — there is no light mode to get wrong.
+   ───────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-base: #0a0d16;
+  --color-panel: #141a2b;
+  --color-panel-2: #0f1422;
+  --color-edge: #243050;
+  --color-edge-hot: #3a2030;
+  --color-crimson: #d42a3f;
+  --color-crimson-dim: #8e1f2c;
+  --color-crimson-lift: #f04256;
+  --color-cobalt: #2b5cb8;
+  --color-cobalt-lift: #4e86e8;
+  --color-ink: #edebe8;
+  --color-muted: #8a92a6;
+  --color-muted-dim: #5c6478;
+
+  --font-display: var(--font-barlow), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-none: 0px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Base
+   ───────────────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    background: var(--color-base);
+    /* Kill the iOS text-size bump in landscape without disabling user zoom
+       at the document level. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-base);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    /* No pull-to-refresh fighting the scroll, no rubber-band overscroll. */
+    overscroll-behavior-y: none;
+    /* No 300ms tap delay, no double-tap zoom. */
+    touch-action: manipulation;
+  }
+
+  /* Numbers line up in columns everywhere in this app. */
+  :where(input, table, .tabular) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-crimson);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-crimson);
+    color: var(--color-ink);
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Type roles
+   ───────────────────────────────────────────────────────────── */
+
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.95;
+}
+
+/* The house ratio: enormous number, small quiet label. */
+@utility numeral {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 0.85;
+}
+
+@utility label-xs {
+  font-family: var(--font-body);
+  font-size: 0.625rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Structure — comic-panel adjacent: hard corners, visible stroke
+   ───────────────────────────────────────────────────────────── */
+
+@utility panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-edge);
+  border-radius: 0;
+}
+
+@utility panel-hot {
+  background: linear-gradient(180deg, #1a1220, var(--color-panel-2));
+  border: 1px solid var(--color-crimson-dim);
+  border-radius: 0;
+}
+
+/* Halftone for hero surfaces. */
+@utility halftone {
+  background-image: radial-gradient(
+    var(--color-edge) 0.5px,
+    transparent 0.5px
+  );
+  background-size: 6px 6px;
+}
+
+/* Touch targets never below 44px. */
+@utility tap {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Motion
+   Everything ≤ 400ms, nothing blocks input, all of it skippable.
+   ───────────────────────────────────────────────────────────── */
+
+/* Cards swing in on a slight arc, like something on a line. */
+@keyframes swing-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) rotate(-1.1deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+}
+
+@utility swing {
+  transform-origin: top center;
+  animation: swing-in 340ms cubic-bezier(0.34, 1.3, 0.5, 1) backwards;
+}
+
+/* Loading draws web-lines node to node instead of spinning. */
+@keyframes web-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0.35;
+  }
+  55% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0.35;
+  }
+}
+
+@keyframes node-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    r: 1.6;
+  }
+  55% {
+    opacity: 1;
+    r: 2.6;
+  }
+}
+
+/* Impact lines on a completed patrol. */
+@keyframes impact-line {
+  from {
+    transform: scaleY(0.2);
+    opacity: 1;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+@keyframes snap-scale {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Safe areas — the app is installed to a home screen, not a tab
+   ───────────────────────────────────────────────────────────── */
+
+@utility pad-safe-b {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@utility pad-safe-t {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+/* Recharts leaks a focus ring around the surface on tap. */
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none;
+}
