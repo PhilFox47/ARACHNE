@@ -17,6 +17,44 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.0 — 2026-08-04
+
+FUEL reads more than one photo, and shows its working.
+
+**Several photos, one meal** (schema v13). The plate, the packet, the back of the packet, the recipe
+you cooked from. You tag what each one is and the model is told — so a Nährwerttabelle is read as a
+table rather than guessed at as a picture of food with writing on it, and a recipe is read for its
+servings. They are explicitly one meal from several angles, never summed.
+
+Photos can also be added to an entry after the fact. The label you forgot to shoot is usually a far
+bigger correction than anything you could type into the fields.
+
+**Portions are scaled, not copied.** This is the change that should move the numbers most. A label
+states values per 100 g; the pack says 500 g; you ate the pot. The estimate should be 310 kcal, not
+62, and the prompt now says so in those terms — along with what to do about a "pro Portion" column
+that doesn't match your portion, a recipe that serves four, and a menu photo that tells you what the
+dish is but nothing about how much of it arrived. Where the packaging and the plate disagree, the
+plate wins. `portion` now states what was actually scaled to — "whole 500 g pot", "1 of 4 servings" —
+because it is the number everything else is derived from.
+
+**Suspected ingredients**, for meals. What the model thinks went in, biggest first, with amounts in
+ordinary words — "2 eggs", "a splash" — rather than grams to a decimal place the estimate does not
+have. Editable, and a list you have corrected is marked as yours. Snacks don't get one: breaking a
+coffee into water and beans says nothing the description didn't.
+
+**Re-analyse**, which is what makes correcting the list worth doing. It takes the name, the portion
+and the ingredients, and **not the numbers**. A model handed its own previous answer adjusts it — a
+900 kcal mistake comes back as 850 — so the figures are recomputed from the description instead of
+nudged. Pending edits are saved first, and a list you confirmed survives the run rather than being
+overwritten by the model's fresh guess at it.
+
+Also: `lib/meal.ts` splits the photo and ingredient vocabulary out of `lib/vision.ts`, because a
+client component importing the word "label" was pulling `node:crypto` into the browser bundle.
+Deleting an entry now removes every photo rather than only the cover, and deleting a cover promotes
+the next one so no list ever renders a thumbnail whose file is gone. `npm run check` gained a third
+suite covering all of it — including an assertion that no previous figure can leak into a
+re-analysis prompt, which is one line away from silently regressing.
+
 ## 1.4.0 — 2026-08-04
 
 Every movement the plan can prescribe is now on THE WEB, and the hard ones have something under

@@ -149,7 +149,27 @@ export const foodEntries = sqliteTable(
      * supplied disappears the moment the estimate lands.
      */
     userNote: text("user_note"),
+    /**
+     * What the model thinks went into it, as JSON `{name, amount}[]`.
+     *
+     * Meals only. A snack is one named thing and breaking a coffee into water
+     * and beans helps nobody; a plate of food is several things, and which ones
+     * is the part you can correct from memory when the numbers are only a guess.
+     *
+     * Text amounts rather than grams on purpose. "two eggs" is what you know;
+     * "104 g egg" is precision the estimate does not have.
+     */
+    ingredients: text("ingredients"),
+    /** "ai" or "user". A corrected list is ground truth on re-analysis. */
+    ingredientsSource: text("ingredients_source", { enum: ["ai", "user"] }),
     mealType: text("meal_type", { enum: ["meal", "snack"] }).notNull(),
+    /**
+     * The cover photo, and the first row in `meal_photos`.
+     *
+     * Kept denormalised because every list on every screen renders a thumbnail,
+     * and because it predates multi-photo entries — dropping it would have been
+     * a rewrite of every food query to fix a join that is never needed.
+     */
     photoPath: text("photo_path"),
     source: text("source", { enum: ["ai", "manual", "quick"] }).notNull(),
     aiConfidence: text("ai_confidence", { enum: ["low", "medium", "high"] }),
@@ -158,6 +178,34 @@ export const foodEntries = sqliteTable(
   },
   (t) => [index("food_date_idx").on(t.date), index("food_norm_idx").on(t.normKey)],
 );
+
+/**
+ * Every photo of one meal.
+ *
+ * A single shot is a bad witness. It cannot show the back of the packet, the
+ * recipe you cooked from, or what the plate looks like from the side — and
+ * those are exactly where the numbers come from when the food is packaged or
+ * home-made. `kind` matters as much as the image: a model told which photo is
+ * the Nährwerttabelle reads it as a table instead of guessing at a picture of
+ * some food with writing on it.
+ */
+export const mealPhotos = sqliteTable(
+  "meal_photos",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    entryId: integer("entry_id").notNull(),
+    path: text("path").notNull(),
+    kind: text("kind", { enum: ["dish", "label", "recipe", "other"] })
+      .notNull()
+      .default("dish"),
+    /** Display and prompt order. The cover is 0. */
+    sort: integer("sort").notNull().default(0),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [index("meal_photos_entry_idx").on(t.entryId)],
+);
+
+export type MealPhoto = typeof mealPhotos.$inferSelect;
 
 /**
  * Things you eat often enough to name. A snapshot, not a pointer: a favourite

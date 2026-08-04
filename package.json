@@ -1,6 +1,6 @@
 {
   "name": "arachne",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",
-    "check": "tsx scripts/check-migrations.ts && tsx scripts/check-skills.ts"
+    "check": "tsx scripts/check-migrations.ts && tsx scripts/check-skills.ts && tsx scripts/check-fuel.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { isAuthed } from "@/lib/auth";
 import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
-import { foodEntries } from "@/lib/db/schema";
+import { foodEntries, mealPhotos } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { todayISO } from "@/lib/dates";
@@ -32,6 +32,20 @@ export default async function Fuel() {
     .where(eq(foodEntries.date, today))
     .orderBy(asc(foodEntries.loggedAt))
     .all();
+
+  // One query for every photo on the day rather than one per row — the strip is
+  // rendered inside each entry, but the entries are already all in hand.
+  const ids = entries.map((e) => e.id);
+  const shots = ids.length
+    ? db
+        .select()
+        .from(mealPhotos)
+        .where(inArray(mealPhotos.entryId, ids))
+        .orderBy(asc(mealPhotos.sort), asc(mealPhotos.id))
+        .all()
+    : [];
+  const photosByEntry = new Map<number, typeof shots>();
+  for (const s of shots) photosByEntry.set(s.entryId, [...(photosByEntry.get(s.entryId) ?? []), s]);
 
   const quick = await quickLogCandidates();
   const favourites = await listFavourites();
@@ -154,7 +168,11 @@ export default async function Fuel() {
           <ul className="flex flex-col gap-2">
             {entries.map((e) => (
               <li key={e.id}>
-                <FuelEntryRow entry={e} isFavourite={starred.has(e.normKey)} />
+                <FuelEntryRow
+                  entry={e}
+                  photos={photosByEntry.get(e.id) ?? []}
+                  isFavourite={starred.has(e.normKey)}
+                />
               </li>
             ))}
           </ul>

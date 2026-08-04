@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { foodEntries } from "@/lib/db/schema";
+import { foodEntries, mealPhotos } from "@/lib/db/schema";
 import { isAuthed } from "@/lib/auth";
-import { analyseMeal } from "@/lib/vision";
+import {
+  analyseMeal,
+  readIngredients,
+  serialiseIngredients,
+  type PhotoInput,
+  type PhotoKind,
+} from "@/lib/vision";
 import { getSettings } from "@/lib/settings";
 import { readStored } from "@/lib/photos";
 import { ANALYSING_PLACEHOLDER } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 /** Every screen that renders a food entry. */
 function refresh() {
@@ -20,12 +26,49 @@ function refresh() {
 }
 
 /**
+ * Reading several images costs tokens and latency, and past about this many the
+ * extra angle stops adding information. The cap is on the prompt, not on what
+ * you can attach — a meal may keep as many photos as you like.
+ */
+const MAX_IMAGES = 5;
+
+/** Every photo of an entry, cover first, as data URLs the model can read. */
+function photosFor(entryId: number, coverPath: string | null): PhotoInput[] {
+  const rows = db
+    .select()
+    .from(mealPhotos)
+    .where(eq(mealPhotos.entryId, entryId))
+    .orderBy(asc(mealPhotos.sort), asc(mealPhotos.id))
+    .all();
+
+  // An entry written before v13 has a cover and no rows. Falling back to it
+  // keeps every old entry re-analysable.
+  const list =
+    rows.length > 0
+      ? rows.map((r) => ({ path: r.path, kind: r.kind as PhotoKind }))
+      : coverPath
+        ? [{ path: coverPath, kind: "dish" as PhotoKind }]
+        : [];
+
+  const out: PhotoInput[] = [];
+  for (const p of list.slice(0, MAX_IMAGES)) {
+    const stored = readStored(p.path);
+    if (!stored) continue;
+    out.push({ dataUrl: `data:${stored.type};base64,${stored.buf.toString("base64")}`, kind: p.kind });
+  }
+  return out;
+}
+
+/**
  * The only path to the Nano-GPT key.
  *
  * Analyses an already-saved entry and patches it in place. It never returns a
  * status that would make the client discard the entry: a failed analysis is a
  * 200 with `analysed: false`, and the row keeps its description with null
  * macros. An entry without numbers beats no entry.
+ *
+ * `reanalyse: true` re-runs from the entry's corrected name, portion and
+ * ingredients — and pointedly not from its numbers. See `AnalyseOptions`.
  */
 export async function POST(req: Request) {
   if (!(await isAuthed())) {
@@ -34,10 +77,12 @@ export async function POST(req: Request) {
 
   let entryId: number;
   let hint: string | undefined;
+  let reanalyse = false;
   try {
     const body = await req.json();
     entryId = Number(body?.entryId);
     hint = typeof body?.hint === "string" ? body.hint : undefined;
+    reanalyse = body?.reanalyse === true;
     if (!Number.isInteger(entryId)) throw new Error("bad id");
   } catch {
     return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
@@ -45,16 +90,11 @@ export async function POST(req: Request) {
 
   const entry = db.select().from(foodEntries).where(eq(foodEntries.id, entryId)).get();
   if (!entry) return NextResponse.json({ ok: false, error: "No such entry." }, { status: 404 });
-  if (!entry.photoPath) {
-    return NextResponse.json({ ok: true, analysed: false, error: "Entry has no photo." });
-  }
 
-  const stored = readStored(entry.photoPath);
-  if (!stored) {
-    return NextResponse.json({ ok: true, analysed: false, error: "Photo missing from the volume." });
+  const photos = photosFor(entryId, entry.photoPath);
+  if (photos.length === 0) {
+    return NextResponse.json({ ok: true, analysed: false, error: "Entry has no readable photo." });
   }
-
-  const dataUrl = `data:${stored.type};base64,${stored.buf.toString("base64")}`;
 
   // Only ever pass something the user actually wrote. Falling back to
   // `description` fed the placeholder straight into the prompt — the model was
@@ -68,7 +108,18 @@ export async function POST(req: Request) {
     db.update(foodEntries).set({ userNote: note }).where(eq(foodEntries.id, entryId)).run();
   }
 
-  const result = await analyseMeal(dataUrl, note.length > 0 ? note : undefined);
+  const result = await analyseMeal(photos, {
+    hint: note.length > 0 ? note : undefined,
+    correction: reanalyse
+      ? {
+          description:
+            entry.description === ANALYSING_PLACEHOLDER ? null : entry.description,
+          portion: entry.portion,
+          ingredients: readIngredients(entry.ingredients),
+          ingredientsConfirmed: entry.ingredientsSource === "user",
+        }
+      : undefined,
+  });
 
   if (result.error) {
     // "Analysing…" is a status, and leaving it in the description turns a failed
@@ -91,6 +142,24 @@ export async function POST(req: Request) {
   const factor = 1 + getSettings().photoCorrectionPct / 100;
   const scale = (v: number | null) => (v === null ? null : Math.round(v * factor * 10) / 10);
 
+  const mealType = result.mealType ?? entry.mealType;
+
+  /**
+   * A confirmed list survives the re-analysis that was run because of it.
+   *
+   * The whole point of correcting the ingredients is that the model had them
+   * wrong; letting its fresh guess overwrite your correction would make the
+   * button undo itself. Amounts still come back from the model, because those
+   * it can genuinely improve once the names are right.
+   */
+  const keepUserList = entry.ingredientsSource === "user" && readIngredients(entry.ingredients).length > 0;
+  const ingredients =
+    mealType === "snack"
+      ? null
+      : keepUserList
+        ? entry.ingredients
+        : serialiseIngredients(result.ingredients);
+
   db.update(foodEntries)
     .set({
       description: result.description?.trim() || entry.userNote || entry.description,
@@ -103,7 +172,9 @@ export async function POST(req: Request) {
       sugarG: scale(result.sugarG),
       fiberG: result.fiberG,
       saltG: result.saltG,
-      mealType: result.mealType ?? entry.mealType,
+      ingredients,
+      ingredientsSource: ingredients === null ? null : keepUserList ? "user" : "ai",
+      mealType,
       aiConfidence: result.confidence,
     })
     .where(eq(foodEntries.id, entryId))
@@ -117,6 +188,7 @@ export async function POST(req: Request) {
     ok: true,
     analysed: true,
     model: result.model,
+    images: photos.length,
     correctionPct: getSettings().photoCorrectionPct,
     entry: {
       description: result.description?.trim() || entry.description,
@@ -129,7 +201,7 @@ export async function POST(req: Request) {
       sugarG: scale(result.sugarG),
       fiberG: result.fiberG,
       saltG: result.saltG,
-      mealType: result.mealType ?? entry.mealType,
+      mealType,
       confidence: result.confidence,
     },
   });

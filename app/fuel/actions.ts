@@ -1,13 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { favourites, foodEntries } from "@/lib/db/schema";
+import { favourites, foodEntries, mealPhotos } from "@/lib/db/schema";
 import { isAuthed } from "@/lib/auth";
 import { todayISO } from "@/lib/dates";
 import { suggestMealType, QUICK_LOG_THRESHOLD } from "@/lib/plan";
 import { saveDataUrl, deleteStored } from "@/lib/photos";
+import {
+  MAX_INGREDIENTS,
+  serialiseIngredients,
+  type Ingredient,
+  type PhotoKind,
+} from "@/lib/meal";
 
 async function guard() {
   if (!(await isAuthed())) throw new Error("Not authorised.");
@@ -38,6 +44,8 @@ function normSync(s: string): string {
 export async function createEntry(input: {
   description: string;
   photoDataUrl?: string | null;
+  /** Several shots of one meal. Supersedes `photoDataUrl`, which stays for text logs. */
+  photos?: { dataUrl: string; kind?: PhotoKind }[];
   mealType?: "meal" | "snack";
   date?: string;
   /** Context the photo can't carry — size, portion eaten, hidden ingredients. */
@@ -49,11 +57,20 @@ export async function createEntry(input: {
   const date = input.date ?? todayISO();
   const now = new Date();
 
-  let photoPath: string | null = null;
-  if (input.photoDataUrl) {
-    const saved = saveDataUrl(input.photoDataUrl, "meals", date);
-    if ("error" in saved) return { ok: false as const, error: saved.error };
-    photoPath = saved.path;
+  // Several shots of one meal: the plate, the packet, the label on its back.
+  // The first is the cover; all of them are stored and all of them are read.
+  const shots = input.photos ?? (input.photoDataUrl ? [{ dataUrl: input.photoDataUrl }] : []);
+
+  const saved: { path: string; kind: PhotoKind }[] = [];
+  for (const shot of shots) {
+    const out = saveDataUrl(shot.dataUrl, "meals", date);
+    if ("error" in out) {
+      // Roll back whatever landed before the bad one, so a rejected third photo
+      // does not leave two orphans on the volume with no row pointing at them.
+      for (const s of saved) deleteStored(s.path);
+      return { ok: false as const, error: out.error };
+    }
+    saved.push({ path: out.path, kind: shot.kind ?? "dish" });
   }
 
   const row = db
@@ -64,16 +81,116 @@ export async function createEntry(input: {
       description,
       normKey: normSync(description),
       mealType: input.mealType ?? suggestMealType(now),
-      photoPath,
+      photoPath: saved[0]?.path ?? null,
       userNote: input.userNote?.trim() || null,
-      source: input.photoDataUrl ? "ai" : "manual",
+      source: saved.length > 0 ? "ai" : "manual",
     })
     .returning({ id: foodEntries.id })
     .get();
 
+  saved.forEach((s, i) =>
+    db.insert(mealPhotos).values({ entryId: row.id, path: s.path, kind: s.kind, sort: i }).run(),
+  );
+
   revalidatePath("/fuel");
   revalidatePath("/");
-  return { ok: true as const, id: row.id, photoPath };
+  return { ok: true as const, id: row.id, photoPath: saved[0]?.path ?? null };
+}
+
+/** Every photo of an entry, cover first. */
+export async function listPhotos(entryId: number) {
+  await guard();
+  return db
+    .select()
+    .from(mealPhotos)
+    .where(eq(mealPhotos.entryId, entryId))
+    .orderBy(asc(mealPhotos.sort), asc(mealPhotos.id))
+    .all();
+}
+
+/**
+ * Adds a photo to an entry that already exists — the label you forgot, the
+ * recipe you were cooking from, the second angle.
+ */
+export async function addPhoto(entryId: number, dataUrl: string, kind: PhotoKind = "dish") {
+  await guard();
+  const entry = db.select().from(foodEntries).where(eq(foodEntries.id, entryId)).get();
+  if (!entry) return { ok: false as const, error: "No such entry." };
+
+  const out = saveDataUrl(dataUrl, "meals", entry.date);
+  if ("error" in out) return { ok: false as const, error: out.error };
+
+  const next =
+    (db
+      .select({ n: sql<number>`COALESCE(MAX(${mealPhotos.sort}), -1)` })
+      .from(mealPhotos)
+      .where(eq(mealPhotos.entryId, entryId))
+      .get()?.n ?? -1) + 1;
+
+  db.insert(mealPhotos).values({ entryId, path: out.path, kind, sort: next }).run();
+
+  // An entry logged as text has no cover. The first photo added becomes one.
+  if (!entry.photoPath) {
+    db.update(foodEntries).set({ photoPath: out.path }).where(eq(foodEntries.id, entryId)).run();
+  }
+
+  revalidatePath("/fuel");
+  return { ok: true as const, path: out.path };
+}
+
+export async function removePhoto(photoId: number) {
+  await guard();
+  const photo = db.select().from(mealPhotos).where(eq(mealPhotos.id, photoId)).get();
+  if (!photo) return { ok: true as const };
+
+  db.delete(mealPhotos).where(eq(mealPhotos.id, photoId)).run();
+  deleteStored(photo.path);
+
+  // Deleting the cover promotes whatever is now first, so the row in the list
+  // never ends up pointing at a file that is gone.
+  const entry = db.select().from(foodEntries).where(eq(foodEntries.id, photo.entryId)).get();
+  if (entry?.photoPath === photo.path) {
+    const next = db
+      .select()
+      .from(mealPhotos)
+      .where(eq(mealPhotos.entryId, photo.entryId))
+      .orderBy(asc(mealPhotos.sort), asc(mealPhotos.id))
+      .get();
+    db.update(foodEntries)
+      .set({ photoPath: next?.path ?? null })
+      .where(eq(foodEntries.id, photo.entryId))
+      .run();
+  }
+
+  revalidatePath("/fuel");
+  return { ok: true as const };
+}
+
+/**
+ * Replaces the suspected ingredients with your own list.
+ *
+ * Marked as yours, which changes what a re-analysis does with it: the model is
+ * told to estimate for exactly this list rather than to have another guess at
+ * what is on the plate.
+ */
+export async function setIngredients(entryId: number, list: Ingredient[]) {
+  await guard();
+  const clean = list
+    .map((i) => ({ name: i.name.trim().slice(0, 80), amount: i.amount?.trim().slice(0, 40) || null }))
+    .filter((i) => i.name.length > 0)
+    .slice(0, MAX_INGREDIENTS);
+
+  db.update(foodEntries)
+    .set({
+      ingredients: serialiseIngredients(clean),
+      ingredientsSource: clean.length > 0 ? "user" : null,
+      edited: true,
+    })
+    .where(eq(foodEntries.id, entryId))
+    .run();
+
+  revalidatePath("/fuel");
+  return { ok: true as const };
 }
 
 export async function updateEntry(
@@ -109,7 +226,14 @@ export async function updateEntry(
 export async function deleteEntry(id: number) {
   await guard();
   const row = db.select().from(foodEntries).where(eq(foodEntries.id, id)).get();
-  if (row?.photoPath) deleteStored(row.photoPath);
+
+  // Every photo, not just the cover — otherwise the extra angles stay on the
+  // volume forever with nothing pointing at them.
+  const shots = db.select().from(mealPhotos).where(eq(mealPhotos.entryId, id)).all();
+  for (const s of shots) deleteStored(s.path);
+  if (row?.photoPath && !shots.some((s) => s.path === row.photoPath)) deleteStored(row.photoPath);
+  db.delete(mealPhotos).where(eq(mealPhotos.entryId, id)).run();
+
   db.delete(foodEntries).where(eq(foodEntries.id, id)).run();
   revalidatePath("/fuel");
   revalidatePath("/");

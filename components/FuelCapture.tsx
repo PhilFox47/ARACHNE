@@ -2,10 +2,16 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createEntry, quickLog } from "@/app/fuel/actions";
+import { addPhoto, createEntry, quickLog } from "@/app/fuel/actions";
+import { MAX_PHOTOS, PHOTO_KIND_LABEL, PHOTO_KIND_SHORT, type PhotoKind } from "@/lib/meal";
 import { ANALYSING_PLACEHOLDER } from "@/lib/plan";
 import { Favourites, type FavouriteItem } from "./Favourites";
 import { WebLoader } from "./WebLoader";
+
+interface Shot {
+  dataUrl: string;
+  kind: PhotoKind;
+}
 
 interface QuickItem {
   normKey: string;
@@ -42,7 +48,7 @@ export function FuelCapture({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<null | "saving" | "reading">(null);
-  const [awaitingNote, setPending2] = useState<{ id: number; preview: string } | null>(null);
+  const [awaitingNote, setPending2] = useState<{ id: number; shots: Shot[] } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [pending, start] = useTransition();
@@ -54,14 +60,14 @@ export function FuelCapture({
     setTimeout(() => setNote(null), 3200);
   };
 
-  const onPhoto = async (file: File) => {
+  const onPhoto = async (files: File[]) => {
     setBusy("saving");
     setNote(null);
     if (navigator.vibrate) navigator.vibrate(8);
 
-    let dataUrl: string;
+    let shots: string[];
     try {
-      dataUrl = await compress(file);
+      shots = await Promise.all(files.slice(0, MAX_PHOTOS).map((f) => compress(f)));
     } catch {
       finish("Couldn't read that image.");
       return;
@@ -70,15 +76,30 @@ export function FuelCapture({
     // Save first, before anyone types anything. The entry exists before the
     // model is ever called, so a slow analysis — or abandoning the note sheet
     // entirely — can never cost you the log.
-    const created = await createEntry({ description: ANALYSING_PLACEHOLDER, photoDataUrl: dataUrl });
+    const created = await createEntry({
+      description: ANALYSING_PLACEHOLDER,
+      photos: shots.map((dataUrl) => ({ dataUrl, kind: "dish" as const })),
+    });
     if (!created.ok) {
       finish(created.error);
       return;
     }
 
     setBusy(null);
-    setPending2({ id: created.id, preview: dataUrl });
+    setPending2({ id: created.id, shots: shots.map((dataUrl) => ({ dataUrl, kind: "dish" })) });
     router.refresh();
+  };
+
+  /** A photo added from inside the sheet, after the entry already exists. */
+  const onExtra = async (entryId: number, file: File, kind: PhotoKind) => {
+    let dataUrl: string;
+    try {
+      dataUrl = await compress(file);
+    } catch {
+      return;
+    }
+    await addPhoto(entryId, dataUrl, kind);
+    setPending2((p) => (p ? { ...p, shots: [...p.shots, { dataUrl, kind }] } : p));
   };
 
   /**
@@ -122,12 +143,12 @@ export function FuelCapture({
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
+          const files = Array.from(e.target.files ?? []);
           e.target.value = "";
-          if (f) void onPhoto(f);
+          if (files.length > 0) void onPhoto(files);
         }}
       />
 
@@ -149,7 +170,7 @@ export function FuelCapture({
               <path d="M30 30 H70" />
             </svg>
             <span className="display text-lg tracking-widest text-ink">Log fuel</span>
-            <span className="label-xs">Photo · saves instantly</span>
+            <span className="label-xs">Photos · saves instantly</span>
           </>
         )}
       </button>
@@ -183,7 +204,8 @@ export function FuelCapture({
 
       {awaitingNote ? (
         <NoteSheet
-          preview={awaitingNote.preview}
+          shots={awaitingNote.shots}
+          onAdd={(file, kind) => void onExtra(awaitingNote.id, file, kind)}
           onAnalyse={(hint) => void analyse(awaitingNote.id, hint)}
         />
       ) : null}
@@ -227,14 +249,18 @@ export function FuelCapture({
  * how good the estimate will be.
  */
 function NoteSheet({
-  preview,
+  shots,
+  onAdd,
   onAnalyse,
 }: {
-  preview: string;
+  shots: Shot[];
+  onAdd: (file: File, kind: PhotoKind) => void;
   onAnalyse: (hint: string) => void;
 }) {
   const [hint, setHint] = useState("");
   const ref = useRef<HTMLInputElement>(null);
+  const addRef = useRef<HTMLInputElement>(null);
+  const [addKind, setAddKind] = useState<PhotoKind>("label");
 
   useEffect(() => {
     // Focus without yanking the keyboard up on a phone the moment it appears —
@@ -263,16 +289,65 @@ function NoteSheet({
   return (
     <div className="fixed inset-0 z-40 flex flex-col justify-end bg-base/80 backdrop-blur-sm">
       <div className="pad-safe-b panel mx-auto flex w-full max-w-lg flex-col gap-3 border-t-2 border-t-crimson p-4">
-        <div className="flex items-start gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={preview} alt="" className="h-16 w-16 shrink-0 border border-edge object-cover" />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="display text-base text-ink">Anything the photo misses?</p>
-            <p className="text-xs leading-relaxed text-muted">
-              Size, how much you ate, what it was cooked in. Optional — saved either way.
-            </p>
-          </div>
+        <div className="flex flex-col gap-1">
+          <p className="display text-base text-ink">Anything the photo misses?</p>
+          <p className="text-xs leading-relaxed text-muted">
+            Size, how much you ate, what it was cooked in. Optional — saved either way.
+          </p>
         </div>
+
+        {/* The shots so far, plus a way to add the one that actually carries the
+            numbers. A photo of the Nährwerttabelle beats any amount of guessing
+            at a plate, and the model is told which image is which. */}
+        <input
+          ref={addRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) onAdd(f, addKind);
+          }}
+        />
+
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+          {shots.map((s, i) => (
+            <span key={i} className="flex shrink-0 flex-col gap-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.dataUrl} alt="" className="h-16 w-16 border border-edge object-cover" />
+              <span className="label-xs">{PHOTO_KIND_SHORT[s.kind]}</span>
+            </span>
+          ))}
+          {shots.length < MAX_PHOTOS ? (
+            <button
+              type="button"
+              onClick={() => addRef.current?.click()}
+              className="tap flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-0.5 border border-dashed border-edge text-muted-dim active:border-cobalt"
+            >
+              <span className="text-lg leading-none">+</span>
+              <span className="label-xs leading-none">Add</span>
+            </button>
+          ) : null}
+        </div>
+
+        {shots.length < MAX_PHOTOS ? (
+          <div className="flex flex-wrap gap-2">
+            {(["label", "recipe", "dish"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setAddKind(k);
+                  addRef.current?.click();
+                }}
+                className="tap border border-edge px-2.5 py-1 text-xs text-muted active:border-cobalt active:text-cobalt-lift"
+              >
+                + {PHOTO_KIND_LABEL[k].toLowerCase()}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <input
           ref={ref}

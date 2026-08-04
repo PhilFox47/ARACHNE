@@ -293,6 +293,40 @@ export const MIGRATIONS: ((db: Database.Database) => void)[] = [
       CREATE INDEX IF NOT EXISTS skill_resets_family_idx ON skill_resets (family);
     `);
   },
+
+  // ── v13: several photos per meal, and suspected ingredients ──
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS meal_photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_id INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'dish',
+        sort INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS meal_photos_entry_idx ON meal_photos (entry_id);
+    `);
+
+    // Every photo already logged becomes the first photo of its entry.
+    // food_entries.photo_path stays as the cover, so every existing query and
+    // every existing thumbnail keeps working untouched.
+    const rows = sqlite
+      .prepare("SELECT id, photo_path, created_at FROM food_entries WHERE photo_path IS NOT NULL")
+      .all() as { id: number; photo_path: string; created_at: number }[];
+
+    const insert = sqlite.prepare(
+      "INSERT INTO meal_photos (entry_id, path, kind, sort, created_at) VALUES (?, ?, 'dish', 0, ?)",
+    );
+    for (const r of rows) insert.run(r.id, r.photo_path, r.created_at);
+
+    const cols = sqlite.pragma("table_info(food_entries)") as { name: string }[];
+    const has = (n: string) => cols.some((c) => c.name === n);
+    if (!has("ingredients")) sqlite.exec("ALTER TABLE food_entries ADD COLUMN ingredients TEXT");
+    if (!has("ingredients_source")) {
+      sqlite.exec("ALTER TABLE food_entries ADD COLUMN ingredients_source TEXT");
+    }
+  },
 ];
 
 /**

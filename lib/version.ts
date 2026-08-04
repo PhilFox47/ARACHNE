@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.5.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.0",
+    date: "2026-08-04",
+    kind: "minor",
+    headline: "FUEL reads more than one photo, and shows its working",
+    changes: [
+      "A meal can carry several photos — the plate, the packet, the back of the packet, the recipe. You tag what each one is, and the model is told, so a Nährwerttabelle is read as a table rather than guessed at as a picture.",
+      "Portions are scaled rather than copied. A label states values per 100 g; the pack says 500 g; the entry gets the number for what you actually ate. Recipes are divided by their servings instead of logged as the whole tray.",
+      "Meals get a breakdown of suspected ingredients, and you can correct it. Snacks don't — breaking a coffee into water and beans tells you nothing.",
+      "Re-analyse. It takes the corrected name, portion and ingredients and works the numbers out again — and is deliberately never given the previous figures, so a bad estimate can't anchor the next one.",
+      "Photos can be added to an entry after the fact. The label you forgot is usually a bigger correction than any amount of typing.",
+    ],
+  },
   {
     version: "1.4.0",
     date: "2026-08-04",
