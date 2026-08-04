@@ -132,6 +132,41 @@ the project directory name.
 
 ---
 
+## Versions and data compatibility
+
+The running version is shown in `SETTINGS → Version`, with the release notes behind it, and tracked
+in [CHANGELOG.md](CHANGELOG.md). `MAJOR.MINOR.PATCH`: small changes move the last number, larger
+ones the middle, a fundamental change the first.
+
+**Every database written by every earlier version must still open.** The app is being used while it
+is being built, so this is not aspirational — a change that cannot carry an existing database
+forward is a change that does not ship.
+
+The schema is versioned inline via `PRAGMA user_version`. Each migration in `lib/db/index.ts` is
+frozen at the shape it had the day it was written and runs exactly once, so a fresh volume and a
+volume that has been running since day one converge on the same schema.
+
+```bash
+npm run check
+```
+
+Builds a database at every historical schema version, seeds every table, migrates it forward, and
+verifies the version, the integrity check, that no row was lost, that re-opening is a no-op, and
+that a fresh install ends up structurally identical to one upgraded from v1. It also checks that
+every progression-ladder rung can be read back out of the logs. Run it before every release.
+
+### Adding a migration
+
+1. Change `lib/db/schema.ts`.
+2. Append a step to `MIGRATIONS`. Never edit an existing one — someone's volume already ran it.
+3. Make it idempotent: `IF NOT EXISTS`, or check `table_info` before `ALTER`.
+4. Don't import from `lib/` inside a migration. It has to keep behaving the way it did the day it
+   was written, and the rest of the codebase is free to change underneath it.
+5. `npm run check`.
+6. Bump the version in `lib/version.ts`, `package.json` and `CHANGELOG.md`.
+
+---
+
 ## Development
 
 ```bash

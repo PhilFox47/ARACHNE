@@ -5,7 +5,7 @@ import { isAuthed } from "@/lib/auth";
 import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
-import { addDays, formatShort } from "@/lib/dates";
+import { formatShort, weekStartDate } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { SuitCompare, type WeekSet } from "@/components/SuitCompare";
 import { BottomNav } from "@/components/BottomNav";
@@ -23,7 +23,7 @@ export default async function Compare() {
   for (const p of rows) {
     const existing = byWeek.get(p.weekIndex) ?? {
       weekIndex: p.weekIndex,
-      label: `Week ${p.weekIndex + 1} · ${formatShort(addDays(s.startDate, p.weekIndex * 7))}`,
+      label: `Week ${p.weekIndex + 1} · ${formatShort(weekStartDate(s.startDate, p.weekIndex))}`,
       byAngle: {},
     };
     existing.byAngle[p.angle] = p.path;

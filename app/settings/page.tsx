@@ -6,7 +6,9 @@ import { apiKey, envModel } from "@/lib/nanogpt";
 import { SettingsForm } from "@/components/SettingsForm";
 import { EquipmentPicker } from "@/components/EquipmentPicker";
 import { VrGamesPicker } from "@/components/VrGamesPicker";
+import { SCHEMA_VERSION } from "@/lib/db";
 import { BackupPanel } from "@/components/BackupPanel";
+import { VersionPanel } from "@/components/VersionPanel";
 import { ResetPanel } from "@/components/ResetPanel";
 import { BottomNav } from "@/components/BottomNav";
 
@@ -48,6 +50,8 @@ export default async function Settings() {
       />
 
       <BackupPanel />
+
+      <VersionPanel schemaVersion={SCHEMA_VERSION} />
 
       <ResetPanel />
 

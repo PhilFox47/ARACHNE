@@ -12,6 +12,8 @@ export interface DayPlan {
   dateLabel: string;
   isToday: boolean;
   isPast: boolean;
+  /** Falls in week 0 but before day 0 — the run hadn't begun yet. */
+  beforeStart?: boolean;
   session: Session | null;
   completed: boolean;
   setsLogged: number;
@@ -32,18 +34,22 @@ export function WeekPlan({ days, rounds }: { days: DayPlan[]; rounds: number }) 
       {days.map((d) => {
         const isOpen = open === d.dayKey;
         const rest = d.session === null;
+        // Nothing was skipped on a day before day 0, so it must not read like a
+        // missed patrol or an off-duty day you chose.
+        const pending = d.beforeStart === true;
 
         return (
           <li key={d.dayKey}>
             <div
               className={`panel ${d.isToday ? "border-crimson-dim" : ""} ${
-                d.isPast && !d.isToday ? "opacity-70" : ""
+                pending ? "opacity-40" : d.isPast && !d.isToday ? "opacity-70" : ""
               }`}
             >
               <button
                 type="button"
-                onClick={() => setOpen(isOpen ? null : d.dayKey)}
-                aria-expanded={isOpen}
+                onClick={() => (pending ? undefined : setOpen(isOpen ? null : d.dayKey))}
+                aria-expanded={pending ? undefined : isOpen}
+                disabled={pending}
                 className="tap flex w-full items-center gap-3 p-3 text-left"
               >
                 <span
@@ -69,10 +75,12 @@ export function WeekPlan({ days, rounds }: { days: DayPlan[]; rounds: number }) 
 
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className={`display text-base ${rest ? "text-muted" : "text-ink"}`}>
-                    {rest ? "Off-duty" : d.session!.title}
+                    {pending ? "Before day 0" : rest ? "Off-duty" : d.session!.title}
                   </span>
                   <span className="label-xs">
-                    {d.completed
+                    {pending
+                      ? "You hadn't started yet"
+                      : d.completed
                       ? `Complete${d.setsLogged > 0 ? ` · ${d.setsLogged} sets` : ""}`
                       : d.setsLogged > 0
                         ? `${d.setsLogged} sets logged`
@@ -87,7 +95,7 @@ export function WeekPlan({ days, rounds }: { days: DayPlan[]; rounds: number }) 
                 </span>
 
                 <span className={`shrink-0 text-lg ${isOpen ? "text-crimson" : "text-muted-dim"}`}>
-                  {isOpen ? "−" : "+"}
+                  {pending ? "" : isOpen ? "−" : "+"}
                 </span>
               </button>
 

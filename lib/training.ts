@@ -35,6 +35,7 @@ import {
   placeOnLadder,
   seedHoldTarget,
   standings,
+  sweepRung,
   type Standing,
 } from "./baseline";
 import { stripFences } from "./vision";
@@ -254,12 +255,30 @@ function sweepPrescription(
 
   const exercises: PrescribedExercise[] = [];
   const seen = new Set<string>();
+  const st = standings();
 
   for (const probe of slot.patrol.probes) {
-    const gate = gateExercise(probe.name, owned);
-    if (!gate.allowed && gate.substitute === null) continue;
+    // A ladder probe opens at the bottom and climbs as the fortnight earns it,
+    // so the first patrol of someone's life is the easiest version of each
+    // movement rather than the plan's default one.
+    const rung = probe.ladder ? sweepRung(probe.family, st) : null;
+    const wanted = rung?.name ?? probe.name;
+    // The rung carries its own metric — a dead hang is seconds where the rest
+    // of the pull ladder is reps — and the probe's is only right for its own
+    // name, which a ladder probe has just replaced.
+    const metric = rung ? (rung.metric ?? "reps") : probe.metric;
 
-    let name = gate.allowed ? probe.name : gate.substitute!.name;
+    const gate = gateExercise(wanted, owned);
+    if (!gate.allowed) {
+      // A substituted ladder probe is dropped rather than swapped. Without a
+      // bar the pull substitute is a row, and recording a row under the pull
+      // family would put a number on the ladder that nothing on it earned.
+      // The row probe already measures what you can actually do.
+      if (rung) continue;
+      if (gate.substitute === null) continue;
+    }
+
+    let name = gate.allowed ? wanted : gate.substitute!.name;
     let note = gate.allowed ? probe.how : `${gate.substitute!.note} ${probe.how}`;
 
     const up = upgradeExercise(name, "", owned);
@@ -267,6 +286,9 @@ function sweepPrescription(
       name = up.name;
       note = `${up.note} ${probe.how}`;
     }
+    // The technique warning goes last, so it is the line left on screen next to
+    // the set you are about to do.
+    if (rung?.watch) note = `${note} ${rung.watch}`;
 
     const key = exerciseKey(name);
     if (seen.has(key)) continue;
@@ -276,7 +298,7 @@ function sweepPrescription(
       key,
       name,
       sets: probe.sets,
-      metric: probe.metric,
+      metric,
       repRange: null,
       targetReps: null,
       targetSeconds: null,
@@ -284,7 +306,7 @@ function sweepPrescription(
       note,
       perSide: probe.perSide ?? false,
       loaded: probe.loaded ?? looksLoaded(name),
-      substitutedFrom: name === probe.name ? null : probe.name,
+      substitutedFrom: name === wanted ? null : wanted,
     });
   }
 

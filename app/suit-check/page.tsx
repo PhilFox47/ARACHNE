@@ -5,7 +5,7 @@ import { isAuthed } from "@/lib/auth";
 import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { photos } from "@/lib/db/schema";
-import { addDays, formatShort, todayISO, weekIndex } from "@/lib/dates";
+import { addDays, formatShort, todayISO, weekIndex, weekStartDate } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { PHOTO_ANGLES } from "@/lib/plan";
 import { SuitCheckCapture } from "@/components/SuitCheckCapture";
@@ -43,7 +43,7 @@ export default async function SuitCheck({
   const history = [...byWeek.entries()].sort((a, b) => b[0] - a[0]);
   const completeWeeks = history.filter(([, list]) => list.length >= PHOTO_ANGLES.length).length;
 
-  const weekStart = addDays(s.startDate, week * 7);
+  const weekStart = weekStartDate(s.startDate, week);
   const done = thisWeek.length;
 
   return (

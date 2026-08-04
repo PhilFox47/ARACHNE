@@ -35,9 +35,29 @@ export function dayKeyOf(iso: string): DayKey {
   return DAY_KEYS[parseISODate(iso).getDay()];
 }
 
-/** 0-based week index since the start date — drives LOW PROFILE WEEK detection. */
+/** The Monday on or before a date. */
+export function mondayOf(iso: string): string {
+  const dow = parseISODate(iso).getDay();
+  return addDays(iso, -(dow === 0 ? 6 : dow - 1));
+}
+
+/**
+ * 0-based week index, counted in calendar weeks from the Monday of the week you
+ * started in.
+ *
+ * Rolling seven-day blocks from the start date would be tidier arithmetic and
+ * are wrong for a human: start on a Tuesday and every screen shows you a week
+ * that runs Tuesday to Monday, which no one reads as a week. Week 0 is instead
+ * the calendar week your day 0 falls in, so a Tuesday start simply has a short
+ * first week with the Monday before it marked as not-yet-started.
+ */
 export function weekIndex(startISO: string, iso: string): number {
-  return Math.floor(daysBetween(startISO, iso) / 7);
+  return Math.floor(daysBetween(mondayOf(startISO), iso) / 7);
+}
+
+/** The Monday that opens a given week of the run. */
+export function weekStartDate(startISO: string, week: number): string {
+  return addDays(mondayOf(startISO), week * 7);
 }
 
 export function formatShort(iso: string): string {

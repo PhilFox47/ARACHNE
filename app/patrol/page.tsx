@@ -6,7 +6,7 @@ import { needsOnboarding } from "@/lib/onboarding";
 import { db } from "@/lib/db";
 import { sessions } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
-import { addDays, dayKeyOf, formatShort, todayISO, weekIndex } from "@/lib/dates";
+import { addDays, dayKeyOf, daysBetween, formatShort, todayISO, weekIndex, weekStartDate } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { loadGameState } from "@/lib/gameData";
 import {
@@ -61,17 +61,22 @@ export default async function Patrol({
   const today = todayISO();
 
   const currentWeek = weekIndex(settings.startDate, today);
-  const maxWeek = Math.floor(courseTotalDays() / 7);
+  // Counted the same way the weeks are, so the final week is whichever calendar
+  // week the last day lands in rather than a rolling seventh of the total.
+  const maxWeek = weekIndex(settings.startDate, addDays(settings.startDate, courseTotalDays()));
   const params = await searchParams;
   const requested = Number(params.week);
   const week = Number.isInteger(requested) ? Math.max(0, Math.min(requested, maxWeek)) : currentWeek;
 
-  const weekStart = addDays(settings.startDate, week * 7);
+  // Always a Monday. Week 0 therefore opens before day 0 for anyone who didn't
+  // start on one, and those days are shown as not-yet-started rather than as
+  // missed patrols.
+  const weekStart = weekStartDate(settings.startDate, week);
   const lowProfile = isLowProfileWeek(week);
 
-  // The phase is read from the week's own first day, so browsing ahead shows
-  // the exercises that will actually apply then rather than today's.
-  const weekPhase = phaseForDay(week * 7);
+  // The phase is read from the week's first day that counts — day 0 at the
+  // earliest — so browsing ahead shows the exercises that will actually apply.
+  const weekPhase = phaseForDay(Math.max(0, daysBetween(settings.startDate, weekStart)));
 
   // One query for the week rather than seven — the set counts come back with
   // the sessions so the overview shows real progress per day.
@@ -99,10 +104,13 @@ export default async function Patrol({
     const date = addDays(weekStart, i);
     const dk = dayKeyOf(date);
     const row = byDate.get(date);
+    const beforeStart = date < settings.startDate;
     // Phase 0 runs the sweep, assigned by patrol number rather than weekday.
-    const planned = baselineWeek
-      ? baselineSession(settings.startDate, date)
-      : sessionFor(weekPhase.id, dk);
+    const planned = beforeStart
+      ? null
+      : baselineWeek
+        ? baselineSession(settings.startDate, date)
+        : sessionFor(weekPhase.id, dk);
     const session =
       planned && planned.options ? { ...planned, options: conditioning } : planned;
     return {
@@ -112,6 +120,7 @@ export default async function Patrol({
       dateLabel: formatShort(date).split(" ")[0],
       isToday: date === today,
       isPast: date < today,
+      beforeStart,
       session,
       completed: row?.completed ?? false,
       setsLogged: row?.setsLogged ?? 0,

@@ -466,6 +466,14 @@ export interface BaselineProbe {
   how: string;
   perSide?: boolean;
   loaded?: boolean;
+  /**
+   * Resolve the movement from the family's ladder instead of using `name`.
+   *
+   * A sweep is a measurement, and a measurement starts from underneath: with
+   * nothing logged this opens at the bottom rung and climbs as the fortnight
+   * earns it. `name` stays as documentation of which slot the probe fills.
+   */
+  ladder?: true;
 }
 
 export interface BaselinePatrol {
@@ -499,18 +507,20 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
     mirrors: "mon",
     probes: [
       {
-        name: "Elevated push-ups",
+        name: "Push-ups",
         family: "push",
         metric: "reps",
         sets: 2,
-        how: "Hands on a table or the sofa edge. Clean reps only — stop when the hips start to sag.",
+        how: "Clean reps only — stop when the hips start to sag. Next patrol moves you up a level if you clear 12.",
+        ladder: true,
       },
       {
         name: "Pike push-ups",
         family: "vertical_push",
         metric: "reps",
         sets: 2,
-        how: "Hips high, head between the hands. Zero is a perfectly good reading.",
+        how: "The overhead press, done with your own weight. Starts easy on purpose — the harder versions are where shoulders get hurt.",
+        ladder: true,
       },
       {
         name: "Dumbbell shoulder press",
@@ -526,6 +536,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
         metric: "reps",
         sets: 2,
         how: "Heels on the floor, shoulders down. Stop before the shoulder starts complaining.",
+        ladder: true,
       },
       {
         name: "Plank",
@@ -595,7 +606,8 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
         family: "pull",
         metric: "time",
         sets: 2,
-        how: "Hang until the grip goes, not until the arms do. Shoulders stay active.",
+        how: "The pull ladder starts here. Hang until the grip is going, not until it goes — 30 s clean and the next patrol offers negatives instead.",
+        ladder: true,
       },
       {
         name: "Inverted rows",
@@ -603,13 +615,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
         metric: "reps",
         sets: 2,
         how: "Under a table or on the bar. Chest to the edge each rep.",
-      },
-      {
-        name: "Negative pull-ups",
-        family: "pull",
-        metric: "reps",
-        sets: 2,
-        how: "Jump up, lower as slowly as you can. Count only the ones you controlled all the way down.",
+        ladder: true,
       },
       {
         name: "Goblet squat",
@@ -718,6 +724,15 @@ export interface Rung {
   note?: string;
   /** Matches logged movement names back onto this rung. */
   match: RegExp;
+  /** Holds are measured in seconds; everything else in reps. */
+  metric?: "reps" | "time";
+  /**
+   * What makes this movement worth a warning. Shown on the set form, and the
+   * reason a ladder exists at all: the rung above is not just harder, it is
+   * harder to do *correctly*, and a beginner cannot tell the difference from
+   * the inside.
+   */
+  watch?: string;
 }
 
 /**
@@ -730,42 +745,56 @@ export interface Rung {
  */
 export const LADDER_ADVANCE_REPS = 12;
 
+/**
+ * EXTRAPOLATED. The document gates the dead hang by phase rather than by a
+ * number — negatives simply begin in Phase 2 — so this is the trigger for
+ * climbing off a hold onto the movement above it. 30 s is half the document's
+ * own month-6 target, which is about where a hang stops being the limiting
+ * factor in a pull.
+ */
+export const LADDER_ADVANCE_SECONDS = 30;
+
 export const LADDERS: Partial<Record<MovementFamily, Rung[]>> = {
   push: [
-    { name: "Push-ups against a wall", dose: "8–12", note: "Hands on the wall, body in one line.", match: /wall push-?up/i },
-    { name: "Push-ups on a table", dose: "8–12", match: /push-?ups? on a table/i },
-    { name: "Push-ups on a chair", dose: "8–12", match: /push-?ups? on a chair|elevated push-?up/i },
-    { name: "Push-ups on the sofa edge", dose: "8–12", match: /sofa edge/i },
+    { name: "Push-ups against a wall", dose: "8–12", note: "Hands on the wall, body in one line.", match: /against a wall|wall push-?up/i, watch: "Hips in line with the shoulders — the body is a plank, not a hinge." },
+    { name: "Push-ups on a table", dose: "8–12", match: /push-?ups? on a table/i, watch: "Elbows back at roughly 45°, not flared straight out." },
+    { name: "Push-ups on a chair", dose: "8–12", match: /push-?ups? on a chair|elevated push-?up/i, watch: "Chest touches first. If the hips arrive first, go back a rung." },
+    { name: "Push-ups on the sofa edge", dose: "8–12", match: /sofa edge/i, watch: "Full range or it doesn't count — halfway down is a different exercise." },
     // Parallettes deepen the range rather than easing it, so a deficit push-up
     // reads as the floor rung, never as an elevated one.
-    { name: "Push-ups", dose: "8–12", note: "On the floor.", match: /^push-?ups?$|deficit push-?up/i },
-    { name: "Diamond push-ups", dose: "8–12", match: /diamond/i },
-    { name: "Archer push-ups", dose: "8–10 per side", match: /archer push-?up/i },
-    { name: "Clap push-ups", dose: "3× 5–8", match: /clap push-?up/i },
+    { name: "Push-ups", dose: "8–12", note: "On the floor.", match: /^push-?ups?$|deficit push-?up/i, watch: "The moment the lower back sags, the set is over." },
+    { name: "Diamond push-ups", dose: "8–12", match: /diamond/i, watch: "Hard on the wrists and elbows. Stop at the first sharp sensation in either." },
+    { name: "Archer push-ups", dose: "8–10 per side", match: /archer push-?up/i, watch: "The straight arm stays straight and passive. Do not let it press." },
+    { name: "Clap push-ups", dose: "3× 5–8", match: /clap push-?up/i, watch: "Land with soft elbows. Landing locked out is how wrists get hurt." },
   ],
   vertical_push: [
-    { name: "Pike push-ups on a chair", dose: "8–12", note: "Hands elevated — the easiest rung.", match: /pike push-?ups? on a chair/i },
-    { name: "Pike push-ups", dose: "8–12", match: /^pike push-?ups?$/i },
-    { name: "Pike push-ups elevated", dose: "8–12", note: "Feet up, toward the handstand push-up.", match: /pike push-?ups? elevated/i },
-    { name: "Handstand push-up negatives", dose: "5× 3", note: "Against the wall, lowering only.", match: /handstand push-?up/i },
+    { name: "Pike push-ups on a chair", dose: "8–12", note: "Hands on a chair, hips high — the easiest rung.", match: /pike push-?ups? on a chair/i, watch: "Head goes forward of the hands, not straight down. Never let the neck take load." },
+    { name: "Pike push-ups", dose: "8–12", match: /^pike push-?ups?$/i, watch: "Elbows track forward, not out to the sides. Stop well before the shoulders fatigue — this is the movement people hurt themselves on." },
+    { name: "Pike push-ups elevated", dose: "8–12", note: "Feet up, toward the handstand push-up.", match: /pike push-?ups? elevated/i, watch: "Almost a handstand press. Only worth trying once the flat version is easy for 12." },
+    { name: "Handstand push-up negatives", dose: "5× 3", note: "Against the wall, lowering only.", match: /handstand push-?up/i, watch: "Have a bail-out planned before the first rep — turn out to the side, never collapse backwards." },
   ],
   dip: [
-    { name: "Triceps dips on chair edge, feet forward", dose: "8–12", match: /feet forward/i },
-    { name: "Triceps dips on chair edge", dose: "8–12", match: /triceps dips/i },
-    { name: "Dips between two chairs", dose: "8–12", match: /dips between two chairs|ring dips/i },
+    { name: "Triceps dips on chair edge, feet forward", dose: "8–12", match: /feet forward/i, watch: "Shoulders down and back. If they roll forward, straighten the legs less." },
+    { name: "Triceps dips on chair edge", dose: "8–12", match: /triceps dips/i, watch: "Stop at 90° at the elbow. Deeper is where shoulders get hurt, not where progress is." },
+    { name: "Dips between two chairs", dose: "8–12", match: /dips between two chairs|ring dips/i, watch: "Check both chairs will not slide before you load them." },
   ],
   pull: [
-    { name: "Dead hang", dose: "3× to just short of letting go", match: /dead hang|ring hang/i },
-    { name: "Negative pull-ups", dose: "5× 5 s", match: /negative pull-?up/i },
-    { name: "Pull-ups", dose: "5× 3", match: /^pull-?ups?$/i },
-    { name: "Explosive pull-ups", dose: "5× 3", match: /explosive pull-?up/i },
+    { name: "Dead hang", dose: "3× to just short of letting go", match: /dead hang|ring hang/i, metric: "time", watch: "Shoulders active, not hanging off the joint. Drop before the grip fails, not when it does." },
+    { name: "Negative pull-ups", dose: "5× 5 s", match: /negative pull-?up/i, watch: "Lower under control the whole way. A drop at the bottom is the rep that hurts an elbow." },
+    { name: "Pull-ups", dose: "5× 3", match: /^pull-?ups?$/i, watch: "No kipping. If the hips swing, the set is over." },
+    { name: "Explosive pull-ups", dose: "5× 3", match: /explosive pull-?up/i, watch: "Explosive up, controlled down. Never explosive down." },
   ],
   row: [
-    { name: "Inverted rows under a table", dose: "8–12", note: "Feet forward, body at an angle.", match: /under a table/i },
-    { name: "Inverted rows", dose: "8–12", match: /^inverted rows?$|ring rows?/i },
-    { name: "Archer rows", dose: "8–10 per side", match: /archer row/i },
+    { name: "Inverted rows under a table", dose: "8–12", note: "Feet forward, body at an angle.", match: /under a table/i, watch: "Check the table takes your weight before you get under it." },
+    { name: "Inverted rows", dose: "8–12", match: /^inverted rows?$|ring rows?/i, watch: "Chest to the bar each rep. Shoulder blades pull first, arms second." },
+    { name: "Archer rows", dose: "8–10 per side", match: /archer row/i, watch: "Keep the hips square. Rotating turns it into something else." },
   ],
 };
+
+/** The bottom of a ladder — where anyone with nothing logged starts. */
+export function entryRungOf(family: MovementFamily): Rung | null {
+  return LADDERS[family]?.[0] ?? null;
+}
 
 /**
  * Which family a movement belongs to. Ordered most specific first — "archer

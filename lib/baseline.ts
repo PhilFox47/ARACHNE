@@ -22,6 +22,7 @@ import {
   BASELINE_PATROLS,
   LADDERS,
   LADDER_ADVANCE_REPS,
+  LADDER_ADVANCE_SECONDS,
   PHASES,
   TRAINING_DAYS,
   familyOf,
@@ -141,7 +142,14 @@ export function standings(): Map<MovementFamily, Standing> {
     // which is exactly how you'd judge it in a gym.
     if (prev && prev.loggedRung >= loggedRung) continue;
 
-    const ready = (row.bestReps ?? 0) >= LADDER_ADVANCE_REPS;
+    // A hold has no reps to count, so it earns its promotion on time. Both
+    // thresholds are the document's advance rule applied to the two things a
+    // rung can actually be measured in.
+    const rung = LADDERS[family]![loggedRung];
+    const ready =
+      rung.metric === "time"
+        ? (row.bestSeconds ?? 0) >= LADDER_ADVANCE_SECONDS
+        : (row.bestReps ?? 0) >= LADDER_ADVANCE_REPS;
     out.set(family, {
       family,
       loggedRung,
@@ -155,6 +163,21 @@ export function standings(): Map<MovementFamily, Standing> {
   return out;
 }
 
+/**
+ * Where the baseline sweep should open a laddered movement.
+ *
+ * The bottom, when nothing has been logged. The sweep exists to find a limit
+ * and the safest way to find one is from underneath — the first patrol handing a
+ * beginner pike push-ups was the plan's default variation leaking into a
+ * measurement, and pike push-ups are both hard and easy to do badly.
+ */
+export function sweepRung(family: MovementFamily, st: Map<MovementFamily, Standing>): Rung | null {
+  const ladder = LADDERS[family];
+  if (!ladder) return null;
+  const standing = st.get(family);
+  return ladder[Math.min(standing?.rung ?? 0, ladder.length - 1)];
+}
+
 export interface Placement {
   name: string;
   dose: string;
@@ -166,10 +189,10 @@ export interface Placement {
 /**
  * Puts a prescribed movement on the rung your logs justify.
  *
- * Clamped to one rung either side of what the plan asked for. The plan owns the
- * shape of the year and the baseline owns your starting point; letting one bad
- * reading jump you four rungs would be the tail wagging the dog, and letting it
- * jump you none would make the fortnight pointless.
+ * The plan owns the shape of the year and your logs own how hard it gets. A
+ * variation is never prescribed more than one rung above what you have actually
+ * done, so the harder movements unlock rather than arrive on schedule — and the
+ * plan can still pull you up a rung when you are ready for it.
  */
 export function placeOnLadder(
   name: string,
@@ -191,14 +214,29 @@ export function placeOnLadder(
   const standing = st.get(family);
   if (!standing) return unchanged;
 
-  const target = Math.max(planRung - 1, Math.min(planRung + 1, standing.rung));
+  // Never above what has actually been logged, and never more than one rung
+  // past what the plan asked for.
+  //
+  // The old rule clamped to one rung either side of the plan, which let the
+  // plan drag someone upward on nothing but the calendar: reach Phase 3 having
+  // missed most of Phase 2 and it would hand you archer push-ups on the
+  // strength of a chair push-up. `standing.rung` already carries the +1 you
+  // earn by clearing a rung cleanly, so capping at it is what makes the higher
+  // variations unlock rather than arrive.
+  const target = Math.min(standing.rung, planRung + 1);
   if (target === planRung) return unchanged;
 
   const rung = ladder[target];
+  const best =
+    standing.bestReps !== null
+      ? `${standing.bestReps} reps`
+      : standing.bestSeconds !== null
+        ? `${standing.bestSeconds} s`
+        : "a set";
   const reason =
     target > planRung
-      ? `Moved up from ${ladder[planRung].name.toLowerCase()} — you logged ${standing.bestReps ?? "a set"}${standing.bestReps ? " reps" : ""} on ${standing.movement.toLowerCase()}.`
-      : `Eased down from ${ladder[planRung].name.toLowerCase()} until the reps are there.`;
+      ? `Moved up from ${ladder[planRung].name.toLowerCase()} — you logged ${best} on ${standing.movement.toLowerCase()}.`
+      : `The plan asks for ${ladder[planRung].name.toLowerCase()}; this is the rung your logs have earned. It moves up on a clean 3×12.`;
 
   return {
     name: rung.name,

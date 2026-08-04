@@ -39,7 +39,7 @@ export function openAt(file: string): Database.Database {
  * same schema. `CREATE TABLE IF NOT EXISTS` alone is not enough: it silently
  * skips an existing table whose columns have since changed.
  */
-const MIGRATIONS: ((db: Database.Database) => void)[] = [
+export const MIGRATIONS: ((db: Database.Database) => void)[] = [
   // ── v1: base schema ──
   (sqlite) => baseSchema(sqlite),
 
@@ -202,6 +202,68 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       );
       CREATE UNIQUE INDEX IF NOT EXISTS favourites_norm_idx ON favourites (norm_key);
     `);
+  },
+
+  // ── v10: weeks became calendar weeks ──
+  // `photos.week_index` was rolling seven-day blocks counted from the start
+  // date; it is now the calendar week, counted from the Monday of the week you
+  // started in. Every stored index shifts unless you happened to start on a
+  // Monday, so they are recomputed here from the one thing that cannot drift:
+  // the date on the photo.
+  (sqlite) => {
+    const started = sqlite.prepare("SELECT value FROM settings WHERE key = 'start_date'").get() as
+      | { value: string }
+      | undefined;
+    if (!started) return;
+
+    const rows = sqlite.prepare("SELECT id, date, angle FROM photos ORDER BY date ASC, id ASC").all() as {
+      id: number;
+      date: string;
+      angle: string;
+    }[];
+    if (rows.length === 0) return;
+
+    // Local-time arithmetic, spelled out rather than imported: a migration has
+    // to keep behaving the way it did the day it was written, and lib/dates is
+    // free to change underneath it.
+    const parse = (iso: string) => {
+      const [y, m, d] = iso.split("-").map(Number);
+      return new Date(y, (m ?? 1) - 1, d ?? 1);
+    };
+    const monday = (iso: string) => {
+      const d = parse(iso);
+      const dow = d.getDay();
+      d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+      return d;
+    };
+    const base = monday(started.value).getTime();
+    const weekOf = (iso: string) => Math.floor((parse(iso).getTime() - base) / 86_400_000 / 7);
+
+    // The unique index comes off first. Rewriting indices in place means every
+    // intermediate state has to be collision-free too, and shifting a whole
+    // column by one week is exactly the case where it isn't.
+    sqlite.exec("DROP INDEX IF EXISTS photos_week_angle_idx");
+
+    // Two old weeks can collapse into one, and the slot is one photo per angle
+    // per week. Rows are walked newest first, so the later shot wins the slot —
+    // it is the one that better represents the week it now belongs to. The
+    // loser's file stays on the volume rather than being deleted from under a
+    // migration.
+    const taken = new Set<string>();
+    const keep = sqlite.prepare("UPDATE photos SET week_index = ? WHERE id = ?");
+    const drop = sqlite.prepare("DELETE FROM photos WHERE id = ?");
+
+    for (const row of [...rows].reverse()) {
+      const wk = weekOf(row.date);
+      const slot = `${wk}:${row.angle}`;
+      if (taken.has(slot)) drop.run(row.id);
+      else {
+        taken.add(slot);
+        keep.run(wk, row.id);
+      }
+    }
+
+    sqlite.exec("CREATE UNIQUE INDEX photos_week_angle_idx ON photos(week_index, angle)");
   },
 ];
 
