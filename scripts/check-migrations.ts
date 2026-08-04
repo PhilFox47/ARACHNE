@@ -408,6 +408,21 @@ ok("the deps stage copies the lockfile", /^COPY\s+package-lock\.json/m.test(deps
 ok("the npm cache is mounted", depsStage.includes("type=cache,target=/root/.npm"));
 ok("the audit round-trip is skipped", /npm ci[^\n]*--no-audit/.test(depsStage));
 
+// The one that actually hung a build for ten minutes with no output.
+// better-sqlite3's install script is `prebuild-install || node-gyp rebuild`,
+// and prebuild-install fetches from github.com with simple-get and no timeout
+// anywhere. Unreachable GitHub means a call that never returns and never
+// errors. Building from source keeps the whole install on hosts that do time
+// out. Removing this line reintroduces a silent, unbounded hang.
+ok(
+  "better-sqlite3 builds from source rather than fetching from GitHub",
+  /npm_config_build_from_source=true/.test(depsStage),
+);
+ok(
+  "a compiler is present for it to use",
+  /apt-get install[^\n]*g\+\+/.test(depsStage),
+);
+
 // The generated package.json must ask for exactly what the real one does. npm
 // would catch a mismatch during the build; catching it here is the difference
 // between a failed deploy and a failed `npm run check`.

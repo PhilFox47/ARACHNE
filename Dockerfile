@@ -29,8 +29,24 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++
 
-# node-gyp builds single-threaded unless told otherwise, on the rare path where
-# it builds at all.
+# Build better-sqlite3 locally instead of downloading a prebuilt binary.
+#
+# This is the fix for a build that hangs at `npm ci` with no output at all.
+# better-sqlite3's install script is `prebuild-install || node-gyp rebuild`, and
+# prebuild-install fetches its binary from **github.com** — not from the npm
+# registry — using simple-get with no timeout configured anywhere. If GitHub is
+# slow or unreachable from inside the Docker network, that call never returns
+# and never errors. The registry being fast tells you nothing, because it is a
+# different host.
+#
+# `build_from_source` makes prebuild-install skip the download entirely
+# ("--build-from-source specified, not attempting download") and go straight to
+# node-gyp, which does have timeouts and retries and so fails loudly rather than
+# hanging. It costs about two minutes of compiling, once, and the layer is then
+# cached until a dependency actually changes.
+ENV npm_config_build_from_source=true
+
+# node-gyp builds single-threaded unless told otherwise.
 ENV npm_config_jobs=max
 
 # Only the lockfile is copied, and package.json is generated from it.
@@ -67,6 +83,7 @@ RUN node -e "\
 # install scripts print — without it a native build is a silent void, which is
 # indistinguishable from a hang while you are watching it.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    --mount=type=cache,target=/root/.cache/node-gyp,sharing=locked \
     npm ci --no-audit --no-fund --foreground-scripts
 
 # Drop the optional packages built for a platform this image is not.

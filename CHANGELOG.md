@@ -17,6 +17,29 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.4 — 2026-08-04
+
+The actual cause of the hanging build: `prebuild-install` fetching from GitHub.
+
+The previous three releases made the install *faster* and never touched what was *stopping* it. The
+log that gave it away showed every package downloaded inside four seconds — the npm cache mount
+working — and then ten minutes of complete silence.
+
+Only three installed packages run install scripts, and the one that reaches the network is
+better-sqlite3: `prebuild-install || node-gyp rebuild`. **prebuild-install fetches its binary from
+github.com, not from the npm registry**, using `simple-get` with no timeout configured anywhere. If
+GitHub is slow or unreachable from inside the Docker network, that call never returns and never
+errors. A fast npm registry proves nothing, because it is a different host — and this is why no
+other container does it: nothing else here has a native module with a prebuilt download.
+
+`npm_config_build_from_source=true` makes prebuild-install skip the download outright and hand
+straight to node-gyp, which uses proper timeouts and retries and therefore fails loudly instead of
+hanging. Verified: it prints "not attempting download", compiles in 1 m 51 s, and the resulting
+binary opens a database and runs a query. node-gyp's header cache is mounted so that cost is paid
+once.
+
+`npm run check` now fails if the flag is removed, or if the compiler it depends on is.
+
 ## 1.5.3 — 2026-08-04
 
 Stops installing 165 MB of binaries that cannot run.

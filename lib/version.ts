@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.3";
+export const APP_VERSION = "1.5.4";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,16 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.4",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "Fixed the hanging Docker build — prebuild-install fetching from GitHub",
+    changes: [
+      "better-sqlite3's install script downloads its binary from github.com, not the npm registry, with no timeout set anywhere. An unreachable GitHub meant a call that never returned and never errored — ten minutes of silence with everything already downloaded.",
+      "It now builds from source instead, which routes through node-gyp: proper timeouts, fails loudly rather than hanging. Two minutes once, then the layer is cached.",
+    ],
+  },
   {
     version: "1.5.3",
     date: "2026-08-04",
