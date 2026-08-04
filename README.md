@@ -47,14 +47,64 @@ curl localhost:3000/api/health
 
 ## Backup
 
+The app backs itself up. Once a day it writes a dated directory into its own volume holding a
+consistent snapshot of the database and every image; **31 are kept**, and writing the 32nd drops the
+oldest. Nothing to schedule and nothing to install.
+
+```
+/data/backups/
+  2026-08-04/  arachne.db  uploads/  manifest.json
+  2026-08-03/  ...
+```
+
+The snapshot uses `VACUUM INTO` rather than copying the file — SQLite runs in WAL mode, so a plain
+`cp` of a running database can be torn. Images are hard-linked to the previous day wherever the file
+already exists, which is almost always: uploads are written once under a random name and never
+edited. A month of daily backups therefore costs about one day of disk. Measured on 8 MB of photos:
+nine backups, 360 image entries, 40 inodes, 9 MB used instead of 76 MB.
+
+`SETTINGS → Backups` lists them with sizes and row counts, and offers **Back up now**, **Download**
+and **Restore**. Restoring is guarded the same way a reset is — pick a date, read what it holds, type
+`RESTORE`.
+
+| Variable | Default | |
+|---|---|---|
+| `BACKUP_DIR` | `/data/backups` | Point it at a NAS mount to get backups off the machine |
+| `BACKUP_KEEP` | `31` | How many days to hold. `0` disables backups entirely |
+| `BACKUP_DISABLED` | — | `1` to switch the schedule off without changing the count |
+| `TZ` | `Europe/Berlin` | Decides which calendar day a backup belongs to |
+
+Timing is an hourly check for "is there a backup for today yet?", not a timer set for midnight. Same
+result on a machine that stays up, and a better one on a machine that doesn't: a container restarted
+at 23:58 loses nothing, and one that was off for a week backs up within the hour of coming back.
+
+### From the command line
+
+```bash
+npm run backup                # write today's now
+npm run backup -- --force     # replace today's
+npm run restore               # list what's available
+npm run restore -- 2026-08-04 # restore that day
+npm run restore -- ./some.db  # restore any ARACHNE database file
+```
+
+### Importing somewhere else
+
+Every backup downloads as a plain SQLite file. **Import a database file** on the settings screen
+takes one back — including one from a different machine. Older files are migrated forward before a
+row is written; a file from a newer build is refused rather than half-applied. Images aren't part of
+a database file, so an import leaves the ones already present alone.
+
+### Off the machine
+
+The rolling set protects against losing the *data*. It does not protect against losing the *host* —
+for that, `scripts/backup.sh` pulls a timestamped archive out of the container to wherever you point
+it:
+
 ```bash
 ./scripts/backup.sh                     # → ./backups/arachne-YYYYmmdd-HHMMSS.tar.gz
 ./scripts/backup.sh /mnt/nas/arachne    # elsewhere
 ```
-
-Snapshots the live database with `VACUUM INTO` rather than copying the file — SQLite runs in WAL
-mode, so a plain `cp` of a running database can be torn. Keeps the newest 30 archives
-(`ARACHNE_KEEP=0` to disable pruning).
 
 Cron it — daily at 04:00:
 
@@ -62,7 +112,7 @@ Cron it — daily at 04:00:
 0 4 * * * cd /srv/arachne && ./scripts/backup.sh >> /var/log/arachne-backup.log 2>&1
 ```
 
-### Restore
+Restoring one of those archives, with the container down:
 
 ```bash
 docker compose down

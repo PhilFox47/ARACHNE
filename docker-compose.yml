@@ -17,10 +17,18 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       DATABASE_PATH: /data/db/arachne.db
       UPLOAD_DIR: /data/uploads
+      BACKUP_DIR: /data/backups
+      # Daily backups kept. The next one written drops the oldest. 0 disables.
+      BACKUP_KEEP: ${BACKUP_KEEP:-31}
+      # TZ decides which calendar day a backup belongs to, so it has to be set.
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - arachne-db:/data/db
       - arachne-uploads:/data/uploads
+      # Its own volume, so the backups survive `docker compose down -v` on the
+      # others and can be mounted somewhere else — a NAS path, say — by editing
+      # this one line.
+      - arachne-backups:/data/backups
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
@@ -31,3 +39,4 @@ services:
 volumes:
   arachne-db:
   arachne-uploads:
+  arachne-backups:

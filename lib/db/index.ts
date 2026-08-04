@@ -4,11 +4,19 @@ import fs from "node:fs";
 import path from "node:path";
 import * as schema from "./schema";
 
-const DB_PATH = process.env.DATABASE_PATH ?? "./data/db/arachne.db";
+export const DB_PATH = process.env.DATABASE_PATH ?? "./data/db/arachne.db";
 
-function open() {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const sqlite = new Database(DB_PATH);
+/**
+ * Opens any ARACHNE database file, pragmas applied and migrations run.
+ *
+ * Shared with the restore path deliberately: a backup taken three months ago is
+ * opened through exactly the same code that opens the live file, so it arrives
+ * at the current schema by the same route. Restore then only has to move rows,
+ * never to reason about which version wrote them.
+ */
+export function openAt(file: string): Database.Database {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const sqlite = new Database(file);
   // WAL survives container restarts better and keeps reads from blocking the
   // single writer. This app never has concurrent writers, but it's free.
   sqlite.pragma("journal_mode = WAL");
@@ -17,8 +25,9 @@ function open() {
   // at startup, when several processes may reach the migration lock at once.
   sqlite.pragma("busy_timeout = 10000");
   migrate(sqlite);
-  return drizzle(sqlite, { schema });
+  return sqlite;
 }
+
 
 /**
  * Schema is created and versioned inline rather than through drizzle-kit
@@ -318,8 +327,44 @@ function baseSchema(sqlite: Database.Database) {
 
 // Next's dev server re-evaluates modules on every change; without a global the
 // process leaks a file handle per reload until SQLite refuses to open more.
-const g = globalThis as unknown as { __arachneDb?: ReturnType<typeof open> };
-export const db = g.__arachneDb ?? open();
-if (process.env.NODE_ENV !== "production") g.__arachneDb = db;
+const g = globalThis as unknown as {
+  __arachneSqlite?: Database.Database;
+  __arachneDb?: ReturnType<typeof drizzle<typeof schema>>;
+};
+
+/** The live connection, for the things drizzle doesn't cover — VACUUM, ATTACH. */
+export const sqlite: Database.Database = g.__arachneSqlite ?? openAt(DB_PATH);
+export const db = g.__arachneDb ?? drizzle(sqlite, { schema });
+
+if (process.env.NODE_ENV !== "production") {
+  g.__arachneSqlite = sqlite;
+  g.__arachneDb = db;
+}
+
+/** How many migrations this build knows about — a backup may not exceed it. */
+export const SCHEMA_VERSION = MIGRATIONS.length;
+
+/**
+ * Arms the daily backup.
+ *
+ * Next's instrumentation hook would be the tidier home for this, but it is
+ * compiled for the edge runtime as well — middleware lives there — and webpack
+ * follows the import into better-sqlite3 regardless of the runtime guard around
+ * it. So it hangs off the module that already owns the connection being backed
+ * up, and which every server path imports.
+ *
+ * That means the schedule arms on the first server-side work rather than at
+ * boot. In the container that is within thirty seconds either way: the compose
+ * healthcheck polls `/api/health`, which reads this database.
+ */
+if (process.env.NEXT_PHASE !== "phase-production-build") {
+  // Deferred so a failure here can never take the database module down with it,
+  // and so the import cycle (schedule → backup → db) resolves cleanly.
+  setTimeout(() => {
+    import("../backupSchedule")
+      .then((m) => m.startBackupSchedule())
+      .catch((err) => console.error("[backup] could not arm the schedule:", err));
+  }, 0).unref?.();
+}
 
 export { schema };

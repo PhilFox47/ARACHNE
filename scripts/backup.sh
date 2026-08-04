@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Timestamped backup of the ARACHNE database and image volume.
+# Timestamped archive of the ARACHNE database and image volume, pulled out of
+# the container onto the host.
 #
 #   ./scripts/backup.sh [output-dir]
 #
 # Default output: ./backups
+#
+# This is the off-the-machine copy. The app also keeps its own rolling set of 31
+# daily backups inside /data/backups — see `npm run backup`, `npm run restore`,
+# and SETTINGS → Backups. That one protects against losing the data; this one
+# protects against losing the host, which is why both exist.
 set -euo pipefail
 
 OUT_DIR="${1:-./backups}"
