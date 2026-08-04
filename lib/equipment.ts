@@ -275,7 +275,7 @@ const GATES: Gate[] = [
   // a bear crawl is hands and feet on the floor with nothing to land on, and
   // gating it away costs the baseline sweep a movement for no reason.
   {
-    match: /shoulder roll|kip-?up|cartwheel|roundoff|bridge/i,
+    match: /shoulder roll|rock-?backs?|kip-?up|cartwheel|roundoff|bridge|kong vault/i,
     needsAny: ["mat", "gym"],
     substitute: null,
   },

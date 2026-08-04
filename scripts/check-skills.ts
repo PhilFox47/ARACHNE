@@ -33,8 +33,8 @@ async function main() {
   const { db } = await import("../lib/db");
   const { exerciseLogs, movementFeedback, sessions, skillResets } = await import("../lib/db/schema");
   const { cutoffs, movementRecords } = await import("../lib/skills");
-  const { standings, sweepMovement } = await import("../lib/baseline");
-  const { ladder, movementKey } = await import("../lib/movements");
+  const { placeOnLadder, standings, sweepMovement } = await import("../lib/baseline");
+  const { findMovement, ladder, movementKey } = await import("../lib/movements");
   const { dayKeyOf } = await import("../lib/dates");
 
   /**
@@ -163,12 +163,71 @@ async function main() {
   ok("mastery is restored", rec("Push-ups on a table")?.mastered === true);
   ok("and so are the old sets", (rec("Push-ups on a table")?.sets ?? 0) > 2);
 
+  // ── New movements are earned and prepared ──
+  console.log("\nnothing complicated arrives unprepared");
+
+  db.delete(exerciseLogs).run();
+  db.delete(movementFeedback).run();
+  db.delete(skillResets).run();
+
+  const fresh = standings("2026-08-07");
+  const place = (name: string) => placeOnLadder(name, "10", null, fresh);
+
+  // The movement that started this: the plan puts "Shoulder roll" on the first
+  // Friday, and the document means the version done from a walk.
+  ok("the plan's shoulder roll is the one from a walk", findMovement("Shoulder roll")?.tier === 4);
+  ok(
+    "a beginner is given rock-backs instead",
+    place("Shoulder roll").name === "Rock-backs",
+    place("Shoulder roll").name,
+  );
+  ok("and is told why", (place("Shoulder roll").note ?? "").includes("nothing logged here yet"));
+
+  // Strands that should be shut outright rather than opened at the bottom.
+  for (const [name, family] of [
+    ["Cartwheel", "tumbling"],
+    ["Safety vault over a bench", "vaults"],
+    ["Kip-up progression", "kip-ups"],
+  ] as const) {
+    ok(`${family} are held back entirely`, place(name).blocked !== null, place(name).name);
+  }
+
+  // Groundwork is never moved and never gated.
+  ok("warm-ups are left exactly as the plan wrote them", place("Arm circles").name === "Arm circles");
+  ok("and are never blocked", place("Arm circles").blocked === null);
+
+  // Logging a warm-up must not place you on the strand it is grouped under.
+  log("2026-08-07", "Arm circles", 10);
+  ok(
+    "logging a warm-up does not create a standing",
+    standings("2026-08-07").get("vertical_push") === undefined,
+  );
+
+  // Once the roll is earned, tumbling opens.
+  for (const date of ["2026-08-08", "2026-08-09"]) {
+    log(date, "Rock-backs", 10);
+    log(date, "Rock-backs", 10);
+    log(date, "Plank", null, 40);
+    log(date, "Plank", null, 40);
+  }
+  const rolled = standings("2026-08-10");
+  ok("the roll strand promoted off rock-backs", (rolled.get("roll")?.tier ?? 0) === 1);
+  ok(
+    "cartwheels are still shut — the roll gate wants 5 of the real thing",
+    placeOnLadder("Cartwheel", "5", null, rolled).blocked !== null,
+  );
+
   console.log("\na whole-tree reset covers every strand");
   log("2026-08-07", "Bodyweight squats", 20);
+  const rowsNow = db.select().from(exerciseLogs).all().length;
   const all = ++clock;
   db.insert(skillResets).values({ family: null, resetAt: all, createdAt: all }).run();
   ok("nothing counts anywhere", movementRecords().size === 0);
-  ok("and every row survived that too", db.select().from(exerciseLogs).all().length > rowsBefore);
+  ok(
+    "and every row survived that too",
+    db.select().from(exerciseLogs).all().length === rowsNow,
+    `${rowsNow} rows`,
+  );
 
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);

@@ -182,6 +182,26 @@ export function SessionLogger({
         ))}
       </ul>
 
+      {/* Movements the plan named that the tree is holding back. Shown rather
+          than silently missing — a session that quietly loses an exercise reads
+          as a bug, and the reason is also the next thing to go and train. */}
+      {rx.locked.length > 0 ? (
+        <div className="panel flex flex-col gap-2 border-l-2 border-l-cobalt p-4">
+          <p className="label-xs text-cobalt-lift">Not yet — {rx.locked.length} held back</p>
+          <ul className="flex flex-col gap-2">
+            {rx.locked.map((l) => (
+              <li key={l.name} className="flex flex-col gap-0.5">
+                <span className="text-sm text-ink">{l.name}</span>
+                <span className="text-xs leading-relaxed text-muted">{l.why}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs leading-relaxed text-muted-dim">
+            These appear in your patrols on their own, as soon as what they need is in your logs.
+          </p>
+        </div>
+      ) : null}
+
       <TensionLine accent={done} />
 
       {/* ── RPE + note ── */}

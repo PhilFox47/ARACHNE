@@ -86,6 +86,19 @@ export interface Prescription {
   source: "ai" | "plan";
   model: string | null;
   exercises: PrescribedExercise[];
+  /**
+   * Movements the plan asked for and the tree is holding back, with the reason.
+   *
+   * Shown rather than silently dropped: a session that quietly loses the
+   * shoulder roll looks like a bug, and "this is waiting on 30 s of plank" is
+   * both the explanation and the next thing to go and do.
+   */
+  locked: LockedOut[];
+}
+
+export interface LockedOut {
+  name: string;
+  why: string;
 }
 
 export function exerciseKey(name: string): string {
@@ -168,6 +181,7 @@ export function baselinePrescription(
   const everLogged = loggedKeys();
 
   const exercises: PrescribedExercise[] = [];
+  const locked: LockedOut[] = [];
   const seen = new Set<string>();
 
   for (const e of source) {
@@ -175,6 +189,15 @@ export function baselinePrescription(
     // to the variation you'll actually be doing rather than the one the plan
     // named for a beginner you may no longer be.
     const placed = placeOnLadder(e.name, e.dose, e.note ?? null, st);
+
+    // A strand that is shut at the bottom is left out rather than swapped for
+    // something off another strand. The plan puts the shoulder roll on your
+    // first Friday and cartwheels on a later one; neither should appear before
+    // the thing underneath it exists, and neither has an easier self to offer.
+    if (placed.blocked) {
+      locked.push({ name: e.name, why: placed.blocked.why });
+      continue;
+    }
 
     // Gate before prescribing. Opening a session and finding work you
     // physically cannot do is worse than a substitution.
@@ -222,6 +245,7 @@ export function baselinePrescription(
     source: "plan",
     model: null,
     exercises: seedHolds(exercises),
+    locked,
   };
 }
 
@@ -257,7 +281,15 @@ function sweepPrescription(
   phase: PhaseId,
   owned: Set<string>,
 ): Prescription {
-  const empty: Prescription = { date, dayKey, phase, source: "plan", model: null, exercises: [] };
+  const empty: Prescription = {
+    date,
+    dayKey,
+    phase,
+    source: "plan",
+    model: null,
+    exercises: [],
+    locked: [],
+  };
   const slot = baselineSlotFor(startDate, date);
   if (slot === null) return empty;
 
@@ -628,6 +660,26 @@ export async function generatePrescription(
 // Persistence
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * What the plan asked for on this day that the tree is currently holding back.
+ *
+ * Recomputed rather than stored alongside the session, because a lock is a
+ * statement about where you stand today. Earn the plank that the shoulder roll
+ * was waiting on and yesterday's saved session should stop claiming it is still
+ * shut.
+ */
+export function lockedFor(phase: PhaseId, dayKey: DayKey): LockedOut[] {
+  const session = sessionFor(phase, dayKey);
+  if (!session) return [];
+  const st = standings();
+  const out: LockedOut[] = [];
+  for (const e of [...session.main, ...(session.extras ?? [])]) {
+    const placed = placeOnLadder(e.name, e.dose, e.note ?? null, st);
+    if (placed.blocked) out.push({ name: e.name, why: placed.blocked.why });
+  }
+  return out;
+}
+
 export function storedPrescription(date: string): Prescription | null {
   const row = db.select().from(sessionPlans).where(eq(sessionPlans.date, date)).get();
   if (!row) return null;
@@ -639,6 +691,7 @@ export function storedPrescription(date: string): Prescription | null {
       source: row.source,
       model: row.model,
       exercises: JSON.parse(row.payload) as PrescribedExercise[],
+      locked: lockedFor(row.phase as PhaseId, row.dayKey as DayKey),
     };
   } catch {
     return null;

@@ -15,7 +15,7 @@ than hard.
 
 The resolution the app uses: **the plan owns which pattern, your logs own which variation.**
 
-## What shipped (v1.3.0)
+## What shipped (v1.4.0)
 
 Proposals 2, 3, 4 and most of 1 are in. The catalogue in `lib/movements.ts` is the piece that made
 the rest cheap:
@@ -40,6 +40,22 @@ v1.3.0 added the two things a week of using it made obvious:
   holds a cutoff per strand; `lib/skills.ts` stops reading sets before it. Undo is a row delete.
   This exists because the app created the problem: a first patrol logged before the ladder knew
   anything about the athlete placed them halfway up a strand.
+
+v1.4.0 closed the hole underneath all of it. The catalogue only ever held the movements someone had
+got round to writing up — 45 of the 83 the plan can actually prescribe. The other 38 had no strand,
+no explanation and no preparation, which is how the shoulder roll ended up in week one:
+
+- **Every prescribable movement is in the catalogue**, and `npm run check` fails the build if that
+  stops being true. Thursday's VR titles are the one exception; they are game sessions, not
+  movements.
+- **Two tracks.** `ladder` movements are rungs — earned, gated, with a mastery bar. `groundwork` —
+  warm-ups, stretches, mobility drills, the dumbbell accessories — is always open and never moved.
+  Both are explained and both are briefed to the model; only one is gated.
+- **Eight new strands**, including the roll ladder the document describes in one sentence and the
+  app never encoded.
+- **A strand can be shut as a whole.** There is no easier cartwheel. When the entry rung's gate is
+  closed the movement leaves the session and the session says which movement is waiting and on what.
+- **An untouched strand opens at the bottom**, not at the plan's rung — see below.
 
 Still open: slots instead of session lists (proposal 1's remaining half), letting the model choose
 within the earned range (5), fatigue-aware volume (6), in-session ramping for tests (7), and skills
@@ -74,6 +90,11 @@ sessions, with no session you reported as painful. Two sets rather than the docu
 the baseline fortnight prescribes two, and a bar the sweep cannot clear would strand every ladder at
 the bottom; two sessions rather than one for the same reason the fortnight repeats itself — a single
 reading is a guess. `npm run check` fails if any movement asks for more than the fortnight can give.
+
+A strand with **no standing at all** opens at its easiest movement. This matters more than it sounds:
+`min(standing, planTier + 1)` only helps once there is a standing, so before v1.4.0 a strand nothing
+had ever been logged on fell through to whatever the plan named. That is the pike push-up bug, and it
+was still live for every strand the baseline fortnight does not reach — which is all of the skills.
 
 The **baseline sweep** opens every ladder at the bottom and climbs. Five patrols cover every family;
 the fortnight walks up to your limit rather than starting above it.

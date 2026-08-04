@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,20 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.4.0",
+    date: "2026-08-04",
+    kind: "minor",
+    headline: "Every movement the plan can prescribe is now on THE WEB",
+    changes: [
+      "Thirty-eight movements the plan could put in front of you were in no strand and had no explanation — the shoulder roll among them, arriving in week one on a Friday with nothing under it.",
+      "The shoulder roll is now a five-level strand: rock-backs, then from a kneel, a crouch, standing, and finally from a walk — which is the progression the plan document itself describes.",
+      "Eight new strands: falling, tumbling, getting up, obstacles, spine, hips, lunging and the engine. Cartwheels wait on a handstand and a roll; vaults wait on a roll; the kip-up waits on a hollow hold.",
+      "Warm-ups, cooldowns, mobility drills and the dumbbell work are Groundwork: on THE WEB and fully explained, but never locked. You should not have to earn a stretch.",
+      "A strand with nothing logged on it now opens at its easiest movement rather than at whatever the plan named — the fix that stopped pike push-ups on day one, applied everywhere.",
+      "A movement the tree is holding back is shown in the session with the reason, instead of quietly not being there.",
+    ],
+  },
   {
     version: "1.3.0",
     date: "2026-08-04",

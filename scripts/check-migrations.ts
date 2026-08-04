@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { MIGRATIONS, SCHEMA_VERSION, openAt } from "../lib/db";
+import { BASELINE_PATROLS, PHASES, sessionFor, type DayKey } from "../lib/plan";
 import {
   LADDER_FAMILIES,
   MOVEMENTS,
@@ -248,6 +249,108 @@ for (const family of LADDER_FAMILIES) {
     strand.every((m, i) => m.tier === i),
     strand.map((m) => m.tier).join(","),
   );
+}
+
+// ── Every movement the plan can prescribe is in the catalogue ──
+// The invariant this whole file exists to protect, and the one that was
+// silently false: the shoulder roll was in Friday's session from day one and
+// nowhere in the catalogue, so it had no explanation, no preparation under it
+// and nothing the model could be told about it. Adding an exercise to the plan
+// without adding it here now fails the build instead of shipping.
+//
+// Thursday's VR titles are the deliberate exception. They are game sessions
+// picked from a list, not movements, and the equipment screen owns them.
+console.log("\nplan coverage");
+
+const VR = /beat saber|supernatural|thrill of the fight|les mills|fitxr|pistol whip|synth ?riders/i;
+const DAYS: DayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const prescribed = new Map<string, string>();
+
+const note = (name: string, where: string) => {
+  if (VR.test(name)) return;
+  if (!prescribed.has(name)) prescribed.set(name, where);
+};
+
+for (const phase of PHASES) {
+  for (const day of DAYS) {
+    const s = sessionFor(phase.id, day);
+    if (!s) continue;
+    for (const e of s.warmup ?? []) note(e.name, `phase ${phase.id} ${day} warm-up`);
+    for (const e of s.main ?? []) note(e.name, `phase ${phase.id} ${day}`);
+    for (const e of s.cooldown ?? []) note(e.name, `phase ${phase.id} ${day} cooldown`);
+  }
+}
+for (const p of BASELINE_PATROLS) {
+  for (const probe of p.probes) note(probe.name, `baseline patrol ${p.index}`);
+}
+
+for (const [name, where] of prescribed) {
+  ok(`"${name}" is in the catalogue`, findMovement(name) !== null, where);
+}
+
+// ── Gates have to be passable ──
+// A whole strand may be shut at the bottom — tumbling waits on being able to
+// roll, and that is the point of the tree. What must never happen is a gate
+// nobody can open: a number the gating strand cannot produce, or a ring of
+// strands each waiting on the next.
+console.log("\ngates");
+
+// A gate is satisfied by the best number ever logged on the gating strand, so
+// asking for more than that strand's mastery bar is fine — the document's own
+// checkpoints do it, wanting a 60 s wall handstand off a rung whose bar is 30.
+// What is never satisfiable is asking in a unit the strand does not measure:
+// no amount of dead hanging produces a rep count, so a reps gate on a
+// seconds-only strand locks a movement out of the plan permanently.
+for (const m of MOVEMENTS) {
+  for (const req of m.requires ?? []) {
+    const strand = ladder(req.family);
+    const wants = req.reps !== undefined ? "reps" : "time";
+    ok(
+      `"${m.name}" gate on ${req.family} asks in a unit that strand measures`,
+      strand.some((r) => r.metric === wants),
+      `wants ${wants}, strand measures ${[...new Set(strand.map((r) => r.metric))].join("/")}`,
+    );
+  }
+}
+
+// No family may depend on itself, however far round. The placement walk would
+// never resolve it and every strand in the ring would stay shut forever.
+const deps = new Map<string, Set<string>>();
+for (const m of MOVEMENTS) {
+  const set = deps.get(m.family) ?? new Set<string>();
+  for (const req of m.requires ?? []) set.add(req.family);
+  deps.set(m.family, set);
+}
+
+const state = new Map<string, "open" | "done">();
+let cycle: string[] | null = null;
+const walk = (family: string, path: string[]) => {
+  if (state.get(family) === "done") return;
+  if (state.get(family) === "open") {
+    cycle ??= [...path.slice(path.indexOf(family)), family];
+    return;
+  }
+  state.set(family, "open");
+  for (const next of deps.get(family) ?? []) walk(next, [...path, family]);
+  state.set(family, "done");
+};
+for (const family of LADDER_FAMILIES) walk(family, []);
+ok("no strand waits on itself, however far round", cycle === null, (cycle ?? []).join(" → "));
+
+// A gated strand entry is allowed, but only because prescription drops it
+// rather than offering something off another ladder. Anything gated at the
+// bottom therefore has to be gated by a strand that opens ungated.
+for (const family of LADDER_FAMILIES) {
+  const strand = ladder(family);
+  if (strand.length === 0) continue;
+  for (const req of strand[0].requires ?? []) {
+    const gating = ladder(req.family);
+    ok(
+      `${family} is gated by a strand that itself opens`,
+      gating.length > 0 && (gating[0].requires ?? []).length === 0,
+      req.family,
+    );
+  }
 }
 
 // Prerequisites must point somewhere real, and must not point back into the

@@ -12,7 +12,9 @@ import { getSettings } from "./settings";
 import {
   FAMILY_BLURBS,
   FAMILY_LABELS,
+  GROUNDWORK_FAMILIES,
   LADDER_FAMILIES,
+  groundwork,
   ladder,
   masterySessions,
   masterySets,
@@ -83,6 +85,22 @@ export interface WebSummary {
   nextUp: WebNode[];
   /** Lines drawn on the tree, newest first. Empty when nothing has been reset. */
   resets: ResetSummary[];
+  /**
+   * The always-open work, grouped by family.
+   *
+   * On THE WEB because every movement the plan can prescribe should be
+   * explained somewhere, and a warm-up you have never seen described is a
+   * warm-up done from the name alone. Not on a strand, because nothing here is
+   * earned — that would be a lock on the thing you do before training.
+   */
+  groundwork: GroundworkGroup[];
+  totalGroundwork: number;
+}
+
+export interface GroundworkGroup {
+  family: MovementFamily;
+  label: string;
+  nodes: WebNode[];
 }
 
 export function buildWeb(): WebSummary {
@@ -150,6 +168,33 @@ export function buildWeb(): WebSummary {
     });
   }
 
+  const groups: GroundworkGroup[] = GROUNDWORK_FAMILIES.map((family) => ({
+    family,
+    label: FAMILY_LABELS[family],
+    nodes: groundwork(family).map((m) => {
+      const rec = records.get(m.name);
+      const usable = gateExercise(m.name, owned).allowed || (m.needs ?? []).length === 0;
+      return {
+        movement: m,
+        // Never locked and never mastered: it is either something you own the
+        // kit for or something you can do right now.
+        state: usable ? "available" : "unequipped",
+        bestReps: rec?.bestReps ?? null,
+        bestSeconds: rec?.bestSeconds ?? null,
+        sets: rec?.sets ?? 0,
+        sessions: rec?.sessions ?? 0,
+        lastDate: rec?.lastDate ?? null,
+        cleanSessions: 0,
+        needSessions: 0,
+        bestCleanSets: 0,
+        needSets: 0,
+        progress: 0,
+        gate: null,
+        unlockedBy: null,
+      } satisfies WebNode;
+    }),
+  })).filter((g) => g.nodes.length > 0);
+
   return {
     strands,
     totalNodes: strands.reduce((n, s) => n + s.nodes.length, 0),
@@ -157,5 +202,7 @@ export function buildWeb(): WebSummary {
     totalReached: strands.reduce((n, s) => n + s.reached, 0),
     nextUp,
     resets: resetSummary(),
+    groundwork: groups,
+    totalGroundwork: groups.reduce((n, g) => n + g.nodes.length, 0),
   };
 }

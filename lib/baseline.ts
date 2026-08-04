@@ -27,6 +27,7 @@ import {
   type Session,
 } from "./plan";
 import {
+  FAMILY_LABELS,
   findMovement,
   ladder,
   movementKey,
@@ -173,6 +174,11 @@ export function standings(today = todayISO()): Map<MovementFamily, Standing> {
     const movement = rec.movement;
     if (rec.lastDate === null) continue;
 
+    // Groundwork sits in a family for grouping but is not a rung on it. Letting
+    // arm circles set the overhead standing would put the pike strand at its
+    // bottom rung every time you warmed up.
+    if (movement.track === "groundwork") continue;
+
     // A movement that has hurt twice does not count as reached, however many
     // reps went into it. It stops holding the strand open above it.
     if ((pain.get(movementKey(movement.name)) ?? 0) >= PAIN_DEMOTES_AT) continue;
@@ -252,6 +258,17 @@ export interface Placement {
   note: string | null;
   /** Set when the ladder moved you off the plan's own variation. */
   movedFrom: string | null;
+  /**
+   * Set when even the bottom of the strand is gated shut, and the movement
+   * should be left out of the session entirely.
+   *
+   * Some strands are locked as a whole rather than rung by rung — you should
+   * not be attempting a cartwheel before you can roll out of one, and there is
+   * no easier cartwheel to offer instead. Substituting something from another
+   * strand would put a number on a ladder nothing earned, so the honest answer
+   * is to leave it out and say why.
+   */
+  blocked: Prerequisite | null;
 }
 
 /**
@@ -268,14 +285,49 @@ export function placeOnLadder(
   note: string | null,
   st: Map<MovementFamily, Standing>,
 ): Placement {
-  const unchanged: Placement = { name, dose, note, movedFrom: null };
+  const unchanged: Placement = { name, dose, note, movedFrom: null, blocked: null };
 
   const planned = findMovement(name);
   if (!planned) return unchanged;
 
+  // Groundwork is not on a ladder and is never moved. A warm-up you have to
+  // earn is a warm-up nobody does.
+  if (planned.track === "groundwork") return unchanged;
+
   const strand = ladder(planned.family);
+  if (strand.length === 0) return unchanged;
+
+  // A whole strand can be shut. Tumbling waits on being able to roll, vaults
+  // wait on the same, and the kip-up waits on a trunk that can hold a hollow —
+  // none of which have an easier version of themselves to fall back to.
+  const entryGate = lockedBy(strand[0], st);
+  if (entryGate) return { ...unchanged, blocked: entryGate };
+
   const standing = st.get(planned.family);
-  if (!standing) return unchanged;
+
+  /**
+   * A strand with nothing logged on it opens at the bottom, not at whatever
+   * the plan happened to name.
+   *
+   * This is the pike push-up problem generalised. Fixing the baseline sweep
+   * fixed the fortnight, but every strand the fortnight does not reach — the
+   * skills, the vaults, the range work the document only adds in Phase 2 —
+   * still arrived at the plan's own variation the first time it appeared,
+   * which for the shoulder roll meant rolling from a walk in week one. If the
+   * logs say nothing about a strand, the honest reading is not "the plan's
+   * level" but "we don't know yet", and the safe answer to that is the bottom.
+   */
+  if (!standing) {
+    if (planned.tier === 0) return unchanged;
+    const first = strand[0];
+    return {
+      name: first.name,
+      dose: first.dose,
+      note: `Starting at the bottom of the ${FAMILY_LABELS[planned.family].toLowerCase()} strand — nothing logged here yet. ${planned.name} is what this becomes.`,
+      movedFrom: name,
+      blocked: null,
+    };
+  }
 
   const target = Math.min(standing.tier, Math.min(planned.tier + 1, strand.length - 1));
   if (target === planned.tier) return unchanged;
@@ -299,8 +351,9 @@ export function placeOnLadder(
   return {
     name: movement.name,
     dose: movement.dose,
-    note: movement.summary ? reason : reason,
+    note: reason,
     movedFrom: name,
+    blocked: null,
   };
 }
 

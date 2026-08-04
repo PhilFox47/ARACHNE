@@ -17,6 +17,45 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.4.0 — 2026-08-04
+
+Every movement the plan can prescribe is now on THE WEB, and the hard ones have something under
+them.
+
+**Thirty-eight movements were in the plan and in no strand.** The shoulder roll was the one that
+gave it away: the document calls it *the foundational parkour skill and your insurance against
+injury in everything that follows*, prescribes it on the first Friday, and the app had it in a
+session with no explanation, no preparation and nothing the model could be told about it. Cartwheels,
+kip-ups, wall runs, burpees, the whole Tuesday range block and every warm-up were in the same
+position. The catalogue went from 45 entries to 89.
+
+**The shoulder roll is a five-level strand**, and the levels are the document's own: *"Erst langsam
+aus der Hocke, dann aus dem Stand, dann aus dem Gehen."* Rock-backs and a roll from a kneel sit under
+those three, because a crouch is already a fall for someone who has never rolled. Every level says
+what the roll actually is — chin to chest, over the shoulder blade and out at the opposite hip — and
+what it costs to get wrong.
+
+**Eight new strands**: falling, tumbling, getting up, obstacles, spine, hips, lunging and the engine.
+They are gated on each other the way the movements actually depend on each other: cartwheels need
+30 s of wall handstand *and* a roll, vaults need a roll, the wall run needs 3 pull-ups, the kip-up
+needs a hollow hold, burpees need 8 floor push-ups. A strand can now be shut as a whole — there is
+no easier cartwheel to offer instead — and when one is, the session says which movement is waiting
+and on what, rather than quietly not containing it.
+
+**Groundwork.** Warm-ups, cooldowns, mobility drills and the three dumbbell lifts are on THE WEB and
+fully explained, but never locked and never moved. Arm circles do not gate cat-cow, and a warm-up you
+have to earn is a warm-up nobody does.
+
+**A strand with nothing logged on it opens at its easiest movement**, not at whatever the plan named.
+This is v1.1.0's pike push-up fix generalised: that one fixed the baseline fortnight, but every
+strand the fortnight does not reach still arrived at the plan's own variation the first time it
+appeared. That is why "Shoulder roll" meant rolling from a walk in week one.
+
+Also: `npm run check` now fails the build if the plan can prescribe a movement the catalogue doesn't
+know, so this cannot come back. It also proves no strand waits on itself however far round, and that
+no gate asks in a unit its strand doesn't measure. The Tuesday range work split into spine and hips
+because three different capacities were collapsing onto one rung. 896 checks.
+
 ## 1.3.0 — 2026-08-04
 
 Mastery takes repeating, and placement can be reset.

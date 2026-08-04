@@ -133,6 +133,8 @@ export function WebTree({ web }: { web: WebSummary }) {
         <Strand key={s.family} strand={s} onOpen={setOpen} />
       ))}
 
+      {web.groundwork.length > 0 ? <Groundwork web={web} onOpen={setOpen} /> : null}
+
       {open ? <Sheet node={open} onClose={() => setOpen(null)} /> : null}
       {resetting ? <ResetSheet web={web} onClose={() => setResetting(false)} /> : null}
     </div>
@@ -397,9 +399,76 @@ function Strand({ strand, onOpen }: { strand: WebStrand; onOpen: (n: WebNode) =>
   );
 }
 
+/**
+ * The work that is always there.
+ *
+ * It is on this screen for one reason: every movement a patrol can put in front
+ * of you should be explained somewhere, and warm-ups were the half of the plan
+ * that never was. It is deliberately not a strand — arm circles do not unlock
+ * cat-cow, and drawing them as a chain would say they did.
+ */
+function Groundwork({ web, onOpen }: { web: WebSummary; onOpen: (n: WebNode) => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="tap flex items-baseline justify-between gap-3 text-left"
+      >
+        <p className="label-xs">Groundwork</p>
+        <p className="label-xs tabular">
+          {web.totalGroundwork} {open ? "▲" : "▼"}
+        </p>
+      </button>
+      <p className="px-1 text-xs leading-relaxed text-muted-dim">
+        Warm-ups, cooldowns, the mobility drills and the dumbbell work. Always open, nothing to
+        unlock — but explained, because you do these more often than anything on a strand.
+      </p>
+
+      {open
+        ? web.groundwork.map((g) => (
+            <div key={g.family} className="flex flex-col gap-1.5">
+              <p className="label-xs px-1 pt-2 text-cobalt-lift">{g.label}</p>
+              <ul className="panel divide-y divide-edge">
+                {g.nodes.map((n) => (
+                  <li key={n.movement.name}>
+                    <button
+                      type="button"
+                      onClick={() => onOpen(n)}
+                      className="tap flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span
+                          className={`text-sm ${
+                            n.state === "unequipped" ? "text-muted-dim" : "text-ink"
+                          }`}
+                        >
+                          {n.movement.name}
+                        </span>
+                        <span className="label-xs truncate">
+                          {n.state === "unequipped" ? "Needs kit you don't own" : n.movement.dose}
+                        </span>
+                      </span>
+                      <span className="label-xs shrink-0">
+                        {n.sets > 0 ? `${n.sets} sets` : "—"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        : null}
+    </section>
+  );
+}
+
 /** The coaching detail. Long on purpose — this is where the movement is learned. */
 function Sheet({ node, onClose }: { node: WebNode; onClose: () => void }) {
   const m = node.movement;
+  const isGround = m.track === "groundwork";
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col justify-end bg-base/85 backdrop-blur-sm">
@@ -408,7 +477,9 @@ function Sheet({ node, onClose }: { node: WebNode; onClose: () => void }) {
       <div className="pad-safe-b panel mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col gap-4 overflow-y-auto border-t-2 border-t-crimson p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
-            <p className="label-xs text-crimson">{STATE_LABEL[node.state]}</p>
+            <p className="label-xs text-crimson">
+              {isGround ? "Groundwork" : STATE_LABEL[node.state]}
+            </p>
             <h2 className="display text-xl leading-tight text-ink">{m.name}</h2>
           </div>
           <button type="button" onClick={onClose} className="label-xs shrink-0 underline">
@@ -426,28 +497,43 @@ function Sheet({ node, onClose }: { node: WebNode; onClose: () => void }) {
                 m.metric === "time" ? `${node.bestSeconds ?? "—"}s` : String(node.bestReps ?? "—")
               }
             />
-            <Cell
-              label="Clean sessions"
-              value={`${node.cleanSessions} / ${node.needSessions}`}
-              bordered
-            />
+            {isGround ? (
+              <Cell label="Sessions" value={String(node.sessions)} bordered />
+            ) : (
+              <Cell
+                label="Clean sessions"
+                value={`${node.cleanSessions} / ${node.needSessions}`}
+                bordered
+              />
+            )}
             <Cell label="Sets logged" value={String(node.sets)} bordered />
           </div>
         ) : null}
 
-        {/* The rule, spelled out. A bar you can clear by accident on one good day
-            teaches nothing, and it is worth saying why the app is holding you here. */}
-        <div className="flex flex-col gap-1.5 border-l-2 border-l-cobalt pl-3">
-          <p className="label-xs text-cobalt-lift">Mastered at {masteryLabel(m)}</p>
-          <p className="text-xs leading-relaxed text-muted">
-            {node.needSets} sets that clear {setBarLabel(m)} in one session, on {node.needSessions}{" "}
-            separate days. One good set is a good day, not a level — and a session where you reported
-            that something hurt doesn&apos;t count towards it.
-            {node.sets > 0 && node.state !== "mastered" && node.cleanSessions === 0
-              ? ` Your best session so far cleared ${node.bestCleanSets} of ${node.needSets}.`
-              : ""}
-          </p>
-        </div>
+        {isGround ? (
+          <div className="flex flex-col gap-1.5 border-l-2 border-l-cobalt pl-3">
+            <p className="label-xs text-cobalt-lift">Groundwork · {m.dose}</p>
+            <p className="text-xs leading-relaxed text-muted">
+              Always available and never locked. There is nothing to master here — this is what you
+              do so the rest of the session goes well, and the only thing that matters is doing it
+              properly.
+            </p>
+          </div>
+        ) : (
+          /* The rule, spelled out. A bar you can clear by accident on one good day
+             teaches nothing, and it is worth saying why the app is holding you here. */
+          <div className="flex flex-col gap-1.5 border-l-2 border-l-cobalt pl-3">
+            <p className="label-xs text-cobalt-lift">Mastered at {masteryLabel(m)}</p>
+            <p className="text-xs leading-relaxed text-muted">
+              {node.needSets} sets that clear {setBarLabel(m)} in one session, on {node.needSessions}{" "}
+              separate days. One good set is a good day, not a level — and a session where you
+              reported that something hurt doesn&apos;t count towards it.
+              {node.sets > 0 && node.state !== "mastered" && node.cleanSessions === 0
+                ? ` Your best session so far cleared ${node.bestCleanSets} of ${node.needSets}.`
+                : ""}
+            </p>
+          </div>
+        )}
 
         {node.state === "locked" && node.gate ? (
           <div className="panel-hot flex flex-col gap-1 p-3">
