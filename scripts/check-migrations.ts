@@ -22,6 +22,9 @@ import {
   MOVEMENTS,
   findMovement,
   ladder,
+  masteryLabel,
+  masterySessions,
+  masterySets,
   movementKey,
 } from "../lib/movements";
 
@@ -210,6 +213,26 @@ for (const m of MOVEMENTS) {
     ok(`alias "${alias}" resolves to ${m.name}`, findMovement(alias)?.name === m.name);
   }
   ok(`"${m.name}" states a mastery bar`, m.masterAt.reps !== undefined || m.masterAt.seconds !== undefined);
+  ok(
+    `"${m.name}" measures its bar in the unit it is dosed in`,
+    m.metric === "time" ? m.masterAt.seconds !== undefined : m.masterAt.reps !== undefined,
+    `${m.metric} vs ${m.masterAt.reps !== undefined ? "reps" : "seconds"}`,
+  );
+  // A bar of one set on one day is the thing the session rule exists to prevent:
+  // a single good set is a good day, not a level.
+  ok(
+    `"${m.name}" asks for more than one clean reading`,
+    masterySets(m) >= 1 && masterySessions(m) >= 2,
+    `${masterySets(m)}×, ${masterySessions(m)} sessions`,
+  );
+  // The sweep is what has to be able to clear it, and the fortnight prescribes
+  // two sets per probe on two rounds. A bar above that can never be met by the
+  // baseline, so no strand would ever leave rung 0.
+  ok(
+    `"${m.name}" is reachable inside the baseline fortnight`,
+    masterySets(m) <= 2 && masterySessions(m) <= 2,
+    masteryLabel(m),
+  );
   ok(
     `"${m.name}" is explained`,
     m.summary.length > 20 && m.setup.length > 0 && m.execution.length > 0 && m.watch.length > 20 && m.cues.length > 0 && m.trains.length > 0,

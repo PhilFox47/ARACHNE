@@ -7,24 +7,22 @@
  * restores the tree, and correcting a mis-logged set corrects it too.
  */
 
-import { sql } from "drizzle-orm";
-import { db } from "./db";
-import { exerciseLogs } from "./db/schema";
 import { ownedKeys, gateExercise } from "./equipment";
 import { getSettings } from "./settings";
 import {
   FAMILY_BLURBS,
   FAMILY_LABELS,
   LADDER_FAMILIES,
-  isMastered,
   ladder,
+  masterySessions,
+  masterySets,
   masteryLabel,
-  movementKey,
   type Movement,
   type MovementFamily,
   type Prerequisite,
 } from "./movements";
 import { lockedBy, standings, type Standing } from "./baseline";
+import { movementRecords, resetSummary, type MovementRecord, type ResetSummary } from "./skills";
 
 export type NodeState =
   /** Cleared the bar. The tier above is open. */
@@ -44,7 +42,14 @@ export interface WebNode {
   bestReps: number | null;
   bestSeconds: number | null;
   sets: number;
+  sessions: number;
   lastDate: string | null;
+  /** Sessions where enough sets cleared the bar, and how many are wanted. */
+  cleanSessions: number;
+  needSessions: number;
+  /** Best sets-in-one-session against the bar, and how many are wanted. */
+  bestCleanSets: number;
+  needSets: number;
   /** How far along the mastery bar, 0–1. */
   progress: number;
   /** Why it is locked, when it is. */
@@ -76,63 +81,13 @@ export interface WebSummary {
    * congratulation for having installed the app.
    */
   nextUp: WebNode[];
-}
-
-interface Best {
-  bestReps: number | null;
-  bestSeconds: number | null;
-  sets: number;
-  lastDate: string;
-}
-
-function bestsByKey(): Map<string, Best> {
-  const rows = db
-    .select({
-      key: exerciseLogs.exerciseKey,
-      bestReps: sql<number | null>`MAX(${exerciseLogs.reps})`,
-      bestSeconds: sql<number | null>`MAX(${exerciseLogs.seconds})`,
-      sets: sql<number>`COUNT(*)`,
-      lastDate: sql<string>`MAX(${exerciseLogs.date})`,
-    })
-    .from(exerciseLogs)
-    .groupBy(exerciseLogs.exerciseKey)
-    .all();
-  return new Map(rows.map((r) => [r.key, r]));
-}
-
-/** Every name a movement's logs could be under, including its past names. */
-function keysFor(m: Movement): string[] {
-  return [m.name, ...(m.aliases ?? [])].map(movementKey);
-}
-
-/**
- * Logs written under any of a movement's names, merged. Renaming a movement
- * would otherwise split its history in two and reset the node.
- */
-function mergeBests(m: Movement, bests: Map<string, Best>): Best | null {
-  const found = keysFor(m)
-    .map((k) => bests.get(k))
-    .filter((b): b is Best => b !== undefined);
-  if (found.length === 0) return null;
-
-  return found.reduce((a, b) => ({
-    bestReps: Math.max(a.bestReps ?? 0, b.bestReps ?? 0) || null,
-    bestSeconds: Math.max(a.bestSeconds ?? 0, b.bestSeconds ?? 0) || null,
-    sets: a.sets + b.sets,
-    lastDate: a.lastDate > b.lastDate ? a.lastDate : b.lastDate,
-  }));
-}
-
-function fraction(m: Movement, best: Best | null): number {
-  if (!best) return 0;
-  if (m.masterAt.reps !== undefined) return Math.min(1, (best.bestReps ?? 0) / m.masterAt.reps);
-  if (m.masterAt.seconds !== undefined) return Math.min(1, (best.bestSeconds ?? 0) / m.masterAt.seconds);
-  return 0;
+  /** Lines drawn on the tree, newest first. Empty when nothing has been reset. */
+  resets: ResetSummary[];
 }
 
 export function buildWeb(): WebSummary {
   const st = standings();
-  const bests = bestsByKey();
+  const records = movementRecords();
   const owned = ownedKeys(getSettings().equipment);
 
   const strands: WebStrand[] = [];
@@ -146,9 +101,8 @@ export function buildWeb(): WebSummary {
     const reachedTier = standing?.tier ?? 0;
 
     const nodes: WebNode[] = movements.map((m, i) => {
-      const best = mergeBests(m, bests);
+      const rec: MovementRecord | undefined = records.get(m.name);
       const gate = lockedBy(m, st);
-      const mastered = isMastered(m, best?.bestReps ?? null, best?.bestSeconds ?? null);
 
       // Equipment first: a locked node you could open by training is a
       // different message from one you could open by buying a pull-up bar.
@@ -156,26 +110,31 @@ export function buildWeb(): WebSummary {
 
       let state: NodeState;
       if (!usable) state = "unequipped";
-      else if (mastered) state = "mastered";
+      else if (rec?.mastered) state = "mastered";
       else if (gate) state = "locked";
-      else if (best) state = "current";
+      else if (rec) state = "current";
       else if (i <= reachedTier) state = "available";
       else state = "locked";
 
       const node: WebNode = {
         movement: m,
         state,
-        bestReps: best?.bestReps ?? null,
-        bestSeconds: best?.bestSeconds ?? null,
-        sets: best?.sets ?? 0,
-        lastDate: best?.lastDate ?? null,
-        progress: fraction(m, best),
+        bestReps: rec?.bestReps ?? null,
+        bestSeconds: rec?.bestSeconds ?? null,
+        sets: rec?.sets ?? 0,
+        sessions: rec?.sessions ?? 0,
+        lastDate: rec?.lastDate ?? null,
+        cleanSessions: rec?.cleanSessions ?? 0,
+        needSessions: masterySessions(m),
+        bestCleanSets: rec?.bestCleanSets ?? 0,
+        needSets: masterySets(m),
+        progress: rec?.progress ?? 0,
         gate,
         unlockedBy:
           i > 0 ? `${masteryLabel(movements[i - 1])} of ${movements[i - 1].name.toLowerCase()}` : null,
       };
 
-      if (state === "available" && !best && m.tier > 0) nextUp.push(node);
+      if (state === "available" && !rec && m.tier > 0) nextUp.push(node);
       return node;
     });
 
@@ -197,5 +156,6 @@ export function buildWeb(): WebSummary {
     totalMastered: strands.reduce((n, s) => n + s.mastered, 0),
     totalReached: strands.reduce((n, s) => n + s.reached, 0),
     nextUp,
+    resets: resetSummary(),
   };
 }

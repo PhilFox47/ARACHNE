@@ -234,6 +234,32 @@ export const movementFeedback = sqliteTable(
   (t) => [uniqueIndex("feedback_date_key_idx").on(t.date, t.exerciseKey)],
 );
 
+/**
+ * A line drawn under the skill tree.
+ *
+ * Sets logged before a reset stop counting toward THE WEB — they are not
+ * deleted. The logs are the record of what you actually did on a given day and
+ * that record should survive a change of mind about how to interpret it; a
+ * reset says "start reading from here", which is reversible by deleting the row
+ * and cannot lose a number.
+ *
+ * A null family resets the whole tree. Rows accumulate rather than being
+ * replaced, so the effective cutoff for a strand is the latest that applies
+ * to it.
+ */
+export const skillResets = sqliteTable(
+  "skill_resets",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Null means every strand. */
+    family: text("family"),
+    /** Unix seconds. Only sets created after this count. */
+    resetAt: integer("reset_at").notNull(),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [index("skill_resets_family_idx").on(t.family)],
+);
+
 // ── THE TRIAL ────────────────────────────────────────────────
 
 export const trials = sqliteTable(
@@ -313,6 +339,7 @@ export const senseDismissals = sqliteTable("sense_dismissals", {
 
 export type Favourite = typeof favourites.$inferSelect;
 export type MovementFeedback = typeof movementFeedback.$inferSelect;
+export type SkillReset = typeof skillResets.$inferSelect;
 export type Weight = typeof weights.$inferSelect;
 export type Measurement = typeof measurements.$inferSelect;
 export type TrainingSession = typeof sessions.$inferSelect;

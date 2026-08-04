@@ -92,6 +92,33 @@ export interface Prerequisite {
   why: string;
 }
 
+export interface MasteryBar {
+  reps?: number;
+  seconds?: number;
+  /** Sets in one session that must clear the bar. */
+  sets?: number;
+  /** Separate sessions that must do that. */
+  sessions?: number;
+}
+
+/**
+ * Two sets, on two separate days.
+ *
+ * Two sets rather than the document's three because the baseline fortnight
+ * prescribes two — asking for three would make the sweep incapable of advancing
+ * anything, which is the opposite of what it is for. Two sessions rather than
+ * one for the same reason the fortnight repeats itself: one reading is a guess.
+ */
+export const DEFAULT_MASTERY = { sets: 2, sessions: 2 } as const;
+
+export function masterySets(m: Movement): number {
+  return m.masterAt.sets ?? DEFAULT_MASTERY.sets;
+}
+
+export function masterySessions(m: Movement): number {
+  return m.masterAt.sessions ?? DEFAULT_MASTERY.sessions;
+}
+
 export interface Movement {
   name: string;
   family: MovementFamily;
@@ -116,8 +143,15 @@ export interface Movement {
   needs?: string[];
   /** Gates from other strands. Same-family progression is implied by tier. */
   requires?: Prerequisite[];
-  /** Clearing this is what unlocks the tier above. */
-  masterAt: { reps?: number; seconds?: number };
+  /**
+   * What counts as mastered, and therefore what unlocks the tier above.
+   *
+   * Never a single set. The document's own rule is "only advance at a clean
+   * 3×12" — a number you hit once is a good day, not a level. `sets` is how many
+   * sets in one session must clear the bar; `sessions` is how many separate
+   * sessions must do that. Both default to `DEFAULT_MASTERY`.
+   */
+  masterAt: MasteryBar;
   /** Names this movement has been logged under before. Never remove one. */
   aliases?: string[];
   /** Per-side movements halve the sensible rep count. */
@@ -1228,16 +1262,23 @@ export function tierOf(family: MovementFamily, name: string): number | null {
   return m && m.family === family ? m.tier : null;
 }
 
-/** Whether a logged best clears the bar that unlocks the tier above. */
-export function isMastered(m: Movement, bestReps: number | null, bestSeconds: number | null): boolean {
-  if (m.masterAt.reps !== undefined) return (bestReps ?? 0) >= m.masterAt.reps;
-  if (m.masterAt.seconds !== undefined) return (bestSeconds ?? 0) >= m.masterAt.seconds;
+/** Whether one set clears the bar. Not mastery on its own — see lib/skills.ts. */
+export function setClears(m: Movement, reps: number | null, seconds: number | null): boolean {
+  if (m.masterAt.reps !== undefined) return (reps ?? 0) >= m.masterAt.reps;
+  if (m.masterAt.seconds !== undefined) return (seconds ?? 0) >= m.masterAt.seconds;
   return false;
 }
 
-/** The threshold, as a phrase. */
-export function masteryLabel(m: Movement): string {
-  if (m.masterAt.reps !== undefined) return `${m.masterAt.reps} clean reps`;
+/** The bar for one set, as a phrase. */
+export function setBarLabel(m: Movement): string {
+  if (m.masterAt.reps !== undefined) return `${m.masterAt.reps} reps`;
   if (m.masterAt.seconds !== undefined) return `${m.masterAt.seconds} s`;
   return "—";
+}
+
+/** The whole requirement, as a phrase. */
+export function masteryLabel(m: Movement): string {
+  const sets = masterySets(m);
+  const sessions = masterySessions(m);
+  return `${sets}\u00d7${setBarLabel(m)}, ${sessions === 1 ? "once" : sessions === 2 ? "twice" : `${sessions} times`}`;
 }

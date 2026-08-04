@@ -17,6 +17,37 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.3.0 — 2026-08-04
+
+Mastery takes repeating, and placement can be reset.
+
+**A movement is no longer mastered the first time the number happens.** The bar is now two sets that
+clear it *within one session*, on *two separate days* — the document's own rule was "only advance at
+a clean 3×12", and one set of twelve is a good day rather than a level. Two sets rather than three
+because the baseline fortnight prescribes two, and a bar the sweep cannot clear would leave every
+strand stuck at the bottom; `npm run check` now fails if any movement asks for more than the
+fortnight can give it.
+
+**A session where you reported that something hurt does not count towards mastering it**, whatever
+the reps said. The point of the bar is that the movement is under control, not that the number
+happened — which is the same reason the feel check exists at all.
+
+**THE WEB can be reset**, whole or one strand at a time, from a button on the summary panel. This is
+for the case the app created: a first patrol logged before the ladder knew anything about you, on a
+variation you had never done, leaving a strand opening halfway up.
+
+**A reset deletes nothing** (schema v12). It writes a line — sets logged before it stop counting
+towards the tree, and stay in your history, your streak and every chart. That makes it reversible,
+and there is an Undo on the screen afterwards. Hold targets seeded off a tested maximum respect the
+same line, so a reset strand stops prescribing planks seeded off the reading you just disregarded.
+Pain reports deliberately survive a reset: "this shape hurts me" is not a number you can re-take.
+
+Also: nodes show clean sessions banked rather than only a best number, and the model's brief now
+states the whole mastery rule instead of the bar alone. Log reading moved into one file
+(`lib/skills.ts`) — THE WEB and the progression engine had been aggregating the same rows twice, and
+were one edit away from disagreeing about what you had done. `npm run check` gained a second half
+that proves both rules against a real database.
+
 ## 1.2.0 — 2026-08-04
 
 THE WEB — every movement explained, and a skill tree that unlocks.

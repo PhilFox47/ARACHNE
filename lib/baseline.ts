@@ -11,9 +11,9 @@
  *      the one the document's own athlete could.
  */
 
-import { desc, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "./db";
-import { exerciseLogs, movementFeedback } from "./db/schema";
+import { exerciseLogs } from "./db/schema";
 import { addDays, dayKeyOf, daysBetween, todayISO } from "./dates";
 import { gateExercise, ownedKeys, upgradeExercise } from "./equipment";
 import { getSettings } from "./settings";
@@ -28,13 +28,13 @@ import {
 } from "./plan";
 import {
   findMovement,
-  isMastered,
   ladder,
   movementKey,
   type Movement,
   type MovementFamily,
   type Prerequisite,
 } from "./movements";
+import { cutoffFor, cutoffs, movementRecords, painCounts } from "./skills";
 
 /** Last day of the baseline fortnight, inclusive. */
 export const BASELINE_LAST_DAY = PHASES[0].endDay;
@@ -111,7 +111,7 @@ export interface Standing {
   familyBestReps: number | null;
   familyBestSeconds: number | null;
   lastDate: string;
-  /** Cleared the mastery bar at `loggedTier`. */
+  /** Held the bar under control often enough at `loggedTier` — see `lib/skills.ts`. */
   mastered: boolean;
   /** The tier you have earned the right to be prescribed. */
   tier: number;
@@ -119,28 +119,6 @@ export interface Standing {
   blockedBy: Prerequisite | null;
   /** Set when a lay-off dropped you a tier for the session back. */
   rusty: boolean;
-}
-
-interface LogRow {
-  exerciseKey: string;
-  exerciseName: string;
-  bestReps: number | null;
-  bestSeconds: number | null;
-  lastDate: string;
-}
-
-function allBests(): LogRow[] {
-  return db
-    .select({
-      exerciseKey: exerciseLogs.exerciseKey,
-      exerciseName: sql<string>`MAX(${exerciseLogs.exerciseName})`,
-      bestReps: sql<number | null>`MAX(${exerciseLogs.reps})`,
-      bestSeconds: sql<number | null>`MAX(${exerciseLogs.seconds})`,
-      lastDate: sql<string>`MAX(${exerciseLogs.date})`,
-    })
-    .from(exerciseLogs)
-    .groupBy(exerciseLogs.exerciseKey)
-    .all();
 }
 
 const bigger = (a: number | null, b: number | null) =>
@@ -155,16 +133,6 @@ const bigger = (a: number | null, b: number | null) =>
  * see — that the shape is wrong, not that the load is heavy.
  */
 export const PAIN_DEMOTES_AT = 2;
-
-function painCounts(): Map<string, number> {
-  const rows = db
-    .select({ key: movementFeedback.exerciseKey, n: sql<number>`COUNT(*)` })
-    .from(movementFeedback)
-    .where(sql`${movementFeedback.verdict} = 'pain'`)
-    .groupBy(movementFeedback.exerciseKey)
-    .all();
-  return new Map(rows.map((r) => [r.key, r.n]));
-}
 
 /** Whether a strand has produced the number another movement is waiting on. */
 export function meetsPrerequisite(req: Prerequisite, st: Map<MovementFamily, Standing>): boolean {
@@ -184,7 +152,12 @@ export function lockedBy(m: Movement, st: Map<MovementFamily, Standing>): Prereq
 }
 
 /**
- * Where every strand currently stands, read out of everything ever logged.
+ * Where every strand currently stands, read out of the logs that still count.
+ *
+ * The reading itself belongs to `lib/skills.ts` — which sets have survived a
+ * reset, and whether a movement has been held under control often enough to be
+ * called mastered. This function only turns those per-movement records into a
+ * position per strand.
  *
  * Two passes, because a prerequisite asks about a different strand and all of
  * them have to exist before any of them can be checked. The first pass finds how
@@ -196,18 +169,18 @@ export function standings(today = todayISO()): Map<MovementFamily, Standing> {
   const pain = painCounts();
 
   // ── Pass 1: how far up each strand, and the strand's best numbers ──
-  for (const row of allBests()) {
-    const movement = findMovement(row.exerciseName);
-    if (!movement) continue;
+  for (const rec of movementRecords().values()) {
+    const movement = rec.movement;
+    if (rec.lastDate === null) continue;
 
     // A movement that has hurt twice does not count as reached, however many
     // reps went into it. It stops holding the strand open above it.
     if ((pain.get(movementKey(movement.name)) ?? 0) >= PAIN_DEMOTES_AT) continue;
 
     const prev = out.get(movement.family);
-    const familyBestReps = bigger(prev?.familyBestReps ?? null, row.bestReps);
-    const familyBestSeconds = bigger(prev?.familyBestSeconds ?? null, row.bestSeconds);
-    const lastDate = prev && prev.lastDate > row.lastDate ? prev.lastDate : row.lastDate;
+    const familyBestReps = bigger(prev?.familyBestReps ?? null, rec.bestReps);
+    const familyBestSeconds = bigger(prev?.familyBestSeconds ?? null, rec.bestSeconds);
+    const lastDate = prev && prev.lastDate > rec.lastDate ? prev.lastDate : rec.lastDate;
 
     // A single set at a higher tier outranks a lot of easy ones below it, which
     // is how you would judge it in a gym.
@@ -216,17 +189,16 @@ export function standings(today = todayISO()): Map<MovementFamily, Standing> {
       continue;
     }
 
-    const mastered = isMastered(movement, row.bestReps, row.bestSeconds);
     out.set(movement.family, {
       family: movement.family,
       loggedTier: movement.tier,
       movement,
-      bestReps: row.bestReps,
-      bestSeconds: row.bestSeconds,
+      bestReps: rec.bestReps,
+      bestSeconds: rec.bestSeconds,
       familyBestReps,
       familyBestSeconds,
       lastDate,
-      mastered,
+      mastered: rec.mastered,
       tier: movement.tier,
       blockedBy: null,
       rusty: false,
@@ -348,23 +320,36 @@ export function seedHoldTarget(planSeconds: number | null, baselineBestSec: numb
   return Math.max(planSeconds, Math.min(working, planSeconds * HOLD_MAX_MULTIPLE));
 }
 
-/** Best hold ever logged for a movement, used to seed the working target. */
+/**
+ * Best hold still counting for a movement, used to seed the working target.
+ *
+ * Filtered by the same cutoffs as the tree. A hold target only ever climbs above
+ * the plan's own number, so leaving a reset strand's old best in place would
+ * keep prescribing a plank seeded off the reading you just said to disregard.
+ */
 export function bestSecondsFor(keys: string[]): Map<string, number> {
   if (keys.length === 0) return new Map();
+  const want = new Set(keys);
+  const cuts = cutoffs();
+
   const rows = db
     .select({
       exerciseKey: exerciseLogs.exerciseKey,
-      bestSeconds: sql<number | null>`MAX(${exerciseLogs.seconds})`,
+      exerciseName: exerciseLogs.exerciseName,
+      seconds: exerciseLogs.seconds,
+      createdAt: exerciseLogs.createdAt,
     })
     .from(exerciseLogs)
-    .groupBy(exerciseLogs.exerciseKey)
+    .where(sql`${exerciseLogs.seconds} IS NOT NULL`)
     .all();
-  const want = new Set(keys);
-  return new Map(
-    rows
-      .filter((r) => want.has(r.exerciseKey) && r.bestSeconds !== null)
-      .map((r) => [r.exerciseKey, r.bestSeconds as number]),
-  );
+
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (!want.has(r.exerciseKey) || r.seconds === null) continue;
+    if (r.createdAt <= cutoffFor(cuts, findMovement(r.exerciseName)?.family ?? null)) continue;
+    out.set(r.exerciseKey, Math.max(out.get(r.exerciseKey) ?? 0, r.seconds));
+  }
+  return out;
 }
 
 export interface ProbeComparison {

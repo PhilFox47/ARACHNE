@@ -280,6 +280,19 @@ export const MIGRATIONS: ((db: Database.Database) => void)[] = [
         ON movement_feedback (date, exercise_key);
     `);
   },
+
+  // ── v12: skill resets ──
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS skill_resets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        family TEXT,
+        reset_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS skill_resets_family_idx ON skill_resets (family);
+    `);
+  },
 ];
 
 /**

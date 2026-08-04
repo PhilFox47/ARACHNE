@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.3.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.3.0",
+    date: "2026-08-04",
+    kind: "minor",
+    headline: "Mastery takes repeating, and placement can be reset",
+    changes: [
+      "A movement is mastered at two sets that clear its bar in one session, on two separate days — not the first time the number happens. One good set is a good day.",
+      "A session where you reported that something hurt no longer counts towards mastering it, whatever the reps said.",
+      "THE WEB can be reset: the whole tree or one strand at a time, so a first patrol logged before the ladder knew anything about you doesn't leave a strand opening halfway up.",
+      "A reset deletes nothing. Every set stays in your history and still counts towards your streak — THE WEB just stops reading the ones before the line, and there is an Undo.",
+      "Each node now shows how many clean sessions it has banked rather than just your best number.",
+    ],
+  },
   {
     version: "1.2.0",
     date: "2026-08-04",

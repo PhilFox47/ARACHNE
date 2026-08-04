@@ -15,7 +15,7 @@ than hard.
 
 The resolution the app uses: **the plan owns which pattern, your logs own which variation.**
 
-## What shipped (v1.2.0)
+## What shipped (v1.3.0)
 
 Proposals 2, 3, 4 and most of 1 are in. The catalogue in `lib/movements.ts` is the piece that made
 the rest cheap:
@@ -31,6 +31,16 @@ the rest cheap:
 - **Rust** (proposal 4) — three weeks off and the first session back opens a tier lower.
 - **The model is briefed** on every movement in front of it, plus where you stand on each strand.
 
+v1.3.0 added the two things a week of using it made obvious:
+
+- **Mastery repeats.** Clearing the bar once is a good day, not a level. It now takes two sets that
+  clear it inside one session, on two separate days, and a session you reported as painful doesn't
+  count towards it whatever the reps said.
+- **Placement can be reset**, whole tree or one strand, without deleting anything. `skill_resets`
+  holds a cutoff per strand; `lib/skills.ts` stops reading sets before it. Undo is a row delete.
+  This exists because the app created the problem: a first patrol logged before the ladder knew
+  anything about the athlete placed them halfway up a strand.
+
 Still open: slots instead of session lists (proposal 1's remaining half), letting the model choose
 within the earned range (5), fatigue-aware volume (6), in-session ramping for tests (7), and skills
 as practice rather than sets (8).
@@ -43,6 +53,7 @@ Three layers, each with a different authority.
 |---|---|---|
 | `lib/plan.ts` | Which day is which session, which phase you are in, which movement patterns belong to it, calorie and checkpoint targets | The plan document. Never a model. |
 | `lib/movements.ts` | The catalogue: every movement, its family, its tier, how it is done, what it trains, what gates it | The document's own progressions, written out |
+| `lib/skills.ts` | What the logs say: which sets still count after a reset, and whether a movement has been held under control often enough to be mastered | Your logs, read on demand |
 | `lib/training.ts` + the model | Sets, reps, seconds, load | Adapts to what you logged |
 
 A **ladder** is an ordered list of variations for one movement family:
@@ -53,13 +64,25 @@ pull:  dead hang → negative pull-ups → pull-ups → explosive pull-ups
 ```
 
 A **strand** is every movement of one family, ordered by tier. Your **standing** on it is read out of
-the logs: the highest tier you have a set on, plus one if that set cleared the movement's mastery
-bar, minus one if you have been away three weeks, and then walked down past anything whose
-cross-strand gates are shut. Prescription takes `min(standing, planTier + 1)` — never above what you
-have done, never more than one above what the plan asked.
+the logs: the highest tier you have a set on, plus one if that movement is mastered, minus one if
+you have been away three weeks, and then walked down past anything whose cross-strand gates are
+shut. Prescription takes `min(standing, planTier + 1)` — never above what you have done, never more
+than one above what the plan asked.
+
+**Mastered** means two sets clearing the movement's bar within one session, on two separate
+sessions, with no session you reported as painful. Two sets rather than the document's three because
+the baseline fortnight prescribes two, and a bar the sweep cannot clear would strand every ladder at
+the bottom; two sessions rather than one for the same reason the fortnight repeats itself — a single
+reading is a guess. `npm run check` fails if any movement asks for more than the fortnight can give.
 
 The **baseline sweep** opens every ladder at the bottom and climbs. Five patrols cover every family;
 the fortnight walks up to your limit rather than starting above it.
+
+A **reset** draws a line rather than deleting. `skill_resets` stores a cutoff — one per strand, or
+one for everything — and only sets logged after it are read. The logs are the record of what you did
+on a given day and that should survive a change of mind about how to interpret it, so nothing is
+destroyed and undo is a row delete. Pain reports deliberately survive a reset: a number can be
+re-taken, "this shape hurts me" cannot.
 
 The **model** never picks movements. It receives the resolved list and your recent history, and may
 adjust sets (±1, clamped), reps, seconds and load. Anything it invents is dropped; anything it omits

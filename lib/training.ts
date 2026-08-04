@@ -28,7 +28,7 @@ import {
   type Exercise,
   type PhaseId,
 } from "./plan";
-import { findMovement, ladder, type MovementFamily } from "./movements";
+import { findMovement, ladder, masteryLabel, type MovementFamily } from "./movements";
 import {
   baselineEndDate,
   baselineSlotFor,
@@ -494,7 +494,7 @@ function movementBriefs(names: string[]) {
       cues: m.cues,
       easier: m.tier > 0 ? ladder(m.family)[m.tier - 1].name : null,
       harder: ladder(m.family)[m.tier + 1]?.name ?? null,
-      counts_as_mastered_at: m.masterAt,
+      counts_as_mastered_at: masteryLabel(m),
     };
   }
   return out;
