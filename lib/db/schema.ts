@@ -211,6 +211,29 @@ export const waterLogs = sqliteTable(
   (t) => [index("water_date_idx").on(t.date)],
 );
 
+/**
+ * How a movement felt, the first time you did it at a new level.
+ *
+ * The session already records an RPE, but an RPE is about the session and an
+ * injury is about a movement. This is the one question the app cannot answer
+ * from the outside: it can see that you did eight reps, not that your shoulder
+ * complained on the sixth. Asked once per movement per session, and only when
+ * the movement is new to you — a question asked every time is a question that
+ * stops being answered honestly.
+ */
+export const movementFeedback = sqliteTable(
+  "movement_feedback",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    date: text("date").notNull(),
+    /** Shared with exercise_logs, so it survives everything that key survives. */
+    exerciseKey: text("exercise_key").notNull(),
+    verdict: text("verdict", { enum: ["controlled", "hard", "pain"] }).notNull(),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("feedback_date_key_idx").on(t.date, t.exerciseKey)],
+);
+
 // ── THE TRIAL ────────────────────────────────────────────────
 
 export const trials = sqliteTable(
@@ -289,6 +312,7 @@ export const senseDismissals = sqliteTable("sense_dismissals", {
 });
 
 export type Favourite = typeof favourites.$inferSelect;
+export type MovementFeedback = typeof movementFeedback.$inferSelect;
 export type Weight = typeof weights.$inferSelect;
 export type Measurement = typeof measurements.$inferSelect;
 export type TrainingSession = typeof sessions.$inferSelect;

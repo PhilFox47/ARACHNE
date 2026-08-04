@@ -28,6 +28,7 @@ import {
   type Exercise,
   type PhaseId,
 } from "./plan";
+import { findMovement, ladder, type MovementFamily } from "./movements";
 import {
   baselineEndDate,
   baselineSlotFor,
@@ -35,7 +36,7 @@ import {
   placeOnLadder,
   seedHoldTarget,
   standings,
-  sweepRung,
+  sweepMovement,
   type Standing,
 } from "./baseline";
 import { stripFences } from "./vision";
@@ -59,6 +60,11 @@ export interface PrescribedExercise {
   loaded: boolean;
   /** Set when equipment gating replaced the plan's movement. */
   substitutedFrom: string | null;
+  /**
+   * You have never logged this movement. The form asks once how it felt — a
+   * question asked every session is a question that stops being answered.
+   */
+  firstTime?: boolean;
 }
 
 /**
@@ -159,6 +165,7 @@ export function baselinePrescription(
   // Where the ladders currently put you. Computed once for the whole session —
   // it's one grouped query, and it must not change between two exercises.
   const st = standings();
+  const everLogged = loggedKeys();
 
   const exercises: PrescribedExercise[] = [];
   const seen = new Set<string>();
@@ -204,6 +211,7 @@ export function baselinePrescription(
       perSide: p.perSide,
       loaded: looksLoaded(use.name),
       substitutedFrom: use.name === e.name ? null : e.name,
+      firstTime: !everLogged.has(key),
     });
   }
 
@@ -256,12 +264,13 @@ function sweepPrescription(
   const exercises: PrescribedExercise[] = [];
   const seen = new Set<string>();
   const st = standings();
+  const everLogged = loggedKeys();
 
   for (const probe of slot.patrol.probes) {
     // A ladder probe opens at the bottom and climbs as the fortnight earns it,
     // so the first patrol of someone's life is the easiest version of each
     // movement rather than the plan's default one.
-    const rung = probe.ladder ? sweepRung(probe.family, st) : null;
+    const rung = probe.ladder ? sweepMovement(probe.family, st) : null;
     const wanted = rung?.name ?? probe.name;
     // The rung carries its own metric — a dead hang is seconds where the rest
     // of the pull ladder is reps — and the probe's is only right for its own
@@ -307,10 +316,17 @@ function sweepPrescription(
       perSide: probe.perSide ?? false,
       loaded: probe.loaded ?? looksLoaded(name),
       substitutedFrom: name === wanted ? null : wanted,
+      firstTime: !everLogged.has(key),
     });
   }
 
   return { ...empty, exercises };
+}
+
+/** Every movement with at least one logged set, for the first-time check. */
+function loggedKeys(): Set<string> {
+  const rows = db.selectDistinct({ key: exerciseLogs.exerciseKey }).from(exerciseLogs).all();
+  return new Set(rows.map((r) => r.key));
 }
 
 export interface ExerciseHistoryRow {
@@ -401,9 +417,19 @@ RULES — these are not yours to change:
 - Bodyweight movements take weight null unless history shows added load.
 - You are told what equipment the athlete owns. Pick loads and variations that
   fit it. Never prescribe a load they have no way to produce.
-- You are also given "baseline": what the athlete managed on each movement
-  family during their first fortnight of testing. Use it to judge how hard to
-  push a movement with no recent history. It is context, not a target.
+- "movements" describes every movement you are being given: what it is, what it
+  trains, how it is executed, what goes wrong on it, and which variation sits
+  either side of it. Program the movement described there, not whatever the name
+  suggests to you.
+- "skill_tree" says where the athlete stands on each strand — which variation
+  they are on, how many harder ones exist above it, and whether the one above is
+  locked. A movement near the top of its strand has little room to be pushed; one
+  near the bottom is a beginner still learning the shape, and reps matter less
+  than the shape does.
+- If "returning_after_a_break" is set, they have been away. Ease the first
+  session back rather than resuming where they left off.
+- Where "form_risk" describes something that goes wrong, prefer fewer clean sets
+  to more fatigued ones. A movement done badly is worse than one not done.
 
 Return ONLY a JSON object. No markdown, no code fences, no commentary.
 
@@ -420,11 +446,56 @@ Return ONLY a JSON object. No markdown, no code fences, no commentary.
   ]
 }`;
 
-/** Ladder standings, flattened for the prompt. */
-function baselineContext(): Record<string, { movement: string; best_reps: number | null; best_seconds: number | null }> {
-  const out: Record<string, { movement: string; best_reps: number | null; best_seconds: number | null }> = {};
-  for (const [family, s] of standings() as Map<string, Standing>) {
-    out[family] = { movement: s.movement, best_reps: s.bestReps, best_seconds: s.bestSeconds };
+/**
+ * Where each strand of the skill tree stands, flattened for the prompt.
+ *
+ * The tier matters as much as the numbers: it tells the model how much room is
+ * left above this movement, which is the difference between "push a little" and
+ * "this is the hardest variation there is".
+ */
+function skillTreeContext(st: Map<MovementFamily, Standing>) {
+  const out: Record<string, unknown> = {};
+  for (const [family, s] of st) {
+    out[family] = {
+      doing: s.movement.name,
+      tier: `${s.tier + 1} of ${ladder(family).length}`,
+      best_reps: s.bestReps,
+      best_seconds: s.bestSeconds,
+      mastered_current_tier: s.mastered,
+      locked_above_by: s.blockedBy ? s.blockedBy.why : null,
+      returning_after_a_break: s.rusty,
+    };
+  }
+  return out;
+}
+
+/**
+ * What each prescribed movement actually is.
+ *
+ * The single most useful thing in the prompt. A model told only "Pike push-ups,
+ * 3 sets" is programming from whatever it happens to associate with the name; a
+ * model told the setup, the execution, what the movement trains and what goes
+ * wrong on it is programming the thing in front of the athlete. Movements the
+ * catalogue doesn't know — the plan's mobility and skill work — are sent as
+ * names alone rather than being dropped, so the model still sees the session.
+ */
+function movementBriefs(names: string[]) {
+  const out: Record<string, unknown> = {};
+  for (const name of names) {
+    const m = findMovement(name);
+    if (!m) continue;
+    out[m.name] = {
+      is: m.summary,
+      family: m.family,
+      tier: `${m.tier + 1} of ${ladder(m.family).length}`,
+      trains: m.trains,
+      execution: m.execution,
+      form_risk: m.watch,
+      cues: m.cues,
+      easier: m.tier > 0 ? ladder(m.family)[m.tier - 1].name : null,
+      harder: ladder(m.family)[m.tier + 1]?.name ?? null,
+      counts_as_mastered_at: m.masterAt,
+    };
   }
   return out;
 }
@@ -464,6 +535,7 @@ export async function generatePrescription(
   // not consulted at all.
   if (isBaselinePhase(base.phase)) return withHist;
 
+  const st = standings();
   const after = historyWindow(base.phase);
   const context = base.exercises.map((e) => ({
     name: e.name,
@@ -498,9 +570,11 @@ export async function generatePrescription(
               session: base.dayKey,
               deload_week: isDeload,
               equipment_available: equipmentSummary(getSettings().equipment),
-              // The fortnight's findings, so the model isn't guessing at a
-              // fitness level the database already knows.
-              baseline: baselineContext(),
+              // The skill tree, so the model isn't guessing at a fitness level
+              // the database already knows.
+              skill_tree: skillTreeContext(st),
+              // And what each movement in front of it actually is.
+              movements: movementBriefs(base.exercises.map((e) => e.name)),
               exercises: context,
             }),
           },

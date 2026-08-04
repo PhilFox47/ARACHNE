@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { exerciseLogs, sessions } from "@/lib/db/schema";
+import { exerciseLogs, movementFeedback, sessions } from "@/lib/db/schema";
 import { isAuthed } from "@/lib/auth";
 import { dayKeyOf } from "@/lib/dates";
 import { phaseForDay } from "@/lib/course";
@@ -123,5 +123,36 @@ export async function clearSession(date: string) {
   db.delete(exerciseLogs).where(eq(exerciseLogs.sessionId, row.id)).run();
   db.delete(sessions).where(eq(sessions.id, row.id)).run();
   refresh(date);
+  return { ok: true as const };
+}
+
+/**
+ * How a movement felt, asked once the first time you do it.
+ *
+ * The session RPE says how hard the session was; this says whether a specific
+ * movement was under control. It is the one thing the app cannot see from the
+ * outside — it knows you did eight reps, not that the shoulder complained on the
+ * sixth — and two "it hurt" answers close the movement rather than nagging.
+ */
+export async function recordFeel(
+  date: string,
+  exerciseKey: string,
+  verdict: "controlled" | "hard" | "pain",
+) {
+  await guard();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || exerciseKey.trim() === "") {
+    return { ok: false as const, error: "Bad request." };
+  }
+
+  db.insert(movementFeedback)
+    .values({ date, exerciseKey, verdict })
+    .onConflictDoUpdate({
+      target: [movementFeedback.date, movementFeedback.exerciseKey],
+      set: { verdict },
+    })
+    .run();
+
+  revalidatePath("/patrol");
+  revalidatePath("/web");
   return { ok: true as const };
 }

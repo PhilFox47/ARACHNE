@@ -15,6 +15,26 @@ than hard.
 
 The resolution the app uses: **the plan owns which pattern, your logs own which variation.**
 
+## What shipped (v1.2.0)
+
+Proposals 2, 3, 4 and most of 1 are in. The catalogue in `lib/movements.ts` is the piece that made
+the rest cheap:
+
+- **A movement catalogue.** Every exercise carries a summary, setup, execution, what goes wrong,
+  cues, what it trains, prerequisites and a mastery bar. `LADDERS` is derived from it by family and
+  tier rather than being a second list that could drift.
+- **THE WEB** (`/web`, from PATROL) renders it as a skill tree, all state derived from the logs.
+- **Cross-family prerequisites** (proposal 2) — the thing that makes it a tree rather than parallel
+  chains.
+- **The feel check** (proposal 3) — one question the first time you do a movement; two "it hurt"
+  answers steps it back down.
+- **Rust** (proposal 4) — three weeks off and the first session back opens a tier lower.
+- **The model is briefed** on every movement in front of it, plus where you stand on each strand.
+
+Still open: slots instead of session lists (proposal 1's remaining half), letting the model choose
+within the earned range (5), fatigue-aware volume (6), in-session ramping for tests (7), and skills
+as practice rather than sets (8).
+
 ## How it works today
 
 Three layers, each with a different authority.
@@ -22,7 +42,7 @@ Three layers, each with a different authority.
 | Layer | Owns | Written by |
 |---|---|---|
 | `lib/plan.ts` | Which day is which session, which phase you are in, which movement patterns belong to it, calorie and checkpoint targets | The plan document. Never a model. |
-| `LADDERS` in `lib/plan.ts` | The ordered variations of each pattern, and the rule for climbing | The document's own progressions |
+| `lib/movements.ts` | The catalogue: every movement, its family, its tier, how it is done, what it trains, what gates it | The document's own progressions, written out |
 | `lib/training.ts` + the model | Sets, reps, seconds, load | Adapts to what you logged |
 
 A **ladder** is an ordered list of variations for one movement family:
@@ -32,10 +52,11 @@ push:  wall → table → chair → sofa edge → floor → diamond → archer �
 pull:  dead hang → negative pull-ups → pull-ups → explosive pull-ups
 ```
 
-Your **standing** on a ladder is read out of the logs: the highest rung you have a set on, plus one
-if that set met the document's own advance rule (a clean 3×12, or 30 s on a hold). Prescription then
-takes `min(standing, planRung + 1)` — never more than one rung above what you have actually done,
-and never more than one above what the plan asked for.
+A **strand** is every movement of one family, ordered by tier. Your **standing** on it is read out of
+the logs: the highest tier you have a set on, plus one if that set cleared the movement's mastery
+bar, minus one if you have been away three weeks, and then walked down past anything whose
+cross-strand gates are shut. Prescription takes `min(standing, planTier + 1)` — never above what you
+have done, never more than one above what the plan asked.
 
 The **baseline sweep** opens every ladder at the bottom and climbs. Five patrols cover every family;
 the fortnight walks up to your limit rather than starting above it.

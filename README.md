@@ -132,6 +132,21 @@ the project directory name.
 
 ---
 
+## THE WEB
+
+`PATROL → The web` is the skill tree. Twelve strands, each running from the version anyone can do to
+the one the year is aiming at; every node carries how to set it up, how to do the rep, what
+specifically goes wrong on it, and what it trains. Nodes unlock by clearing the bar on the one below
+and, where it matters, by a capacity from another strand — pike push-ups elevated wants 30 s of wall
+handstand first.
+
+Nothing is stored. Every node's state is derived from your logged sets on read, so correcting a
+mis-logged set corrects the tree and a restored backup restores it. The same catalogue is what the
+model is given before it is asked to adjust a session: `lib/movements.ts` is read by you, by the
+progression engine, and by the AI.
+
+---
+
 ## Versions and data compatibility
 
 The running version is shown in `SETTINGS → Version`, with the release notes behind it, and tracked

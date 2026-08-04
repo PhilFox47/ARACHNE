@@ -17,6 +17,41 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.2.0 — 2026-08-04
+
+THE WEB — every movement explained, and a skill tree that unlocks.
+
+**A movement catalogue** (`lib/movements.ts`). Every exercise the plan can prescribe now carries a
+summary, a setup, the execution, what specifically goes wrong on it, cues, what it trains, its
+prerequisites and the bar that counts as mastered. One file, three readers: you, the progression
+engine, and the model — which previously got a name and a set count and was programming from
+whatever it happened to associate with the words.
+
+**THE WEB**, from PATROL. Twelve strands, each running from the version anyone can do to the one the
+year is aiming at. Nodes are locked, open, being worked or mastered, all derived from your logs on
+read — there is no unlock table, so correcting a mis-logged set corrects the tree and a restored
+backup restores it.
+
+**Cross-strand prerequisites.** A movement can now be gated by a capacity from somewhere else, which
+is what makes this a tree rather than twelve parallel chains: pike push-ups elevated needs 30 s of
+wall handstand, hanging knee raises needs a 30 s dead hang, diamond push-ups need a 45 s plank. The
+gate explains itself on the locked node.
+
+**One question, once.** The first time you do a movement: controlled, hard, or did something hurt.
+The session RPE says how hard the session was; this says whether a movement was under control, which
+is the one thing the app cannot see from outside. Two "it hurt" answers and the movement steps back
+down until the level below is clean again (schema v11).
+
+**Rust.** Three weeks with nothing logged on a strand and the first session back opens a level
+lower. Strength does not fall off a cliff in a fortnight; form does, and form is what the level above
+asks more of.
+
+Also: the model now receives a full brief on every movement in front of it — what it is, what it
+trains, how it executes, what goes wrong, and which variations sit either side — plus where you
+stand on each strand and whether you are returning from a break. `npm run check` gained catalogue
+invariants: every movement resolves from its own name and its aliases, tiers are dense from zero,
+and no prerequisite points at its own strand.
+
 ## 1.1.0 — 2026-08-04
 
 Calendar weeks, versioning, and a gentler first fortnight.

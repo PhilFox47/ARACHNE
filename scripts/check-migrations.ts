@@ -17,7 +17,13 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { MIGRATIONS, SCHEMA_VERSION, openAt } from "../lib/db";
-import { LADDERS, familyOf, rungOf, type MovementFamily } from "../lib/plan";
+import {
+  LADDER_FAMILIES,
+  MOVEMENTS,
+  findMovement,
+  ladder,
+  movementKey,
+} from "../lib/movements";
 
 const CURRENT = MIGRATIONS.length;
 let failures = 0;
@@ -187,19 +193,57 @@ upgraded.close();
 
 fs.rmSync(root, { recursive: true, force: true });
 
-// ── Ladder invariants ──
-// Every rung has to be findable from its own name. A rung whose pattern misses
-// its own label can never be read back out of the logs, so the family silently
-// never advances — which looks exactly like the athlete not progressing.
-console.log("\nladder self-consistency");
-for (const [family, rungs] of Object.entries(LADDERS) as [MovementFamily, typeof LADDERS[MovementFamily]][]) {
-  if (!rungs) continue;
-  rungs.forEach((rung, i) => {
-    const fam = familyOf(rung.name);
-    ok(`${family}[${i}] "${rung.name}" resolves to its family`, fam === family, `got ${fam}`);
-    const back = fam === family ? rungOf(family, rung.name) : null;
-    ok(`${family}[${i}] "${rung.name}" resolves to rung ${i}`, back === i, `got ${back}`);
-  });
+// ── Movement catalogue invariants ──
+// Identity is the key, and the key is derived from the name. A movement that
+// cannot be found by its own name can never be read back out of the logs, so its
+// strand silently never advances — which looks exactly like the athlete not
+// progressing.
+console.log("\nmovement catalogue");
+
+const keys = new Set<string>();
+for (const m of MOVEMENTS) {
+  const k = movementKey(m.name);
+  ok(`"${m.name}" has a unique key`, !keys.has(k), k);
+  keys.add(k);
+  ok(`"${m.name}" resolves to itself`, findMovement(m.name)?.name === m.name);
+  for (const alias of m.aliases ?? []) {
+    ok(`alias "${alias}" resolves to ${m.name}`, findMovement(alias)?.name === m.name);
+  }
+  ok(`"${m.name}" states a mastery bar`, m.masterAt.reps !== undefined || m.masterAt.seconds !== undefined);
+  ok(
+    `"${m.name}" is explained`,
+    m.summary.length > 20 && m.setup.length > 0 && m.execution.length > 0 && m.watch.length > 20 && m.cues.length > 0 && m.trains.length > 0,
+  );
+}
+
+// A strand has to be a strand: tiers dense from zero, no gaps, no duplicates.
+for (const family of LADDER_FAMILIES) {
+  const strand = ladder(family);
+  ok(`${family} strand is not empty`, strand.length > 0);
+  ok(
+    `${family} tiers run 0..${strand.length - 1} without gaps`,
+    strand.every((m, i) => m.tier === i),
+    strand.map((m) => m.tier).join(","),
+  );
+}
+
+// Prerequisites must point somewhere real, and must not point back into the
+// strand they gate — same-family order is already the tier, and a self-reference
+// would be a cycle the placement walk could not resolve.
+for (const m of MOVEMENTS) {
+  for (const req of m.requires ?? []) {
+    ok(
+      `"${m.name}" requires a strand that exists`,
+      ladder(req.family).length > 0,
+      req.family,
+    );
+    ok(`"${m.name}" does not gate on its own strand`, req.family !== m.family, req.family);
+    ok(
+      `"${m.name}" gate on ${req.family} states a number`,
+      req.reps !== undefined || req.seconds !== undefined,
+    );
+    ok(`"${m.name}" gate on ${req.family} explains itself`, (req.why ?? "").length > 20);
+  }
 }
 
 console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);

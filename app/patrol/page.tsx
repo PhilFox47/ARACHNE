@@ -228,6 +228,16 @@ export default async function Patrol({
 
       <WeekPlan days={days} rounds={rounds} />
 
+      <Link href="/web" className="panel flex items-center justify-between p-4">
+        <span className="flex flex-col gap-1">
+          <span className="display text-sm text-ink">The web</span>
+          <span className="label-xs">
+            Every movement, what it does, and what unlocks the next one
+          </span>
+        </span>
+        <span className="text-crimson">&rarr;</span>
+      </Link>
+
       <p className="px-1 text-xs leading-relaxed text-muted-dim">
         Day {stats.day} of {stats.totalDays}. Open any day to log sets and check it off. The plan is complete
         for all four phases, so browsing ahead shows the real exercises.

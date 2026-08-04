@@ -1,3 +1,12 @@
+import type { MovementFamily } from "./movements";
+
+/**
+ * Families and the movement catalogue live in lib/movements.ts. This file keeps
+ * the document's own structure — which day is which session, which phase, which
+ * targets — and names a family only to say which slot a probe fills.
+ */
+export type { MovementFamily };
+
 /**
  * ARACHNE — plan configuration.
  *
@@ -434,28 +443,6 @@ export function isBaselinePhase(phase: PhaseId): boolean {
 // The baseline sweep
 // ─────────────────────────────────────────────────────────────
 
-/**
- * A family is a slot in the week, not a muscle. Monday always has a horizontal
- * press in it; which variation fills that slot is a question about you, and the
- * baseline fortnight is how it gets answered.
- */
-export type MovementFamily =
-  | "push"
-  | "vertical_push"
-  | "dip"
-  | "pull"
-  | "row"
-  | "squat"
-  | "hinge"
-  | "lunge"
-  | "core"
-  | "hold"
-  | "mobility"
-  | "conditioning"
-  | "jump"
-  | "handstand"
-  | "crawl";
-
 export interface BaselineProbe {
   /** Movement name, taken from the plan's own pool. */
   name: string;
@@ -712,125 +699,6 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
     rule: "The shoulder roll is the foundational parkour skill and your insurance against injury in everything that follows. Learn it slowly, on something soft.",
   },
 ];
-
-// ─────────────────────────────────────────────────────────────
-// Progression ladders
-// ─────────────────────────────────────────────────────────────
-
-export interface Rung {
-  name: string;
-  /** The dose the plan gives this variation. */
-  dose: string;
-  note?: string;
-  /** Matches logged movement names back onto this rung. */
-  match: RegExp;
-  /** Holds are measured in seconds; everything else in reps. */
-  metric?: "reps" | "time";
-  /**
-   * What makes this movement worth a warning. Shown on the set form, and the
-   * reason a ladder exists at all: the rung above is not just harder, it is
-   * harder to do *correctly*, and a beginner cannot tell the difference from
-   * the inside.
-   */
-  watch?: string;
-}
-
-/**
- * The document's own progressions, written out as ordered rungs — "table →
- * chair → sofa edge → floor" for pressing, dead hang → negatives → pull-ups for
- * pulling. Its advance rule is equally explicit: "only move on at a clean 3×12."
- *
- * This is what the baseline fortnight buys. The plan decides that Monday has a
- * horizontal press on it; these decide which one you can currently do.
- */
-export const LADDER_ADVANCE_REPS = 12;
-
-/**
- * EXTRAPOLATED. The document gates the dead hang by phase rather than by a
- * number — negatives simply begin in Phase 2 — so this is the trigger for
- * climbing off a hold onto the movement above it. 30 s is half the document's
- * own month-6 target, which is about where a hang stops being the limiting
- * factor in a pull.
- */
-export const LADDER_ADVANCE_SECONDS = 30;
-
-export const LADDERS: Partial<Record<MovementFamily, Rung[]>> = {
-  push: [
-    { name: "Push-ups against a wall", dose: "8–12", note: "Hands on the wall, body in one line.", match: /against a wall|wall push-?up/i, watch: "Hips in line with the shoulders — the body is a plank, not a hinge." },
-    { name: "Push-ups on a table", dose: "8–12", match: /push-?ups? on a table/i, watch: "Elbows back at roughly 45°, not flared straight out." },
-    { name: "Push-ups on a chair", dose: "8–12", match: /push-?ups? on a chair|elevated push-?up/i, watch: "Chest touches first. If the hips arrive first, go back a rung." },
-    { name: "Push-ups on the sofa edge", dose: "8–12", match: /sofa edge/i, watch: "Full range or it doesn't count — halfway down is a different exercise." },
-    // Parallettes deepen the range rather than easing it, so a deficit push-up
-    // reads as the floor rung, never as an elevated one.
-    { name: "Push-ups", dose: "8–12", note: "On the floor.", match: /^push-?ups?$|deficit push-?up/i, watch: "The moment the lower back sags, the set is over." },
-    { name: "Diamond push-ups", dose: "8–12", match: /diamond/i, watch: "Hard on the wrists and elbows. Stop at the first sharp sensation in either." },
-    { name: "Archer push-ups", dose: "8–10 per side", match: /archer push-?up/i, watch: "The straight arm stays straight and passive. Do not let it press." },
-    { name: "Clap push-ups", dose: "3× 5–8", match: /clap push-?up/i, watch: "Land with soft elbows. Landing locked out is how wrists get hurt." },
-  ],
-  vertical_push: [
-    { name: "Pike push-ups on a chair", dose: "8–12", note: "Hands on a chair, hips high — the easiest rung.", match: /pike push-?ups? on a chair/i, watch: "Head goes forward of the hands, not straight down. Never let the neck take load." },
-    { name: "Pike push-ups", dose: "8–12", match: /^pike push-?ups?$/i, watch: "Elbows track forward, not out to the sides. Stop well before the shoulders fatigue — this is the movement people hurt themselves on." },
-    { name: "Pike push-ups elevated", dose: "8–12", note: "Feet up, toward the handstand push-up.", match: /pike push-?ups? elevated/i, watch: "Almost a handstand press. Only worth trying once the flat version is easy for 12." },
-    { name: "Handstand push-up negatives", dose: "5× 3", note: "Against the wall, lowering only.", match: /handstand push-?up/i, watch: "Have a bail-out planned before the first rep — turn out to the side, never collapse backwards." },
-  ],
-  dip: [
-    { name: "Triceps dips on chair edge, feet forward", dose: "8–12", match: /feet forward/i, watch: "Shoulders down and back. If they roll forward, straighten the legs less." },
-    { name: "Triceps dips on chair edge", dose: "8–12", match: /triceps dips/i, watch: "Stop at 90° at the elbow. Deeper is where shoulders get hurt, not where progress is." },
-    { name: "Dips between two chairs", dose: "8–12", match: /dips between two chairs|ring dips/i, watch: "Check both chairs will not slide before you load them." },
-  ],
-  pull: [
-    { name: "Dead hang", dose: "3× to just short of letting go", match: /dead hang|ring hang/i, metric: "time", watch: "Shoulders active, not hanging off the joint. Drop before the grip fails, not when it does." },
-    { name: "Negative pull-ups", dose: "5× 5 s", match: /negative pull-?up/i, watch: "Lower under control the whole way. A drop at the bottom is the rep that hurts an elbow." },
-    { name: "Pull-ups", dose: "5× 3", match: /^pull-?ups?$/i, watch: "No kipping. If the hips swing, the set is over." },
-    { name: "Explosive pull-ups", dose: "5× 3", match: /explosive pull-?up/i, watch: "Explosive up, controlled down. Never explosive down." },
-  ],
-  row: [
-    { name: "Inverted rows under a table", dose: "8–12", note: "Feet forward, body at an angle.", match: /under a table/i, watch: "Check the table takes your weight before you get under it." },
-    { name: "Inverted rows", dose: "8–12", match: /^inverted rows?$|ring rows?/i, watch: "Chest to the bar each rep. Shoulder blades pull first, arms second." },
-    { name: "Archer rows", dose: "8–10 per side", match: /archer row/i, watch: "Keep the hips square. Rotating turns it into something else." },
-  ],
-};
-
-/** The bottom of a ladder — where anyone with nothing logged starts. */
-export function entryRungOf(family: MovementFamily): Rung | null {
-  return LADDERS[family]?.[0] ?? null;
-}
-
-/**
- * Which family a movement belongs to. Ordered most specific first — "archer
- * rows" has to be caught before the generic row pattern, and "pike push-ups"
- * before push-ups.
- */
-const FAMILY_PATTERNS: [RegExp, MovementFamily][] = [
-  [/pike push-?up|shoulder press|handstand push-?up/i, "vertical_push"],
-  [/dip/i, "dip"],
-  [/push-?up/i, "push"],
-  [/pull-?up|muscle-?up|dead hang|ring hang/i, "pull"],
-  [/row/i, "row"],
-  [/squat jump|broad jump|precision jump/i, "jump"],
-  [/deadlift|hinge|good morning|nordic curl/i, "hinge"],
-  [/lunge|split squat/i, "lunge"],
-  [/squat/i, "squat"],
-  [/plank|hollow|dead bug|l-?sit|dragon flag|knee raise|ab wheel/i, "core"],
-  [/wall sit|hold|hang/i, "hold"],
-  [/handstand/i, "handstand"],
-  [/crawl/i, "crawl"],
-  [/burpee|interval|sprint|jump rope/i, "conditioning"],
-  [/stretch|slide|circle|rotation|switch|open book|thread|pancake|bridge|roll|cat-?cow|fold/i, "mobility"],
-];
-
-export function familyOf(name: string): MovementFamily | null {
-  for (const [re, fam] of FAMILY_PATTERNS) if (re.test(name)) return fam;
-  return null;
-}
-
-/** Where a named movement sits on its family's ladder, if it's on one at all. */
-export function rungOf(family: MovementFamily, name: string): number | null {
-  const ladder = LADDERS[family];
-  if (!ladder) return null;
-  const i = ladder.findIndex((r) => r.match.test(name));
-  return i === -1 ? null : i;
-}
 
 /**
  * Your stated target. The document asks for 3 litres; 2 is the goal you set, so

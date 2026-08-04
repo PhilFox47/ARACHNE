@@ -13,26 +13,28 @@
 
 import { desc, sql } from "drizzle-orm";
 import { db } from "./db";
-import { exerciseLogs } from "./db/schema";
-import { addDays, dayKeyOf, daysBetween } from "./dates";
+import { exerciseLogs, movementFeedback } from "./db/schema";
+import { addDays, dayKeyOf, daysBetween, todayISO } from "./dates";
 import { gateExercise, ownedKeys, upgradeExercise } from "./equipment";
 import { getSettings } from "./settings";
 import {
   BASELINE_MODE,
   BASELINE_PATROLS,
-  LADDERS,
-  LADDER_ADVANCE_REPS,
-  LADDER_ADVANCE_SECONDS,
   PHASES,
   TRAINING_DAYS,
-  familyOf,
-  rungOf,
   sessionFor,
   type BaselinePatrol,
-  type MovementFamily,
-  type Rung,
   type Session,
 } from "./plan";
+import {
+  findMovement,
+  isMastered,
+  ladder,
+  movementKey,
+  type Movement,
+  type MovementFamily,
+  type Prerequisite,
+} from "./movements";
 
 /** Last day of the baseline fortnight, inclusive. */
 export const BASELINE_LAST_DAY = PHASES[0].endDay;
@@ -84,19 +86,39 @@ export function baselineSchedule(startDate: string): { date: string; slot: Basel
 }
 
 // ─────────────────────────────────────────────────────────────
-// Reading the logs back
+// Reading the logs back — the skill tree
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * Come back after this long and the first session opens a tier lower.
+ *
+ * EXTRAPOLATED, and deliberately generous. Strength does not fall off a cliff in
+ * a fortnight, but form does — and the whole point of the tiers is that the rung
+ * above is harder to do *correctly*, which is the first thing to go after a
+ * lay-off. One session to find it again, then straight back up.
+ */
+export const STALE_DAYS = 21;
 
 export interface Standing {
   family: MovementFamily;
-  /** Highest ladder rung with a logged set. */
-  loggedRung: number;
-  /** Best reps at that rung. */
+  /** Highest tier with a logged set. */
+  loggedTier: number;
+  /** The movement at that tier. */
+  movement: Movement;
   bestReps: number | null;
   bestSeconds: number | null;
-  /** Where the ladder's own advance rule puts you now. */
-  rung: number;
-  movement: string;
+  /** Best anywhere in the strand, which is what a prerequisite is asked about. */
+  familyBestReps: number | null;
+  familyBestSeconds: number | null;
+  lastDate: string;
+  /** Cleared the mastery bar at `loggedTier`. */
+  mastered: boolean;
+  /** The tier you have earned the right to be prescribed. */
+  tier: number;
+  /** Set when the tier above is reachable but its prerequisites are not met. */
+  blockedBy: Prerequisite | null;
+  /** Set when a lay-off dropped you a tier for the session back. */
+  rusty: boolean;
 }
 
 interface LogRow {
@@ -118,64 +140,138 @@ function allBests(): LogRow[] {
     })
     .from(exerciseLogs)
     .groupBy(exerciseLogs.exerciseKey)
-    .orderBy(desc(sql`MAX(${exerciseLogs.date})`))
     .all();
 }
 
+const bigger = (a: number | null, b: number | null) =>
+  a === null ? b : b === null ? a : Math.max(a, b);
+
 /**
- * Where every family currently stands, read out of everything ever logged
- * rather than the baseline fortnight alone. The document's advance rule — "only
- * move on at a clean 3×12" — then applies continuously instead of once: the
- * ladder keeps climbing all year on the same evidence it started from.
+ * How many times a movement has been reported as hurting.
+ *
+ * Two is the threshold rather than one: any movement can feel wrong once, and a
+ * single bad day should not close a strand. Twice is a pattern, and a pattern on
+ * a movement you have just unlocked is the app being told something it cannot
+ * see — that the shape is wrong, not that the load is heavy.
  */
-export function standings(): Map<MovementFamily, Standing> {
+export const PAIN_DEMOTES_AT = 2;
+
+function painCounts(): Map<string, number> {
+  const rows = db
+    .select({ key: movementFeedback.exerciseKey, n: sql<number>`COUNT(*)` })
+    .from(movementFeedback)
+    .where(sql`${movementFeedback.verdict} = 'pain'`)
+    .groupBy(movementFeedback.exerciseKey)
+    .all();
+  return new Map(rows.map((r) => [r.key, r.n]));
+}
+
+/** Whether a strand has produced the number another movement is waiting on. */
+export function meetsPrerequisite(req: Prerequisite, st: Map<MovementFamily, Standing>): boolean {
+  const s = st.get(req.family);
+  if (!s) return false;
+  if (req.reps !== undefined) return (s.familyBestReps ?? 0) >= req.reps;
+  if (req.seconds !== undefined) return (s.familyBestSeconds ?? 0) >= req.seconds;
+  return true;
+}
+
+/** The first unmet gate on a movement, or null when it is open. */
+export function lockedBy(m: Movement, st: Map<MovementFamily, Standing>): Prerequisite | null {
+  for (const req of m.requires ?? []) {
+    if (!meetsPrerequisite(req, st)) return req;
+  }
+  return null;
+}
+
+/**
+ * Where every strand currently stands, read out of everything ever logged.
+ *
+ * Two passes, because a prerequisite asks about a different strand and all of
+ * them have to exist before any of them can be checked. The first pass finds how
+ * far up each strand you have climbed; the second walks each one back down until
+ * it reaches a movement whose gates are actually open.
+ */
+export function standings(today = todayISO()): Map<MovementFamily, Standing> {
   const out = new Map<MovementFamily, Standing>();
+  const pain = painCounts();
 
+  // ── Pass 1: how far up each strand, and the strand's best numbers ──
   for (const row of allBests()) {
-    const family = familyOf(row.exerciseName);
-    if (family === null || !LADDERS[family]) continue;
-    const loggedRung = rungOf(family, row.exerciseName);
-    if (loggedRung === null) continue;
+    const movement = findMovement(row.exerciseName);
+    if (!movement) continue;
 
-    const prev = out.get(family);
-    // A single hard set at a higher rung outranks a lot of easy ones below it,
-    // which is exactly how you'd judge it in a gym.
-    if (prev && prev.loggedRung >= loggedRung) continue;
+    // A movement that has hurt twice does not count as reached, however many
+    // reps went into it. It stops holding the strand open above it.
+    if ((pain.get(movementKey(movement.name)) ?? 0) >= PAIN_DEMOTES_AT) continue;
 
-    // A hold has no reps to count, so it earns its promotion on time. Both
-    // thresholds are the document's advance rule applied to the two things a
-    // rung can actually be measured in.
-    const rung = LADDERS[family]![loggedRung];
-    const ready =
-      rung.metric === "time"
-        ? (row.bestSeconds ?? 0) >= LADDER_ADVANCE_SECONDS
-        : (row.bestReps ?? 0) >= LADDER_ADVANCE_REPS;
-    out.set(family, {
-      family,
-      loggedRung,
+    const prev = out.get(movement.family);
+    const familyBestReps = bigger(prev?.familyBestReps ?? null, row.bestReps);
+    const familyBestSeconds = bigger(prev?.familyBestSeconds ?? null, row.bestSeconds);
+    const lastDate = prev && prev.lastDate > row.lastDate ? prev.lastDate : row.lastDate;
+
+    // A single set at a higher tier outranks a lot of easy ones below it, which
+    // is how you would judge it in a gym.
+    if (prev && prev.loggedTier > movement.tier) {
+      out.set(movement.family, { ...prev, familyBestReps, familyBestSeconds, lastDate });
+      continue;
+    }
+
+    const mastered = isMastered(movement, row.bestReps, row.bestSeconds);
+    out.set(movement.family, {
+      family: movement.family,
+      loggedTier: movement.tier,
+      movement,
       bestReps: row.bestReps,
       bestSeconds: row.bestSeconds,
-      rung: Math.min(loggedRung + (ready ? 1 : 0), LADDERS[family]!.length - 1),
-      movement: row.exerciseName,
+      familyBestReps,
+      familyBestSeconds,
+      lastDate,
+      mastered,
+      tier: movement.tier,
+      blockedBy: null,
+      rusty: false,
     });
+  }
+
+  // ── Pass 2: promotion, rust, and gates ──
+  for (const [family, s] of out) {
+    const strand = ladder(family);
+    let tier = Math.min(s.loggedTier + (s.mastered ? 1 : 0), strand.length - 1);
+
+    // A lay-off costs a tier for one session. Form is the first thing to go,
+    // and form is exactly what the tier above asks more of.
+    const rusty = daysBetween(s.lastDate, today) > STALE_DAYS;
+    if (rusty) tier = Math.max(0, tier - 1);
+
+    // Walk down past anything that has hurt twice, then past anything whose
+    // gates are shut.
+    let blockedBy: Prerequisite | null = null;
+    while (tier > 0 && (pain.get(movementKey(strand[tier].name)) ?? 0) >= PAIN_DEMOTES_AT) tier--;
+    while (tier > 0) {
+      const gate = lockedBy(strand[tier], out);
+      if (!gate) break;
+      blockedBy = gate;
+      tier--;
+    }
+
+    out.set(family, { ...s, tier, blockedBy, rusty });
   }
 
   return out;
 }
 
 /**
- * Where the baseline sweep should open a laddered movement.
+ * Where the baseline sweep should open a strand.
  *
- * The bottom, when nothing has been logged. The sweep exists to find a limit
- * and the safest way to find one is from underneath — the first patrol handing a
+ * The bottom, when nothing has been logged. The sweep exists to find a limit and
+ * the safest way to find one is from underneath — the first patrol handing a
  * beginner pike push-ups was the plan's default variation leaking into a
  * measurement, and pike push-ups are both hard and easy to do badly.
  */
-export function sweepRung(family: MovementFamily, st: Map<MovementFamily, Standing>): Rung | null {
-  const ladder = LADDERS[family];
-  if (!ladder) return null;
-  const standing = st.get(family);
-  return ladder[Math.min(standing?.rung ?? 0, ladder.length - 1)];
+export function sweepMovement(family: MovementFamily, st: Map<MovementFamily, Standing>): Movement | null {
+  const strand = ladder(family);
+  if (strand.length === 0) return null;
+  return strand[Math.min(st.get(family)?.tier ?? 0, strand.length - 1)];
 }
 
 export interface Placement {
@@ -187,12 +283,12 @@ export interface Placement {
 }
 
 /**
- * Puts a prescribed movement on the rung your logs justify.
+ * Puts a prescribed movement on the tier your logs justify.
  *
  * The plan owns the shape of the year and your logs own how hard it gets. A
- * variation is never prescribed more than one rung above what you have actually
- * done, so the harder movements unlock rather than arrive on schedule — and the
- * plan can still pull you up a rung when you are ready for it.
+ * variation is never prescribed more than one tier above what you have actually
+ * done, and never one whose prerequisites are unmet — so the harder movements
+ * unlock rather than arrive on schedule.
  */
 export function placeOnLadder(
   name: string,
@@ -202,46 +298,36 @@ export function placeOnLadder(
 ): Placement {
   const unchanged: Placement = { name, dose, note, movedFrom: null };
 
-  const family = familyOf(name);
-  if (family === null) return unchanged;
+  const planned = findMovement(name);
+  if (!planned) return unchanged;
 
-  const ladder: Rung[] | undefined = LADDERS[family];
-  if (!ladder) return unchanged;
-
-  const planRung = rungOf(family, name);
-  if (planRung === null) return unchanged;
-
-  const standing = st.get(family);
+  const strand = ladder(planned.family);
+  const standing = st.get(planned.family);
   if (!standing) return unchanged;
 
-  // Never above what has actually been logged, and never more than one rung
-  // past what the plan asked for.
-  //
-  // The old rule clamped to one rung either side of the plan, which let the
-  // plan drag someone upward on nothing but the calendar: reach Phase 3 having
-  // missed most of Phase 2 and it would hand you archer push-ups on the
-  // strength of a chair push-up. `standing.rung` already carries the +1 you
-  // earn by clearing a rung cleanly, so capping at it is what makes the higher
-  // variations unlock rather than arrive.
-  const target = Math.min(standing.rung, planRung + 1);
-  if (target === planRung) return unchanged;
+  const target = Math.min(standing.tier, Math.min(planned.tier + 1, strand.length - 1));
+  if (target === planned.tier) return unchanged;
 
-  const rung = ladder[target];
+  const movement = strand[target];
   const best =
     standing.bestReps !== null
       ? `${standing.bestReps} reps`
       : standing.bestSeconds !== null
         ? `${standing.bestSeconds} s`
         : "a set";
-  const reason =
-    target > planRung
-      ? `Moved up from ${ladder[planRung].name.toLowerCase()} — you logged ${best} on ${standing.movement.toLowerCase()}.`
-      : `The plan asks for ${ladder[planRung].name.toLowerCase()}; this is the rung your logs have earned. It moves up on a clean 3×12.`;
+
+  const reason = standing.rusty
+    ? `Back a level for this session — nothing logged on this strand for over ${STALE_DAYS} days.`
+    : target > planned.tier
+      ? `Moved up from ${planned.name.toLowerCase()} — you logged ${best} on ${standing.movement.name.toLowerCase()}.`
+      : standing.blockedBy
+        ? `${planned.name} is still locked: ${standing.blockedBy.why}`
+        : `The plan asks for ${planned.name.toLowerCase()}; this is the level your logs have earned.`;
 
   return {
-    name: rung.name,
-    dose: rung.dose,
-    note: rung.note ? `${rung.note} ${reason}` : reason,
+    name: movement.name,
+    dose: movement.dose,
+    note: movement.summary ? reason : reason,
     movedFrom: name,
   };
 }
@@ -365,16 +451,16 @@ export interface StartingRung {
 export function startingRungs(): StartingRung[] {
   const out: StartingRung[] = [];
   for (const [family, s] of standings()) {
-    const ladder = LADDERS[family];
-    if (!ladder) continue;
+    const strand = ladder(family);
+    if (strand.length === 0) continue;
     const best =
       s.bestReps !== null ? `${s.bestReps} reps` : s.bestSeconds !== null ? `${s.bestSeconds} s` : "logged";
     out.push({
       family,
-      movement: ladder[s.rung].name,
-      evidence: `${best} on ${s.movement.toLowerCase()}`,
-      rung: s.rung,
-      rungs: ladder.length,
+      movement: strand[s.tier].name,
+      evidence: `${best} on ${s.movement.name.toLowerCase()}`,
+      rung: s.tier,
+      rungs: strand.length,
     });
   }
   return out;

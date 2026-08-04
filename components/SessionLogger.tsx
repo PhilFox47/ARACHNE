@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Prescription, PrescribedExercise } from "@/lib/training";
-import { saveSet, setCompleted } from "@/app/patrol/actions";
+import { recordFeel, saveSet, setCompleted } from "@/app/patrol/actions";
 import { ImpactBurst } from "./ImpactBurst";
 import { WebLoader } from "./WebLoader";
 import { TensionLine } from "./TensionLine";
@@ -173,6 +173,7 @@ export function SessionLogger({
           <li key={ex.key}>
             <ExerciseCard
               ex={ex}
+              date={date}
               sets={setsFor(ex)}
               pb={personalBests[ex.key] ?? null}
               onSave={(i, v) => onSaveSet(ex, i, v)}
@@ -242,11 +243,13 @@ export function SessionLogger({
 
 function ExerciseCard({
   ex,
+  date,
   sets,
   pb,
   onSave,
 }: {
   ex: PrescribedExercise;
+  date: string;
   sets: LoggedSet[];
   pb: { reps: number | null; weightKg: number | null; seconds: number | null } | null;
   onSave: (setIndex: number, v: { reps?: number | null; weightKg?: number | null; seconds?: number | null }) => void;
@@ -294,6 +297,68 @@ function ExerciseCard({
           </li>
         ))}
       </ul>
+
+      {/* Asked once, after the work is in, and only on a movement new to you.
+          Any earlier and it is a question about something that hasn't happened. */}
+      {ex.firstTime && sets.length > 0 ? <FeelCheck date={date} ex={ex} /> : null}
+    </div>
+  );
+}
+
+const VERDICTS = [
+  { key: "controlled", label: "Controlled", hint: "Felt solid" },
+  { key: "hard", label: "Hard", hint: "But nothing wrong" },
+  { key: "pain", label: "Something hurt", hint: "Joint, not muscle" },
+] as const;
+
+/**
+ * The first time you do a movement, one question.
+ *
+ * The app can see that you did eight reps. It cannot see that the form fell
+ * apart on the sixth, and that is the thing that decides whether the next level
+ * up should open. Two "something hurt" answers and the movement closes rather
+ * than being offered again.
+ */
+function FeelCheck({ date, ex }: { date: string; ex: PrescribedExercise }) {
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [, start] = useTransition();
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-edge pt-3">
+      <p className="label-xs">
+        {chosen ? "Noted." : `First time on ${ex.name.toLowerCase()} — how did it feel?`}
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {VERDICTS.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => {
+              setChosen(v.key);
+              if (navigator.vibrate) navigator.vibrate(6);
+              start(async () => {
+                await recordFeel(date, ex.key, v.key);
+              });
+            }}
+            className={`tap flex flex-col items-center justify-center gap-0.5 border px-2 py-2 ${
+              chosen === v.key
+                ? v.key === "pain"
+                  ? "border-crimson bg-crimson/15 text-crimson"
+                  : "border-cobalt bg-cobalt/15 text-cobalt-lift"
+                : "border-edge text-muted"
+            }`}
+          >
+            <span className="text-[0.7rem] leading-tight">{v.label}</span>
+            <span className="text-[0.55rem] leading-tight text-muted-dim">{v.hint}</span>
+          </button>
+        ))}
+      </div>
+      {chosen === "pain" ? (
+        <p className="text-xs leading-relaxed text-crimson">
+          Logged. Say so once more on this movement and it steps back down a level until the one below is
+          clean again.
+        </p>
+      ) : null}
     </div>
   );
 }

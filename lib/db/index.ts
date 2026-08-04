@@ -265,6 +265,21 @@ export const MIGRATIONS: ((db: Database.Database) => void)[] = [
 
     sqlite.exec("CREATE UNIQUE INDEX photos_week_angle_idx ON photos(week_index, angle)");
   },
+
+  // ── v11: how a movement felt the first time you did it ──
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS movement_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        exercise_key TEXT NOT NULL,
+        verdict TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS feedback_date_key_idx
+        ON movement_feedback (date, exercise_key);
+    `);
+  },
 ];
 
 /**

@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.2.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,20 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.2.0",
+    date: "2026-08-04",
+    kind: "minor",
+    headline: "THE WEB — every movement explained, and a skill tree that unlocks",
+    changes: [
+      "A movement catalogue: what each exercise is, how to set it up, how to do the rep, what goes wrong on it, and what it trains.",
+      "THE WEB, reachable from PATROL — twelve strands from the version anyone can do to the one the year is aiming at, each node locked, open, being worked or mastered.",
+      "Movements can be gated by a different strand: pike push-ups elevated needs 30 s of wall handstand, hanging knee raises needs a 30 s dead hang.",
+      "The first time you do a movement, one question — controlled, hard, or did something hurt. Say it hurt twice and the movement steps back down.",
+      "Come back after three weeks away and the first session opens a level lower.",
+      "Every movement in a session is now described to the model before it is asked to program anything.",
+    ],
+  },
   {
     version: "1.1.0",
     date: "2026-08-04",
