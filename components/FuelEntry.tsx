@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteEntry, updateEntry } from "@/app/fuel/actions";
+import { addFavourite, deleteEntry, removeFavourite, updateEntry } from "@/app/fuel/actions";
+import { FavouriteToggle } from "./Favourites";
 
 interface Entry {
   id: number;
@@ -22,6 +23,7 @@ interface Entry {
   aiConfidence: "low" | "medium" | "high" | null;
   edited: boolean;
   userNote: string | null;
+  normKey: string;
 }
 
 /** The EU declaration, in the order German packaging prints it. */
@@ -51,10 +53,11 @@ const str = (v: number | null) => (v === null ? "" : String(v));
  * that can only fix energy leaves the protein target reading off a number you
  * already know is wrong.
  */
-export function FuelEntryRow({ entry }: { entry: Entry }) {
+export function FuelEntryRow({ entry, isFavourite }: { entry: Entry; isFavourite: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
+  const [starred, setStarred] = useState(isFavourite);
 
   const [desc, setDesc] = useState(entry.description);
   const [portion, setPortion] = useState(entry.portion ?? "");
@@ -119,7 +122,10 @@ export function FuelEntryRow({ entry }: { entry: Entry }) {
         )}
 
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm text-ink">{entry.description}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            {starred ? <span className="shrink-0 text-xs text-crimson">★</span> : null}
+            <span className="truncate text-sm text-ink">{entry.description}</span>
+          </span>
           <span className="flex items-center gap-2">
             <span className="label-xs">{time(entry.loggedAt)}</span>
             {entry.portion ? <span className="label-xs truncate">{entry.portion}</span> : null}
@@ -243,6 +249,31 @@ export function FuelEntryRow({ entry }: { entry: Entry }) {
               {pending ? "Reading" : "Analyse this photo"}
             </button>
           ) : null}
+
+          {/* Starred from the entry, because that's the moment you know it's
+              worth keeping — and the name and numbers are already in front of
+              you to correct first. */}
+          <div className="flex items-center justify-between gap-3 border-t border-edge pt-3">
+            <FavouriteToggle
+              isFavourite={starred}
+              pending={pending}
+              onToggle={() => {
+                const next = !starred;
+                setStarred(next);
+                if (navigator.vibrate) navigator.vibrate(next ? [10, 30, 14] : 6);
+                start(async () => {
+                  const res = next
+                    ? await addFavourite(entry.id, desc.trim() || entry.description)
+                    : await removeFavourite(entry.normKey);
+                  if (!res.ok) setStarred(!next);
+                  router.refresh();
+                });
+              }}
+            />
+            {starred ? (
+              <span className="label-xs text-muted-dim">Rename it under Favourites</span>
+            ) : null}
+          </div>
 
           <div className="flex items-center justify-between">
             <button

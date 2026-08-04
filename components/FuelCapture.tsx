@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createEntry, quickLog } from "@/app/fuel/actions";
+import { Favourites, type FavouriteItem } from "./Favourites";
 import { WebLoader } from "./WebLoader";
 
 interface QuickItem {
@@ -30,7 +31,13 @@ async function compress(file: File, maxEdge = 1200, quality = 0.82): Promise<str
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-export function FuelCapture({ quickItems }: { quickItems: QuickItem[] }) {
+export function FuelCapture({
+  quickItems,
+  favourites,
+}: {
+  quickItems: QuickItem[];
+  favourites: FavouriteItem[];
+}) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<null | "saving" | "reading">(null);
@@ -179,6 +186,8 @@ export function FuelCapture({ quickItems }: { quickItems: QuickItem[] }) {
           onAnalyse={(hint) => void analyse(awaitingNote.id, hint)}
         />
       ) : null}
+
+      <Favourites items={favourites} onLogged={() => finish("Logged.")} />
 
       {quickItems.length > 0 ? (
         <div className="flex flex-col gap-2">

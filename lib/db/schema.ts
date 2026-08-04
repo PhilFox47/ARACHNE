@@ -160,6 +160,42 @@ export const foodEntries = sqliteTable(
 );
 
 /**
+ * Things you eat often enough to name. A snapshot, not a pointer: a favourite
+ * has to survive deleting the meal it was created from, and must not drift when
+ * some old entry is edited months later. "My morning coffee" is one fixed thing
+ * whatever happened to the entry that first described it.
+ *
+ * Distinct from the quick-log offers, which are derived by counting repeats.
+ * That catches what you happen to eat a lot; this catches what you decided
+ * mattered — and the two disagree often enough to be worth keeping apart.
+ */
+export const favourites = sqliteTable(
+  "favourites",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Shared with food_entries, so starring the same thing twice updates it. */
+    normKey: text("norm_key").notNull(),
+    /** Yours to rename — the model's description is a starting point, not a name. */
+    label: text("label").notNull(),
+    portion: text("portion"),
+    kcal: real("kcal"),
+    proteinG: real("protein_g"),
+    carbsG: real("carbs_g"),
+    fatG: real("fat_g"),
+    saturatedFatG: real("saturated_fat_g"),
+    sugarG: real("sugar_g"),
+    fiberG: real("fiber_g"),
+    saltG: real("salt_g"),
+    /** Stored rather than inferred from the clock: a coffee is a snack at 09:00. */
+    mealType: text("meal_type", { enum: ["meal", "snack"] }).notNull(),
+    uses: integer("uses").notNull().default(0),
+    lastUsedAt: integer("last_used_at"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("favourites_norm_idx").on(t.normKey)],
+);
+
+/**
  * Water, logged in increments rather than as a daily total. An append-only log
  * means "undo the last glass" is a delete, not arithmetic, and the timestamps
  * show whether you drink steadily or panic-hydrate at 22:00.
@@ -252,6 +288,7 @@ export const senseDismissals = sqliteTable("sense_dismissals", {
   dismissedAt: integer("dismissed_at").notNull().default(now),
 });
 
+export type Favourite = typeof favourites.$inferSelect;
 export type Weight = typeof weights.$inferSelect;
 export type Measurement = typeof measurements.$inferSelect;
 export type TrainingSession = typeof sessions.$inferSelect;

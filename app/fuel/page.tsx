@@ -9,7 +9,7 @@ import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { todayISO } from "@/lib/dates";
 import { PROTEIN_PER_MEAL_G } from "@/lib/plan";
-import { quickLogCandidates } from "./actions";
+import { listFavourites, quickLogCandidates } from "./actions";
 import { waterForDate } from "./water";
 import { FuelCapture } from "@/components/FuelCapture";
 import { WaterTracker } from "@/components/WaterTracker";
@@ -34,6 +34,8 @@ export default async function Fuel() {
     .all();
 
   const quick = await quickLogCandidates();
+  const favourites = await listFavourites();
+  const starred = new Set(favourites.map((f) => f.normKey));
   const water = await waterForDate(today);
   const settings = getSettings();
 
@@ -125,7 +127,17 @@ export default async function Fuel() {
 
       <WaterTracker initialMl={water.ml} targetMl={settings.waterTargetMl} date={today} />
 
-      <FuelCapture quickItems={quick} />
+      <FuelCapture
+        quickItems={quick}
+        favourites={favourites.map((f) => ({
+          id: f.id,
+          normKey: f.normKey,
+          label: f.label,
+          kcal: f.kcal,
+          mealType: f.mealType,
+          uses: f.uses,
+        }))}
+      />
 
       {/* ── The log ── */}
       <section className="flex flex-col gap-2">
@@ -142,7 +154,7 @@ export default async function Fuel() {
           <ul className="flex flex-col gap-2">
             {entries.map((e) => (
               <li key={e.id}>
-                <FuelEntryRow entry={e} />
+                <FuelEntryRow entry={e} isFavourite={starred.has(e.normKey)} />
               </li>
             ))}
           </ul>

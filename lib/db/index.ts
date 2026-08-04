@@ -169,6 +169,31 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('onboarded_at', ?)")
       .run(String(Math.floor(Date.now() / 1000)));
   },
+
+  // ── v9: named favourites ──
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS favourites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        norm_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        portion TEXT,
+        kcal REAL,
+        protein_g REAL,
+        carbs_g REAL,
+        fat_g REAL,
+        saturated_fat_g REAL,
+        sugar_g REAL,
+        fiber_g REAL,
+        salt_g REAL,
+        meal_type TEXT NOT NULL,
+        uses INTEGER NOT NULL DEFAULT 0,
+        last_used_at INTEGER,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS favourites_norm_idx ON favourites (norm_key);
+    `);
+  },
 ];
 
 /**
