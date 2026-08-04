@@ -17,6 +17,30 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.2 — 2026-08-04
+
+Docker builds off Alpine. `npm ci` went from minutes to seconds.
+
+v1.5.1 stopped the dependency layer being invalidated on every release, which was real but was only
+half of it: the layer was also expensive to rebuild in the first place. **better-sqlite3 ships
+prebuilt binaries for glibc and none for musl**, so on `node:22-alpine` every cache miss handed the
+whole SQLite amalgamation to g++ and compiled it single-threaded. Measured here: a cold,
+cache-cleared `npm ci` on glibc takes **12 seconds** and downloads a 2 MB `.node` file. The same
+install on Alpine was several minutes of compiler.
+
+The base image is now `node:22-slim`. That costs roughly 40 MB of image and removes the compile
+entirely — the right trade for something rebuilt far more often than it is pulled. `python3 make g++`
+stay in the deps stage as a fallback in case a prebuild ever 404s, and are discarded with that stage.
+
+Also: `--foreground-scripts` makes install scripts print, because a native build with output
+suppressed is a silent void that is indistinguishable from a hang while you are watching it. The
+healthcheck uses `node` instead of `wget`, which is not guaranteed to exist in a slim base, and
+zombie reaping moved from a `tini` package to Docker's own init (`init: true` in compose). Apt's
+downloaded packages are cached across builds too.
+
+`npm run check` now fails if the base image goes back to Alpine, if the healthcheck reaches for
+`wget` or `curl`, or if the init process disappears.
+
 ## 1.5.1 — 2026-08-04
 
 The Docker build stopped recompiling SQLite on every release.

@@ -1,25 +1,46 @@
 # syntax=docker/dockerfile:1
 
+# Debian slim rather than Alpine, and the reason is better-sqlite3.
+#
+# It ships prebuilt binaries for linux-x64 glibc and none for musl, so on Alpine
+# `npm ci` hands the whole SQLite amalgamation to g++ and compiles it — minutes,
+# single-threaded, on every cache miss. On glibc the same install downloads a
+# 2 MB .node file: a measured 12 seconds cold against several minutes.
+#
+# The cost is roughly 40 MB of image. That is the right trade for a self-hosted
+# app that gets rebuilt far more often than it gets pulled.
+ARG NODE_IMAGE=node:22-slim
+
 # ── deps ─────────────────────────────────────────────────────
-FROM node:22-alpine AS deps
-# better-sqlite3 compiles from source on Alpine — musl has no prebuilt binary.
-# That compile is the expensive part of this stage, so the whole design below is
-# about not doing it when nothing has actually changed.
-RUN apk add --no-cache python3 make g++ libc6-compat
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 
-# node-gyp builds single-threaded unless told otherwise. On any modern machine
-# this is the difference between one core compiling SQLite and all of them.
+# Only a fallback. prebuild-install should find a binary for this platform and
+# never touch these — but if it ever 404s, node-gyp needs a compiler, and a
+# build that fails to produce a runnable image beats one that cannot recover.
+# Discarded with this stage, so none of it reaches the final image.
+#
+# Debian's images delete downloaded .debs after every install; the cache mount
+# below is pointless until that is turned off.
+RUN rm -f /etc/apt/apt.conf.d/docker-clean \
+ && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++
+
+# node-gyp builds single-threaded unless told otherwise, on the rare path where
+# it builds at all.
 ENV npm_config_jobs=max
 
 # Only the lockfile is copied, and package.json is generated from it.
 #
 # This layer used to be `COPY package.json package-lock.json*`, which meant the
 # version bump that goes with every release invalidated it — and `npm ci` then
-# recompiled better-sqlite3 from source over three characters in a string the
-# installer never reads. The lockfile is the only thing that decides what gets
-# installed, and its root entry carries name, version, dependencies and
-# devDependencies, which is everything `npm ci` needs.
+# reinstalled everything over three characters in a string the installer never
+# reads. The lockfile is the only thing that decides what gets installed, and
+# its root entry carries name, version, dependencies and devDependencies, which
+# is everything `npm ci` needs.
 #
 # Generating package.json from the lockfile keys this layer on the dependencies
 # alone: change one and it rebuilds, as it must. Bump the version, edit a
@@ -39,16 +60,17 @@ RUN node -e "\
   }, null, 2)); \
 "
 
-# The npm cache survives across builds, so the tarballs are not re-downloaded
-# even when a dependency does change. --no-audit is not just speed: the audit
-# endpoint is a network round-trip after the install has finished, and it is
-# where a build appears to hang when npm's registry is slow.
+# The npm cache survives across builds, so tarballs are not re-downloaded even
+# when a dependency does change. --no-audit is not only speed: the audit is a
+# network round-trip after the install has finished, and it is where a build
+# appears to hang when the registry is slow. --foreground-scripts makes the
+# install scripts print — without it a native build is a silent void, which is
+# indistinguishable from a hang while you are watching it.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm ci --no-audit --no-fund
+    npm ci --no-audit --no-fund --foreground-scripts
 
 # ── build ────────────────────────────────────────────────────
-FROM node:22-alpine AS build
-RUN apk add --no-cache libc6-compat
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -62,8 +84,7 @@ RUN --mount=type=cache,target=/app/.next/cache,sharing=locked \
     npm run build
 
 # ── runtime ──────────────────────────────────────────────────
-FROM node:22-alpine AS runner
-RUN apk add --no-cache libc6-compat tini
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -73,7 +94,8 @@ ENV NODE_ENV=production \
     DATABASE_PATH=/data/db/arachne.db \
     UPLOAD_DIR=/data/uploads
 
-RUN addgroup -g 1001 -S arachne && adduser -u 1001 -S arachne -G arachne
+RUN groupadd -g 1001 arachne \
+ && useradd -u 1001 -g arachne -M -s /usr/sbin/nologin arachne
 
 COPY --from=build /app/public ./public
 COPY --from=build --chown=arachne:arachne /app/.next/standalone ./
@@ -89,6 +111,7 @@ USER arachne
 EXPOSE 3000
 VOLUME ["/data/db", "/data/uploads"]
 
-# tini reaps zombies and forwards SIGTERM, so SQLite closes cleanly on restart.
-ENTRYPOINT ["/sbin/tini", "--"]
+# Zombie reaping and SIGTERM forwarding — so SQLite closes cleanly on restart —
+# come from Docker's own init (`init: true` in compose) rather than a tini
+# package, which is one less thing to install and one less path to get wrong.
 CMD ["node", "server.js"]

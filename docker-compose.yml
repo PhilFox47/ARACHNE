@@ -4,6 +4,9 @@ services:
     image: arachne:latest
     container_name: arachne
     restart: unless-stopped
+    # Reaps zombies and forwards SIGTERM to node, so SQLite closes cleanly on a
+    # restart. Docker's own init, rather than a tini package in the image.
+    init: true
     # Host port only. The container always listens on 3000, so changing this
     # needs no rebuild — edit .env and `docker compose up -d`.
     ports:
@@ -30,7 +33,13 @@ services:
       # this one line.
       - arachne-backups:/data/backups
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      # node rather than wget or curl: neither is guaranteed to be in a slim
+      # base image, and the one binary this container certainly has is node.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3

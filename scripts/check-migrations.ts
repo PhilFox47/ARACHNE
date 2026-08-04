@@ -373,12 +373,15 @@ for (const m of MOVEMENTS) {
 }
 
 // ── The Docker dependency layer ──
-// `npm ci` recompiles better-sqlite3 from source, because musl has no prebuilt
-// binary — a minute and a half, every time the layer is invalidated. It is keyed
-// on package-lock.json alone so that a version bump, which happens on every
-// release and changes nothing the installer reads, does not trigger it. That is
-// one careless edit away from coming back, and the cost is invisible until you
-// are watching a build bar.
+// Two things kept this stage honest, and both are invisible until you are
+// watching a build bar:
+//
+//   The base image must not be Alpine. better-sqlite3 ships no musl prebuild,
+//   so on Alpine `npm ci` compiles SQLite from source — minutes, against 12
+//   seconds to download a binary on glibc.
+//
+//   The layer must be keyed on package-lock.json alone, so the version bump
+//   that happens on every release does not reinstall everything.
 console.log("\ndocker build cache");
 
 const dockerfile = fs.readFileSync("Dockerfile", "utf8");
@@ -386,6 +389,15 @@ const depsStage = dockerfile.slice(
   dockerfile.indexOf("AS deps"),
   dockerfile.indexOf("AS build"),
 );
+
+// musl has no better-sqlite3 prebuild, so every build would compile it.
+ok("the base image is not Alpine", !/^(FROM|ARG NODE_IMAGE=)[^\n]*alpine/m.test(dockerfile));
+
+// The runtime image installs nothing, so anything the healthcheck or entrypoint
+// reaches for has to be in the base. node always is; wget and tini are not.
+const compose = fs.readFileSync("docker-compose.yml", "utf8");
+ok("the healthcheck does not depend on wget or curl", !/test:[\s\S]{0,200}?(wget|curl)/.test(compose));
+ok("an init process reaps zombies", /^\s*init:\s*true\s*$/m.test(compose));
 
 // A version bump would otherwise recompile better-sqlite3 on every release.
 ok(

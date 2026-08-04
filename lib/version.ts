@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.1";
+export const APP_VERSION = "1.5.2";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,17 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.2",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "Docker builds off Alpine — npm ci went from minutes to seconds",
+    changes: [
+      "better-sqlite3 ships prebuilt binaries for glibc and none for musl, so on Alpine every dependency install compiled SQLite from source. On node:22-slim the same install downloads a 2 MB binary: 12 seconds cold, measured, against several minutes.",
+      "Install scripts now print instead of being suppressed — a native build with no output is indistinguishable from a hang while you are watching it.",
+      "The healthcheck uses node rather than wget, which a slim base image does not guarantee, and zombie reaping moved to Docker's own init.",
+    ],
+  },
   {
     version: "1.5.1",
     date: "2026-08-04",
