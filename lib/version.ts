@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.5.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,16 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.1",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "Docker builds stopped recompiling SQLite on every release",
+    changes: [
+      "The dependency layer was keyed on package.json, which changes every release because the version bumps — so npm ci rebuilt better-sqlite3 from source each time, for ninety seconds, with no dependency having changed. It is keyed on the lockfile now.",
+      "The npm download cache carries across builds, the audit round-trip that runs after the install is skipped, and node-gyp uses every core when it does have to compile.",
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-08-04",

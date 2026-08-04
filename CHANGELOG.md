@@ -17,6 +17,28 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.1 — 2026-08-04
+
+The Docker build stopped recompiling SQLite on every release.
+
+`RUN npm ci` was taking ninety seconds or more on builds where **not one dependency had changed** —
+`package-lock.json` has not moved since the first commit. The deps stage copied `package.json`, and
+that file changes on every release because the version bumps, so the layer was invalidated each
+time. `npm ci` then rebuilt better-sqlite3 from source, which Alpine has to do because musl has no
+prebuilt binary, over three characters in a string the installer never reads.
+
+The stage now copies only the lockfile and generates `package.json` from its root entry, which
+carries the name, version and both dependency sets — everything `npm ci` consults. Change a
+dependency and the layer rebuilds as it must; bump the version or edit a script and it stays cached.
+The real `package.json` arrives with `COPY . .` in the build stage, so the build sees the file as
+written.
+
+Also: the npm download cache is mounted across builds, `--no-audit` removes a network round-trip
+that runs *after* the install finishes and is where a build appears to hang, `npm_config_jobs=max`
+lets node-gyp use every core when it does have to compile, and Next's own cache is mounted so an
+incremental rebuild is not a cold one. `npm run check` now fails if the deps stage starts copying
+`package.json` again, or if the lockfile drifts out of sync with `package.json`.
+
 ## 1.5.0 — 2026-08-04
 
 FUEL reads more than one photo, and shows its working.

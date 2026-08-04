@@ -372,5 +372,51 @@ for (const m of MOVEMENTS) {
   }
 }
 
+// ── The Docker dependency layer ──
+// `npm ci` recompiles better-sqlite3 from source, because musl has no prebuilt
+// binary — a minute and a half, every time the layer is invalidated. It is keyed
+// on package-lock.json alone so that a version bump, which happens on every
+// release and changes nothing the installer reads, does not trigger it. That is
+// one careless edit away from coming back, and the cost is invisible until you
+// are watching a build bar.
+console.log("\ndocker build cache");
+
+const dockerfile = fs.readFileSync("Dockerfile", "utf8");
+const depsStage = dockerfile.slice(
+  dockerfile.indexOf("AS deps"),
+  dockerfile.indexOf("AS build"),
+);
+
+// A version bump would otherwise recompile better-sqlite3 on every release.
+ok(
+  "the deps stage does not copy package.json",
+  !/^COPY\s+[^\n]*\bpackage\.json\b/m.test(depsStage),
+);
+ok("the deps stage copies the lockfile", /^COPY\s+package-lock\.json/m.test(depsStage));
+ok("the npm cache is mounted", depsStage.includes("type=cache,target=/root/.npm"));
+ok("the audit round-trip is skipped", /npm ci[^\n]*--no-audit/.test(depsStage));
+
+// The generated package.json must ask for exactly what the real one does. npm
+// would catch a mismatch during the build; catching it here is the difference
+// between a failed deploy and a failed `npm run check`.
+const realPkg = JSON.parse(fs.readFileSync("package.json", "utf8")) as {
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+};
+const lockRoot = (
+  JSON.parse(fs.readFileSync("package-lock.json", "utf8")) as {
+    packages: Record<string, { dependencies?: object; devDependencies?: object }>;
+  }
+).packages[""];
+
+for (const field of ["dependencies", "devDependencies"] as const) {
+  const matches = JSON.stringify(lockRoot[field] ?? {}) === JSON.stringify(realPkg[field] ?? {});
+  ok(
+    `the lockfile's ${field} match package.json`,
+    matches,
+    matches ? "" : "out of sync — run npm install",
+  );
+}
+
 console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);
