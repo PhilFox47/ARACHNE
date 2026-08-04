@@ -69,6 +69,41 @@ RUN node -e "\
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --no-audit --no-fund --foreground-scripts
 
+# Drop the optional packages built for a platform this image is not.
+#
+# next, sharp, lightningcss and tailwind's oxide each ship one native binary per
+# platform as optional dependencies, and npm normally skips the ones whose `os`,
+# `cpu` or `libc` do not match. It cannot here: package-lock.json predates npm
+# recording `libc`, so on glibc it installs the musl builds too — 165 MB of
+# binaries that can never execute. Regenerating the lockfile does not add the
+# field, and `npm ci --libc=glibc` is ignored for the same reason; both were
+# tried. So they are removed afterwards, which at least keeps them out of the
+# layer the build stage copies.
+#
+# Derived from the running platform rather than a hardcoded list, so this stays
+# correct if NODE_IMAGE is ever pointed at a different base.
+RUN node -e "\
+  const fs = require('fs'), path = require('path'); \
+  const libc = process.report?.getReport()?.header?.glibcVersionRuntime ? 'glibc' : 'musl'; \
+  let gone = 0; \
+  const walk = (dir) => { \
+    for (const name of fs.readdirSync(dir)) { \
+      const p = path.join(dir, name); \
+      if (name.startsWith('@')) { walk(p); continue; } \
+      let pkg; \
+      try { pkg = JSON.parse(fs.readFileSync(path.join(p, 'package.json'), 'utf8')); } catch { continue; } \
+      if ((pkg.os && !pkg.os.includes(process.platform)) \
+       || (pkg.cpu && !pkg.cpu.includes(process.arch)) \
+       || (pkg.libc && !pkg.libc.includes(libc))) { \
+        fs.rmSync(p, { recursive: true, force: true }); \
+        gone++; \
+      } \
+    } \
+  }; \
+  walk('node_modules'); \
+  console.log('pruned ' + gone + ' packages built for another platform (libc=' + libc + ')'); \
+"
+
 # ── build ────────────────────────────────────────────────────
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app

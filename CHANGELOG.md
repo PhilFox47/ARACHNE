@@ -17,6 +17,19 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.3 — 2026-08-04
+
+Stops installing 165 MB of binaries that cannot run.
+
+`next`, `sharp`, `lightningcss` and Tailwind's oxide each ship one native binary per platform as
+optional dependencies, and npm normally skips the ones whose `os`, `cpu` or `libc` do not match.
+It cannot here: `package-lock.json` predates npm recording `libc`, so a glibc image installs the
+musl builds as well — 165 MB across five packages, `@next/swc-linux-x64-musl` alone being 136 MB.
+Regenerating the lockfile does not add the field and `npm ci --libc=glibc` is ignored for the same
+reason; both were tried. They are pruned after the install instead, derived from the running
+platform rather than a hardcoded list, so it stays correct if the base image ever changes.
+node_modules goes from 628 MB to 463 MB, and a build against the pruned tree was verified.
+
 ## 1.5.2 — 2026-08-04
 
 Docker builds off Alpine. `npm ci` went from minutes to seconds.

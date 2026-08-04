@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.2";
+export const APP_VERSION = "1.5.3";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,15 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.3",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "Stops installing 165 MB of binaries that cannot run",
+    changes: [
+      "next, sharp, lightningcss and Tailwind ship one native binary per platform. The lockfile predates npm recording which libc each needs, so a glibc image was installing the musl builds too — 165 MB that can never execute. They are pruned after the install.",
+    ],
+  },
   {
     version: "1.5.2",
     date: "2026-08-04",
