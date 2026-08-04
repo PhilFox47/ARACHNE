@@ -17,6 +17,32 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.5 — 2026-08-04
+
+Removes the Docker Hub round-trip that has to succeed before the build starts.
+
+The build now fails at **step 3** — before a line of the Dockerfile is parsed:
+
+```
+failed to fetch oauth token: Post "https://auth.docker.io/token": net/http: TLS handshake timeout
+```
+
+That step exists only because of `# syntax=docker/dockerfile:1`. The directive names a *tag*, so
+BuildKit must ask Docker Hub which digest it points at on every build, and that needs an OAuth token
+from `auth.docker.io` first. Docker's built-in frontend supports everything used here — cache
+mounts, ARG in FROM, `COPY --from`, `COPY --chown` — so the external one bought nothing and cost a
+mandatory network call. It is gone.
+
+This also confirms the diagnosis behind v1.5.4 and generalises it: **this host's outbound HTTPS from
+Docker is unreliable**, hanging at the TLS handshake for some hosts while others answer fine. That
+is why the npm registry could finish in four seconds while `prebuild-install` sat on github.com for
+ten minutes, and why no other container shows it — nothing else reaches those hosts. The usual cause
+on Windows is an MTU mismatch, and `docs/DOCKER-TROUBLESHOOTING.md` now documents the check and the
+fixes.
+
+Nothing here is an application problem. The Dockerfile changes only reduce how many external hosts
+have to be reachable for a build to succeed.
+
 ## 1.5.4 — 2026-08-04
 
 The actual cause of the hanging build: `prebuild-install` fetching from GitHub.

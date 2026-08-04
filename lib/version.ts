@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.4";
+export const APP_VERSION = "1.5.5";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,16 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.5",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "One fewer host that has to be reachable to build",
+    changes: [
+      "The `# syntax=` directive made BuildKit resolve a tag against Docker Hub on every build, needing an auth token before the Dockerfile was even parsed. On a flaky connection that is where the build died, at step 3. Docker's built-in frontend does everything needed, so the directive is gone.",
+      "docs/DOCKER-TROUBLESHOOTING.md documents the underlying network problem, how to check it in thirty seconds, and the fixes — MTU first.",
+    ],
+  },
   {
     version: "1.5.4",
     date: "2026-08-04",

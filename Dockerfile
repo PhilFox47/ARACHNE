@@ -1,4 +1,15 @@
-# syntax=docker/dockerfile:1
+# No `# syntax=` directive, deliberately.
+#
+# That line names a *tag*, so BuildKit has to ask Docker Hub which digest it
+# currently points at on every single build — which needs an OAuth token from
+# auth.docker.io before anything in this file is even parsed. On a connection
+# where that call is slow or blocked, the build fails at step 3 with a TLS
+# handshake timeout and none of the work below is ever reached.
+#
+# Docker's built-in frontend handles everything used here — cache mounts, ARG in
+# FROM, COPY --from, COPY --chown — so the external one buys nothing and costs a
+# mandatory network round-trip. Docker Engine 23 or newer is required, which any
+# current Docker Desktop is.
 
 # Debian slim rather than Alpine, and the reason is better-sqlite3.
 #

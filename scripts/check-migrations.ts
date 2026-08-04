@@ -391,6 +391,12 @@ const depsStage = dockerfile.slice(
 );
 
 // musl has no better-sqlite3 prebuild, so every build would compile it.
+// The `# syntax=` directive names a tag, so BuildKit resolves it against Docker
+// Hub on every build — an auth.docker.io round-trip before the file is even
+// parsed, and the first thing to fail on a flaky connection. Docker's built-in
+// frontend covers everything used here. See docs/DOCKER-TROUBLESHOOTING.md.
+ok("no syntax directive forces a Docker Hub round-trip", !/^#\s*syntax=/m.test(dockerfile));
+
 ok("the base image is not Alpine", !/^(FROM|ARG NODE_IMAGE=)[^\n]*alpine/m.test(dockerfile));
 
 // The runtime image installs nothing, so anything the healthcheck or entrypoint
