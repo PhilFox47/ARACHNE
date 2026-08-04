@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createEntry, quickLog } from "@/app/fuel/actions";
+import { ANALYSING_PLACEHOLDER } from "@/lib/plan";
 import { Favourites, type FavouriteItem } from "./Favourites";
 import { WebLoader } from "./WebLoader";
 
@@ -69,7 +70,7 @@ export function FuelCapture({
     // Save first, before anyone types anything. The entry exists before the
     // model is ever called, so a slow analysis — or abandoning the note sheet
     // entirely — can never cost you the log.
-    const created = await createEntry({ description: "Analysing…", photoDataUrl: dataUrl });
+    const created = await createEntry({ description: ANALYSING_PLACEHOLDER, photoDataUrl: dataUrl });
     if (!created.ok) {
       finish(created.error);
       return;

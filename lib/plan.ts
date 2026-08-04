@@ -1471,6 +1471,14 @@ export const PROTEIN_PER_MEAL_G = 40;
 /** Times a description must repeat before it's offered as a one-tap entry. */
 export const QUICK_LOG_THRESHOLD = 3;
 
+/**
+ * The description an entry carries between the shutter firing and the model
+ * answering. It is a status wearing a name's clothes, which is exactly why it
+ * has to be written down once: two copies of it drift, and the copy that drifts
+ * is the one deciding whether a row is still in progress.
+ */
+export const ANALYSING_PLACEHOLDER = "Analysing…";
+
 // ─────────────────────────────────────────────────────────────
 // Measurements
 // ─────────────────────────────────────────────────────────────

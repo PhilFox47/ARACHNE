@@ -69,6 +69,34 @@ export function FuelEntryRow({ entry, isFavourite }: { entry: Entry; isFavourite
     NutrientKey,
     string
   >;
+
+  /**
+   * Re-seed the form when the server's copy of this entry changes underneath it.
+   *
+   * The row keeps the fields in state so you can type into them, and state is
+   * seeded once at mount — so when an analysis lands while the row is open, the
+   * inputs went on showing "Analysing…" and blank macros even though the header
+   * above them had already updated. The row then read as having unsaved edits,
+   * and saving would have written the placeholder back over the model's answer.
+   *
+   * Compared during render rather than in an effect, so the corrected values are
+   * in the first paint instead of one frame later. Only the fields this form
+   * owns are in the signature: toggling favourite or meal type must not reset
+   * something you are halfway through typing.
+   */
+  const serverState = JSON.stringify([
+    entry.description,
+    entry.portion,
+    ...NUTRIENTS.map((n) => entry[n.key]),
+  ]);
+  const [seeded, setSeeded] = useState(serverState);
+  if (seeded !== serverState) {
+    setSeeded(serverState);
+    setDesc(entry.description);
+    setPortion(entry.portion ?? "");
+    setVals(original);
+  }
+
   const dirty =
     desc !== entry.description ||
     portion !== (entry.portion ?? "") ||

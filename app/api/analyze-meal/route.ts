@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { foodEntries } from "@/lib/db/schema";
@@ -6,9 +7,17 @@ import { isAuthed } from "@/lib/auth";
 import { analyseMeal } from "@/lib/vision";
 import { getSettings } from "@/lib/settings";
 import { readStored } from "@/lib/photos";
+import { ANALYSING_PLACEHOLDER } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** Every screen that renders a food entry. */
+function refresh() {
+  revalidatePath("/fuel");
+  revalidatePath("/fuel/stats");
+  revalidatePath("/");
+}
 
 /**
  * The only path to the Nano-GPT key.
@@ -62,10 +71,16 @@ export async function POST(req: Request) {
   const result = await analyseMeal(dataUrl, note.length > 0 ? note : undefined);
 
   if (result.error) {
-    // Surface the note as the description so a failed entry reads as what you
-    // ate rather than "Analysing…" forever.
-    if (note.length > 0 && entry.description === "Analysing…") {
-      db.update(foodEntries).set({ description: note }).where(eq(foodEntries.id, entryId)).run();
+    // "Analysing…" is a status, and leaving it in the description turns a failed
+    // call into a row that reads as permanently in progress. The note is the
+    // best name available; without one, anything honest beats the placeholder —
+    // the row still carries its photo and its retry button.
+    if (entry.description === ANALYSING_PLACEHOLDER) {
+      db.update(foodEntries)
+        .set({ description: note.length > 0 ? note : "Unnamed meal" })
+        .where(eq(foodEntries.id, entryId))
+        .run();
+      refresh();
     }
     return NextResponse.json({ ok: true, analysed: false, error: result.error, model: result.model });
   }
@@ -93,6 +108,10 @@ export async function POST(req: Request) {
     })
     .where(eq(foodEntries.id, entryId))
     .run();
+
+  // A route handler mutating data the pages render has to say so, or the
+  // client's refresh can be answered from a cached render of the old row.
+  refresh();
 
   return NextResponse.json({
     ok: true,
