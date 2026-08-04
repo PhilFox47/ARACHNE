@@ -17,6 +17,23 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.6 — 2026-08-04
+
+Closes the last host the native build needs.
+
+v1.5.4 moved better-sqlite3 off github.com, but node-gyp still fetched node's headers from
+**nodejs.org** — a third host that has to be reachable on a connection where reachability is the
+whole problem. The official node images ship those headers at `/usr/local/include/node`, so the deps
+stage now points node-gyp at them and the native build makes no network call at all.
+
+Conditional on purpose: setting `nodedir` unconditionally would hard-fail on a base image that omits
+the headers, where falling back to the download is correct. Both branches were run and verified —
+it sets the config when the headers are there and exits cleanly when they are not.
+
+The three hosts a build used to depend on, in order of removal: `auth.docker.io` (v1.5.5),
+`github.com` (v1.5.4), `nodejs.org` (here). What remains is the npm registry and Debian's mirrors,
+both of which have been answering in seconds throughout.
+
 ## 1.5.5 — 2026-08-04
 
 Removes the Docker Hub round-trip that has to succeed before the build starts.

@@ -74,6 +74,8 @@ None of this fixes the network, but it removes as much dependence on it as possi
 - **`npm_config_build_from_source=true`.** better-sqlite3's installer fetches from github.com using
   a client with no timeout, so an unreachable GitHub hangs forever with no output. Building from
   source routes through node-gyp instead, which times out and fails loudly.
+- **`nodedir` points at the image's own node headers**, so node-gyp does not fetch them from
+  nodejs.org either. Between this and the two above, the native build reaches no host at all.
 - **The npm and node-gyp caches are mounted**, so a rebuild does not re-fetch what it already has.
 - **The dependency layer is keyed on `package-lock.json` alone**, so a release that only bumps the
   version reuses it and touches the network not at all.
@@ -82,3 +84,23 @@ None of this fixes the network, but it removes as much dependence on it as possi
 
 The image is self-contained. Nothing at runtime reaches Docker Hub, GitHub or npm — the only
 outbound call ARACHNE makes is to Nano-GPT, when a meal photo is analysed.
+
+## Reading a stalled `npm ci`
+
+`--foreground-scripts` is on, so install scripts print as they run. That gives you a way to tell
+where it is:
+
+```
+#17 ...  npm warn deprecated ...            ← downloading. Fast, and not where it hangs.
+#17 ...  > better-sqlite3@11.10.0 install   ← scripts have started
+#17 ...  > prebuild-install || node-gyp rebuild --release
+#17 ...  gyp info it worked if it ends with ok
+#17 ...  gyp info spawn /usr/local/bin/python3   ← compiling, ~2 min, quiet while it works
+```
+
+- **Stalls with only `npm warn` lines showing** — it has not reached the scripts. Extraction, or a
+  fetch that is still open.
+- **Stalls right after `> better-sqlite3 ... install`** — the install script is blocked on the
+  network. This is what `build_from_source` and `nodedir` exist to prevent.
+- **Stalls after `gyp info spawn python3`** — that one is fine. It is compiling and says nothing
+  until it finishes.

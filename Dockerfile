@@ -60,6 +60,24 @@ ENV npm_config_build_from_source=true
 # node-gyp builds single-threaded unless told otherwise.
 ENV npm_config_jobs=max
 
+# Use the node headers the image already carries, if it carries them.
+#
+# Building from source moves the download off github.com but node-gyp still
+# fetches headers from nodejs.org — a third host that has to be reachable. The
+# official node images ship those headers at /usr/local/include/node, so when
+# they are present this makes the native build entirely offline.
+#
+# Conditional on purpose. Setting nodedir unconditionally would hard-fail on any
+# base image that omits them, and falling back to the download is the correct
+# behaviour there rather than a broken build.
+RUN if [ -f /usr/local/include/node/node.h ]; then \
+      mkdir -p "$(dirname "$(npm config get globalconfig)")"; \
+      echo "nodedir=/usr/local" >> "$(npm config get globalconfig)"; \
+      echo "using the image's own node headers — no nodejs.org fetch"; \
+    else \
+      echo "no bundled headers; node-gyp will fetch them from nodejs.org"; \
+    fi
+
 # Only the lockfile is copied, and package.json is generated from it.
 #
 # This layer used to be `COPY package.json package-lock.json*`, which meant the

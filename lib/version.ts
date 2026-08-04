@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.5";
+export const APP_VERSION = "1.5.6";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,16 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.6",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "Closes the last host the native build needs",
+    changes: [
+      "Building better-sqlite3 from source moved it off github.com, but node-gyp still fetched node's headers from nodejs.org. The node image already ships them, so it now uses those and makes no network call at all.",
+      "Three hosts removed from the critical path across 1.5.4–1.5.6: auth.docker.io, github.com, nodejs.org.",
+    ],
+  },
   {
     version: "1.5.5",
     date: "2026-08-04",
