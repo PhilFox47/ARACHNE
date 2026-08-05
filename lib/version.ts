@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.6";
+export const APP_VERSION = "1.5.7";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,16 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.7",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "A stalled download gives up in a minute, not fifteen",
+    changes: [
+      "npm's default fetch-timeout is five minutes with two retries, so one tarball whose transfer stalls can burn a quarter of an hour before reporting anything. That was the shape of the hanging build: not a dead connection, a slow one inside a timeout long enough to look dead.",
+      "Sixty seconds and five retries instead. Costs nothing on a healthy connection, and turns a single long stall into several quick attempts on a bad one.",
+    ],
+  },
   {
     version: "1.5.6",
     date: "2026-08-04",

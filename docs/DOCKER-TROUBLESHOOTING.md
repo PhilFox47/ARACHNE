@@ -16,7 +16,35 @@ Docker's outbound HTTPS is unreliable on this host. Three separate failures, all
 The common thread: **the npm registry being fast tells you nothing.** Each of these talks to a
 *different host*, and on a broken connection some hosts work and others hang at the TLS handshake.
 
+## What a stalled `npm ci` actually is
+
+npm's default `fetch-timeout` is **300000 ms — five minutes** — with two retries. So a tarball whose
+transfer stalls mid-download sits silently for five minutes, retries, and can burn a quarter of an
+hour before npm reports anything. That is what the "hanging" build was: not a dead connection, a
+slow one, inside a timeout long enough to look dead.
+
+The deps stage sets `fetch-timeout` to 60 s and `fetch-retries` to 5. Sixty seconds is far longer
+than any of these tarballs needs on a healthy link, so it costs nothing when things work and turns a
+fifteen-minute stall into five quick attempts when they don't.
+
 ## Check it in thirty seconds
+
+Bound every one of these with `--max-time`, and be aware that curl's `-w` values only print when the
+**whole transfer** finishes — so a command that returns nothing means the body stalled, not that the
+handshake failed. Separate the two:
+
+```powershell
+# Handshake only. Small, so it isolates connect + TLS from bulk transfer.
+curl.exe -sS -o NUL --max-time 20 -I -w "npm     tls %{time_appconnect}s  http %{http_code}`n" https://registry.npmjs.org/next
+curl.exe -sS -o NUL --max-time 20 -I -w "docker  tls %{time_appconnect}s  http %{http_code}`n" https://auth.docker.io/
+curl.exe -sS -o NUL --max-time 20 -I -w "github  tls %{time_appconnect}s  http %{http_code}`n" https://github.com/
+
+# Bulk transfer, capped at 5 MB so it cannot run away.
+curl.exe -sS -o NUL --max-time 30 -r 0-5000000 -w "npm bulk %{speed_download} B/s in %{time_total}s`n" https://registry.npmjs.org/next
+```
+
+A fast handshake with a stalled bulk transfer is the signature to look for. It points at path MTU,
+not at a host being down.
 
 ```powershell
 # Docker Hub's auth endpoint — the one that fails at step 3.

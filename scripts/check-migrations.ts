@@ -420,6 +420,11 @@ ok("the audit round-trip is skipped", /npm ci[^\n]*--no-audit/.test(depsStage));
 // anywhere. Unreachable GitHub means a call that never returns and never
 // errors. Building from source keeps the whole install on hosts that do time
 // out. Removing this line reintroduces a silent, unbounded hang.
+// npm's default fetch-timeout is five minutes with two retries, so one stalled
+// tarball can burn a quarter of an hour before it admits anything is wrong.
+// That is what a "hanging" build looks like from outside.
+ok("a stalled download gives up in a minute, not five", /npm_config_fetch_timeout=60000/.test(depsStage));
+
 ok(
   "better-sqlite3 builds from source rather than fetching from GitHub",
   /npm_config_build_from_source=true/.test(depsStage),

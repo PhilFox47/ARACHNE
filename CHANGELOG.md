@@ -17,6 +17,38 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.7 — 2026-08-04
+
+A stalled download gives up in a minute, not fifteen. And a correction.
+
+I had read "npm's warnings appear in 4 seconds" as the registry being healthy, and argued against a
+CDN explanation on that basis. **That was wrong.** Four seconds is where the deprecation warnings
+stop, not where the download finishes — the bulk tarball transfer comes after, and that is what
+stalls. A plain `curl` of `registry.npmjs.org` from Windows, outside Docker, with no VPN, did not
+finish in five minutes, while `github.com` completed its TLS handshake in 51 ms. So this was never
+Docker's networking.
+
+npm's default `fetch-timeout` is **300000 ms with two retries**. A transfer that stalls mid-tarball
+sits silent for five minutes, retries, and can burn a quarter of an hour before reporting anything.
+That is the exact shape of the "hang": not a dead link, a slow one inside a timeout long enough to
+look dead.
+
+```
+npm_config_fetch_timeout=60000
+npm_config_fetch_retries=5
+npm_config_fetch_retry_maxtimeout=20000
+```
+
+Sixty seconds is far longer than any of these tarballs needs on a healthy connection, so it costs
+nothing when the network is fine and turns one fifteen-minute stall into five quick attempts when it
+is not. With the npm cache mount, a partial run also banks what it managed to fetch, so each attempt
+starts further along.
+
+The troubleshooting doc gains the corrected diagnosis and a better test — curl's `-w` values only
+print when the *whole* transfer completes, so a command that returns nothing means the body stalled
+rather than the handshake failing. Those are now measured separately, with `--max-time` on
+everything.
+
 ## 1.5.6 — 2026-08-04
 
 Closes the last host the native build needs.

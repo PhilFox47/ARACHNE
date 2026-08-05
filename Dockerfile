@@ -105,12 +105,27 @@ RUN node -e "\
   }, null, 2)); \
 "
 
+# Fail a stalled download in a minute instead of five, and retry it.
+#
+# npm's default fetch-timeout is 300000 ms with 2 retries, so a transfer that
+# stalls mid-tarball sits silently for five minutes, retries, and can burn a
+# quarter of an hour before it admits anything is wrong. On a path that stalls
+# intermittently — a degraded CDN route, a wrong MTU — that is the difference
+# between a build that hangs and one that gets there on the second attempt.
+#
+# Sixty seconds is far longer than any of these tarballs needs on a working
+# connection, so this costs nothing when the network is healthy.
+ENV npm_config_fetch_timeout=60000 \
+    npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_maxtimeout=20000
+
 # The npm cache survives across builds, so tarballs are not re-downloaded even
-# when a dependency does change. --no-audit is not only speed: the audit is a
-# network round-trip after the install has finished, and it is where a build
-# appears to hang when the registry is slow. --foreground-scripts makes the
-# install scripts print — without it a native build is a silent void, which is
-# indistinguishable from a hang while you are watching it.
+# when a dependency does change — which matters most on exactly the connection
+# this is written for, since a partial run still banks whatever it got.
+# --no-audit is not only speed: the audit is a network round-trip after the
+# install has finished, and it is another place a build appears to hang.
+# --foreground-scripts makes the install scripts print — without it a native
+# build is a silent void, indistinguishable from a hang while you watch it.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     --mount=type=cache,target=/root/.cache/node-gyp,sharing=locked \
     npm ci --no-audit --no-fund --foreground-scripts
