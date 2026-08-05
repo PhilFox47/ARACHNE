@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Prescription, PrescribedExercise } from "@/lib/training";
 import { recordFeel, saveSet, setCompleted } from "@/app/patrol/actions";
 import { ImpactBurst } from "./ImpactBurst";
+import { HoldTimer } from "./HoldTimer";
 import { WebLoader } from "./WebLoader";
 import { TensionLine } from "./TensionLine";
 
@@ -354,11 +355,13 @@ function ExerciseCard({
           <li key={i}>
             <SetRow
               index={i}
+              name={ex.name}
               metric={ex.metric}
               logged={byIndex.get(i) ?? null}
               targetReps={ex.targetReps}
               targetSeconds={ex.targetSeconds}
               targetWeight={ex.targetWeightKg}
+              perSide={ex.perSide}
               showWeight={ex.loaded || byIndex.get(i)?.weightKg != null}
               onSave={(v) => onSave(i, v)}
             />
@@ -433,20 +436,24 @@ function FeelCheck({ date, ex }: { date: string; ex: PrescribedExercise }) {
 
 function SetRow({
   index,
+  name,
   metric,
   logged,
   targetReps,
   targetSeconds,
   targetWeight,
+  perSide,
   showWeight,
   onSave,
 }: {
   index: number;
+  name: string;
   metric: "reps" | "time";
   logged: LoggedSet | null;
   targetReps: number | null;
   targetSeconds: number | null;
   targetWeight: number | null;
+  perSide: boolean;
   showWeight: boolean;
   onSave: (v: { reps?: number | null; weightKg?: number | null; seconds?: number | null }) => void;
 }) {
@@ -455,6 +462,7 @@ function SetRow({
   );
   const [weight, setWeight] = useState(logged?.weightKg != null ? String(logged.weightKg) : "");
   const [weightOpen, setWeightOpen] = useState(showWeight);
+  const [timing, setTiming] = useState(false);
   const filled = logged !== null;
 
   const commit = (p: string, w: string) => {
@@ -479,6 +487,21 @@ function SetRow({
 
   return (
     <div className="flex items-center gap-2">
+      {timing ? (
+        <HoldTimer
+          name={name}
+          target={targetSeconds}
+          perSide={perSide}
+          onCancel={() => setTiming(false)}
+          onDone={(secs) => {
+            setTiming(false);
+            const p = String(secs);
+            setPrimary(p);
+            commit(p, weight);
+          }}
+        />
+      ) : null}
+
       <button
         type="button"
         onClick={filled ? () => { setPrimary(""); setWeight(""); commit("", ""); } : fillTarget}
@@ -500,6 +523,23 @@ function SetRow({
         className="numeral h-9 min-w-0 flex-1 border border-edge bg-panel-2 px-2 text-base text-ink outline-none placeholder:text-muted-dim focus:border-cobalt"
       />
       <span className="label-xs w-6 shrink-0">{metric === "time" ? "s" : "rep"}</span>
+
+      {/* Timed movements get a clock. Holding a plank while watching a phone in
+          your other hand is a worse plank, and reading a wall clock upside down
+          in a handstand is not a thing anyone does. */}
+      {metric === "time" ? (
+        <button
+          type="button"
+          onClick={() => setTiming(true)}
+          aria-label={`Time set ${index + 1}`}
+          className="tap flex h-9 w-9 shrink-0 items-center justify-center border border-edge text-cobalt-lift active:border-cobalt"
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+            <circle cx="12" cy="13.5" r="7.5" />
+            <path d="M12 9.5v4.2l2.6 1.6M9.4 2.6h5.2M12 2.6v2.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      ) : null}
 
       {weightOpen ? (
         <>

@@ -17,6 +17,49 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.7.0 — 2026-08-05
+
+A clock for the holds, so a plank does not need a second device.
+
+Every timed movement — planks, hollow holds, wall sits, dead hangs, the deep
+squat hold, wall handstands, the bear crawl hold, and every max attempt in the
+baseline fortnight — now has a timer on its set row. Tap it, get into position
+during a three-second lead-in, and the seconds go straight into the set when you
+stop. No stopwatch, no typing a number in afterwards.
+
+Four things about it, all decided by the fact that you are on the floor and
+cannot look at the screen:
+
+**It counts up, not down.** The mastery bar rewards going past the target — that
+is the entire progression mechanism for a timed movement, since a hold has no
+reps to add. A countdown would hide how far past you got. The target is drawn as
+a line the clock crosses: cobalt while you are working toward it, crimson and
+still counting once you are past, with how far past written underneath.
+
+**It buzzes.** A tap on start, a beat each second of the lead-in, a long double
+buzz the moment you clear the target, and a short tick every thirty seconds
+after that — so a max hold still has a shape to it when your face is in the
+carpet. On a max attempt with no target, the ticks run from the start.
+
+**The elapsed time comes from the wall clock, never from counting intervals.**
+Phones throttle timers in a backgrounded tab and stop them when the screen
+locks. A counter adding 100 ms per tick would quietly under-report a three-
+minute plank; two timestamps cannot. The screen is also kept awake while the
+clock runs, where the browser allows it.
+
+**The whole screen is the stop button.** You are dropping out of a plank with
+shaking arms. A small target would be a design that had never been used lying
+down.
+
+Also: a baseline probe that the sweep has moved onto a different rung now
+explains that rung rather than the one the patrol named. The Control patrol says
+"Shoulder roll", the sweep hands a beginner the backward breakfall, and the
+instructions underneath were still about the roll.
+
+No schema change.
+
+---
+
 ## 1.6.2 — 2026-08-05
 
 The Docker build stopped failing on a seed script.

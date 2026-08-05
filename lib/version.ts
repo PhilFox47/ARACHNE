@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.6.2";
+export const APP_VERSION = "1.7.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-05";
@@ -32,6 +32,20 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.7.0",
+    date: "2026-08-05",
+    kind: "minor",
+    headline: "A clock for the holds — no more stopwatch",
+    changes: [
+      "Every timed movement has a timer on its set row. Tap it, get set during a three-second lead-in, and the seconds go straight into the set when you stop.",
+      "It counts up rather than down, because going past the target is how a hold progresses — the target is a line the clock crosses, and it tells you how far past you got.",
+      "It buzzes: through the lead-in, a long double buzz the moment you clear the target, and a tick every thirty seconds after that. You will not be looking at the screen.",
+      "The time is measured from the wall clock, so locking the phone or switching apps mid-hold cannot cost you seconds — and the screen is kept awake while it runs.",
+      "The whole screen is the stop button.",
+      "A baseline probe the sweep has moved onto a different rung now explains that rung, rather than the movement the patrol happened to name.",
+    ],
+  },
   {
     version: "1.6.2",
     date: "2026-08-05",

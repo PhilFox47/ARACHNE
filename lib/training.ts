@@ -423,7 +423,14 @@ function sweepPrescription(
     }
 
     const name = gate.allowed ? wanted : gate.substitute!.name;
-    let note = gate.allowed ? probe.how : `${gate.substitute!.note} ${probe.how}`;
+
+    // `probe.how` is written about the movement the patrol names. Once the sweep
+    // has moved you onto a different rung of that strand — which is the whole
+    // point of a ladder probe — it is advice about something you are not doing,
+    // so the rung speaks for itself instead.
+    const swept = rung !== null && rung.name !== probe.name;
+    let note = swept ? (rung?.summary ?? probe.how) : probe.how;
+    if (!gate.allowed) note = `${gate.substitute!.note} ${note}`;
 
     const up = upgradeExercise(name, owned);
     if (up) note = `${note} ${up.note}`;
