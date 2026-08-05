@@ -17,6 +17,108 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.6.0 — 2026-08-05
+
+Mastery takes months, not a good fortnight — and the tree now lasts the year.
+
+A cold audit of the generated sessions produced one measurement that settled the argument: a
+best-case 52-week simulation, an athlete who never misses a session and clears every bar on every
+set, had **every strand topped out by week 30**. Twenty-two weeks with nothing left to unlock. The
+same run also showed the fallback path prescribing exactly last session's numbers, so without a
+model configured the plan never progressed at all.
+
+### Mastery
+
+A movement is no longer mastered by clearing its bar twice. `MasteryBar` gained a **weeks** count:
+the clean sessions have to land in that many different calendar weeks. Sessions can be crammed,
+weeks cannot — a movement trained twice a week banks six clean sessions in three weeks, which is a
+good three weeks rather than a movement you own.
+
+Every rung names one of ten shared levels rather than inventing its own numbers. The wall push-up
+asks for 2×12 three times across two weeks; the archer push-up asks for 3×10 twelve times across
+eight; the kip-up to standing asks for 2×3 twelve times across twelve. Three sets from the second
+rung of every strand upward, which is the document's own rule — "only advance at a clean 3×12".
+Entry rungs stay at two, because the baseline fortnight prescribes two and a bar the sweep cannot
+clear would leave every strand stuck at the bottom.
+
+Skills take two sets and pay in sessions instead. Three clean sets of a kip-up is asking for exactly
+the tired third set the document warns against, and the document says the kip-up is several months
+of work.
+
+### The catalogue
+
+Seventy-three rungs became a hundred and three, across the same twenty strands.
+
+Every movement is now named something you can search for and find a tutorial. "Push-ups on a table",
+"Push-ups on a chair" and "Push-ups on the sofa edge" were three names for an incline push-up at two
+heights; "Rock-backs" was invented here and exists nowhere else. Every rename carries its old name
+in `aliases`, permanently, so nothing logged under the old wording is orphaned.
+
+The thin strands were deepened with legitimate intermediate movements rather than harder ones —
+lunging 2 rungs to 5, holds 2 to 5, crawling 2 to 4, the engine 2 to 4 — and the gaps filled:
+scapular pull-ups and chin-ups under the pull-up, a box squat under the bodyweight squat, hollow
+body rocks between the hollow hold and the tuck L-sit, a backward breakfall where an invented drill
+used to be.
+
+Gates can name a rung now, not just a number. "Five reps in the falling strand" was satisfied by
+five backward breakfalls, which is not what a cartwheel is waiting for — it is waiting for you to be
+able to roll out of one. Cartwheels want the roll from a crouch, the kong vault wants the dive roll,
+the muscle-up wants a straight bar dip, the wall run wants an actual pull-up.
+
+### The sessions
+
+Press and pull now happen twice a week in months 1–3. Once a week is enough to learn a pattern and
+not enough to build one, and those twelve weeks are where the patterns are laid down.
+
+Friday is built skills-first and engine-last in every phase. The document's own injury rule is that
+no skill is tried quickly at the tired end of a session; the week it was written into put burpees in
+the middle of Friday's list and appended every new skill after them.
+
+The plan's named variation is a floor for a beginner, not a ceiling for month nine. Prescription may
+now sit one rung above it in Phase 1, two in Phase 2 and three from Phase 3 — the cap on what you
+have actually earned is unchanged.
+
+The fallback path progresses: short of the working range repeats it, inside the range adds a rep or
+five seconds, and the top of the range on a loaded movement adds 2.5 kg and drops back to the bottom
+of the range.
+
+The model is told what the body is being asked to recover from — bodyweight, weight change since the
+start, the calorie target against the last fortnight's actual intake, and the RPE of the last six
+sessions — with the rule that when recovery says hold and history says progress, it holds.
+
+### Four things that were quietly capping the year
+
+- **The dead hang was logged in reps.** Its dose reads "3× to just short of letting go", which
+  contains no unit, so the dose parser fell through to reps — and a hold recorded in reps can never
+  clear a bar written in seconds. The pulling strand sat on rung one for the entire year because of
+  a regex.
+- **Owning kit moved you down the tree.** "Ring rows" is this app's own alias for the plain inverted
+  row, so owning rings dragged the feet-elevated and archer rows back to rung one and logged them
+  there. "Ab wheel rollouts" and "L-sit on parallettes" are in no strand at all, so a session
+  upgraded onto one logged against a name the tree has never heard of. Equipment is a note now: it
+  changes how a movement is loaded, never which movement it is.
+- **Nine baseline probes named a movement partway up its strand.** The Control patrol's "Shoulder
+  roll" put week one at the roll from a walk — the top of the falling strand, and the thing the
+  whole strand exists to prepare for.
+- **Two movements from one strand collapsed into one.** Wednesday names a goblet squat, a Bulgarian
+  split squat and a pistol progression; below all three they became the same movement and two of
+  them silently disappeared from the session.
+
+The six substitute movements the equipment rules can drop you onto — prone back extensions, calf
+raises, the towel row and three others — were reachable from a session and explained nowhere. They
+are on THE WEB now, as groundwork.
+
+### After
+
+The same best-case simulation unlocks something in every month from 1 to 11, finishes with four of
+twenty strands still having room above them, and leaves the top rung of the pressing, overhead,
+squatting and tumbling strands out of reach — for someone who never missed a session. A real year
+will be slower, which is the point.
+
+No schema change. Every existing database opens and every logged set still resolves.
+
+---
+
 ## 1.5.8 — 2026-08-04
 
 The note sheet moved off the keyboard.

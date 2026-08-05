@@ -18,18 +18,37 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { MIGRATIONS, SCHEMA_VERSION, openAt } from "../lib/db";
 import { BASELINE_PATROLS, PHASES, sessionFor, type DayKey } from "../lib/plan";
+import { EQUIPMENT_CATALOGUE, gateExercise, upgradeExercise } from "../lib/equipment";
 import {
   LADDER_FAMILIES,
+  MASTERY,
   MOVEMENTS,
   findMovement,
   ladder,
   masteryLabel,
   masterySessions,
   masterySets,
+  masteryWeeks,
   movementKey,
 } from "../lib/movements";
+import { roundsForWeek } from "../lib/plan";
 
 const CURRENT = MIGRATIONS.length;
+
+const LEVELS = Object.values(MASTERY);
+
+/**
+ * How many sets a dose actually offers.
+ *
+ * Mirrors `parseDose` in lib/training: a leading "3×" or "5×" fixes the count,
+ * and anything else takes the week's rounds. Re-derived here rather than
+ * imported because lib/training opens the database on import, and this file has
+ * to be able to run against a temporary one.
+ */
+function setsInDose(dose: string): number {
+  const m = dose.trim().match(/^(\d+)\s*[×x]\s*/i);
+  return m ? Number(m[1]) : roundsForWeek(2);
+}
 let failures = 0;
 
 const ok = (label: string, cond: boolean, extra = "") => {
@@ -226,12 +245,19 @@ for (const m of MOVEMENTS) {
     masterySets(m) >= 1 && masterySessions(m) >= 2,
     `${masterySets(m)}×, ${masterySessions(m)} sessions`,
   );
-  // The sweep is what has to be able to clear it, and the fortnight prescribes
-  // two sets per probe on two rounds. A bar above that can never be met by the
-  // baseline, so no strand would ever leave rung 0.
+  // A bar the session cannot physically offer is a rung nobody ever leaves.
+  // The dose decides: a leading "2×" caps the session at two sets however many
+  // the bar asks for, and an ordinary training week is three rounds.
   ok(
-    `"${m.name}" is reachable inside the baseline fortnight`,
-    masterySets(m) <= 2 && masterySessions(m) <= 2,
+    `"${m.name}" asks for no more sets than its dose prescribes`,
+    masterySets(m) <= setsInDose(m.dose),
+    `bar ${masterySets(m)}×, dose "${m.dose}" gives ${setsInDose(m.dose)}`,
+  );
+  // Weeks cannot outnumber sessions — one clean session lands in one week — and
+  // a bar met inside a single week is a good week rather than a movement owned.
+  ok(
+    `"${m.name}" spreads across at least two weeks`,
+    masteryWeeks(m) >= 2 && masteryWeeks(m) <= masterySessions(m),
     masteryLabel(m),
   );
   ok(
@@ -249,6 +275,41 @@ for (const family of LADDER_FAMILIES) {
     strand.every((m, i) => m.tier === i),
     strand.map((m) => m.tier).join(","),
   );
+
+  // The sweep is what has to be able to move you off the bottom, and the
+  // fortnight prescribes two sets per probe. A bar above that on the entry rung
+  // would leave every strand stuck at rung 0 no matter how the fortnight went —
+  // which is the opposite of what the fortnight is for. Only the entry rung is
+  // held to it; everything above is trained in ordinary three-round weeks.
+  ok(
+    `${family} opens on a rung the baseline sweep can clear`,
+    masterySets(strand[0]) <= 2,
+    `${strand[0].name}: ${masteryLabel(strand[0])}`,
+  );
+
+  // Climbing has to cost more, not less. A strand whose harder rungs are cheaper
+  // than its easier ones is a strand you fall up, and the whole point of the bars
+  // is that nothing complicated arrives while the simple version is still a fight.
+  for (let i = 1; i < strand.length; i++) {
+    ok(
+      `${family} rung ${i} is not cheaper than the one below`,
+      masterySessions(strand[i]) >= masterySessions(strand[i - 1]) &&
+        masteryWeeks(strand[i]) >= masteryWeeks(strand[i - 1]),
+      `${strand[i - 1].name} ${masteryLabel(strand[i - 1])} → ${strand[i].name} ${masteryLabel(strand[i])}`,
+    );
+  }
+
+  // Every rung names one of the shared levels rather than inventing numbers, so
+  // the whole catalogue stays comparable and a quietly cheap strand is visible.
+  for (const m of strand) {
+    ok(
+      `"${m.name}" uses a named mastery level`,
+      LEVELS.some(
+        (l) => l.sets === masterySets(m) && l.sessions === masterySessions(m) && l.weeks === masteryWeeks(m),
+      ),
+      `${masterySets(m)}×, ${masterySessions(m)} sessions, ${masteryWeeks(m)} weeks`,
+    );
+  }
 }
 
 // ── Every movement the plan can prescribe is in the catalogue ──
@@ -288,6 +349,57 @@ for (const [name, where] of prescribed) {
   ok(`"${name}" is in the catalogue`, findMovement(name) !== null, where);
 }
 
+// ── The baseline sweep must open every strand at the bottom ──
+// A probe that names a movement partway up its strand, without `ladder: true`,
+// is logged verbatim — so the fortnight puts a beginner on that rung and the
+// tree believes they earned it. The Control patrol's "Shoulder roll" did
+// exactly this: it parked week one at the roll from a walk, which is the top of
+// the falling strand and the thing the whole strand exists to prepare for.
+console.log("\nbaseline probes");
+
+for (const p of BASELINE_PATROLS) {
+  for (const probe of p.probes) {
+    const m = findMovement(probe.name);
+    if (!m || m.track === "groundwork") continue;
+    ok(
+      `patrol ${p.index} probe "${probe.name}" sweeps its strand rather than naming a rung`,
+      probe.ladder === true || m.tier === 0,
+      `${m.family} tier ${m.tier}`,
+    );
+    if (probe.ladder) {
+      ok(
+        `patrol ${p.index} probe "${probe.name}" names the strand it belongs to`,
+        probe.family === m.family,
+        `probe says ${probe.family}, catalogue says ${m.family}`,
+      );
+    }
+  }
+}
+
+// ── Equipment may change how a movement is loaded, never which one it is ──
+// A substitution drops you onto a different movement when the kit is missing,
+// so that movement has to exist — otherwise the session logs sets against a
+// name the tree has never heard of and the strand silently stops advancing.
+console.log("\nequipment");
+
+const owned = new Set(EQUIPMENT_CATALOGUE.map((e) => e.key));
+const none = new Set<string>();
+for (const m of MOVEMENTS) {
+  const sub = gateExercise(m.name, none).substitute;
+  if (sub) {
+    ok(`the substitute for "${m.name}" is in the catalogue`, findMovement(sub.name) !== null, sub.name);
+  }
+  // An upgrade is advice about kit. If it ever renames the movement again it
+  // can move you down a rung — "Ring rows" is the plain inverted row — or off
+  // the ladder entirely, and both stall the strand without saying anything.
+  const up = upgradeExercise(m.name, owned) as unknown as Record<string, unknown> | null;
+  ok(
+    `the ${m.name.toLowerCase()} upgrade does not rename the movement`,
+    up === null || (up.name === undefined && up.dose === undefined),
+    JSON.stringify(up),
+  );
+}
+
 // ── Gates have to be passable ──
 // A whole strand may be shut at the bottom — tumbling waits on being able to
 // roll, and that is the point of the tree. What must never happen is a gate
@@ -304,12 +416,23 @@ console.log("\ngates");
 for (const m of MOVEMENTS) {
   for (const req of m.requires ?? []) {
     const strand = ladder(req.family);
-    const wants = req.reps !== undefined ? "reps" : "time";
-    ok(
-      `"${m.name}" gate on ${req.family} asks in a unit that strand measures`,
-      strand.some((r) => r.metric === wants),
-      `wants ${wants}, strand measures ${[...new Set(strand.map((r) => r.metric))].join("/")}`,
-    );
+    if (req.reps !== undefined || req.seconds !== undefined) {
+      const wants = req.reps !== undefined ? "reps" : "time";
+      ok(
+        `"${m.name}" gate on ${req.family} asks in a unit that strand measures`,
+        strand.some((r) => r.metric === wants),
+        `wants ${wants}, strand measures ${[...new Set(strand.map((r) => r.metric))].join("/")}`,
+      );
+    }
+    // A tier gate names a rung. Naming one the strand does not have locks the
+    // movement out permanently, and silently.
+    if (req.tier !== undefined) {
+      ok(
+        `"${m.name}" gate on ${req.family} names a rung that exists`,
+        req.tier >= 0 && req.tier < strand.length,
+        `tier ${req.tier} of ${strand.length}`,
+      );
+    }
   }
 }
 
@@ -365,8 +488,8 @@ for (const m of MOVEMENTS) {
     );
     ok(`"${m.name}" does not gate on its own strand`, req.family !== m.family, req.family);
     ok(
-      `"${m.name}" gate on ${req.family} states a number`,
-      req.reps !== undefined || req.seconds !== undefined,
+      `"${m.name}" gate on ${req.family} states a condition`,
+      req.reps !== undefined || req.seconds !== undefined || req.tier !== undefined,
     );
     ok(`"${m.name}" gate on ${req.family} explains itself`, (req.why ?? "").length > 20);
   }

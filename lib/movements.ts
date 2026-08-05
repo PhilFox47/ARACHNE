@@ -106,6 +106,15 @@ export interface Prerequisite {
   family: MovementFamily;
   reps?: number;
   seconds?: number;
+  /**
+   * How far up the other strand you must have actually climbed.
+   *
+   * A number alone is a weak gate. "Five reps of anything in the falling
+   * strand" is satisfied by five backward breakfalls, which is not what a
+   * cartwheel is waiting for — it is waiting for you to be able to roll out of
+   * one. A tier names the rung, so the gate means what it says.
+   */
+  tier?: number;
   /** Why this gate exists. Shown on the locked node. */
   why: string;
 }
@@ -117,17 +126,71 @@ export interface MasteryBar {
   sets?: number;
   /** Separate sessions that must do that. */
   sessions?: number;
+  /**
+   * Distinct calendar weeks those sessions must be spread across.
+   *
+   * The lever that turns a number into a habit. Session counts alone can be
+   * crammed — a movement trained twice a week reaches six clean sessions in
+   * three weeks, which is a good fortnight rather than a movement you own. The
+   * week count says how long the shape has to have been under you before the
+   * harder one arrives, and it is the reason the tree keeps opening for twelve
+   * months rather than emptying itself by month seven.
+   */
+  weeks?: number;
 }
 
 /**
- * Two sets, on two separate days.
+ * The mastery levels, from the version anyone can do to the one that ends a
+ * strand.
  *
- * Two sets rather than the document's three because the baseline fortnight
- * prescribes two — asking for three would make the sweep incapable of advancing
- * anything, which is the opposite of what it is for. Two sessions rather than
- * one for the same reason the fortnight repeats itself: one reading is a guess.
+ * Every rung names one of these rather than writing its own numbers, so the
+ * whole catalogue can be compared at a glance and a strand that is quietly
+ * cheap to climb shows up as one.
+ *
+ * Three sets rather than two from `foundation` upwards, because that is the
+ * document's own rule — "only advance at a clean 3×12" — and three is what a
+ * normal training week prescribes. `intro` keeps two: the baseline fortnight
+ * prescribes two sets, and a bar the fortnight cannot clear would leave the
+ * sweep unable to move anybody off the bottom rung, which is the opposite of
+ * what it is for. A deload week also prescribes two, so deload weeks cannot
+ * advance you — which is correct, and part of why the year lasts.
+ *
+ * Skill levels take two sets rather than three. A roll or a kip-up is practised
+ * in short, sharp sets while fresh; asking for three clean sets of a skill is
+ * asking for the tired third set that the document explicitly warns against.
+ * They pay for it in sessions instead, which is the honest currency for a skill:
+ * the kip-up is "several months of work" in the document's own words, and this
+ * is where that is written down.
  */
-export const DEFAULT_MASTERY = { sets: 2, sessions: 2 } as const;
+export const MASTERY = {
+  /** The version almost anyone can already do. Cheap on purpose — it is a starting line, not an achievement. */
+  intro: { sets: 2, sessions: 3, weeks: 2 },
+  /** The early rungs of a strength strand. */
+  foundation: { sets: 3, sessions: 5, weeks: 3 },
+  /** The ordinary working rungs — the ones most of the year is spent on. */
+  working: { sets: 3, sessions: 7, weeks: 4 },
+  /** The rung whose successor is a real step up in demand. */
+  demanding: { sets: 3, sessions: 9, weeks: 6 },
+  /** Hard strength. Months, not weeks. */
+  advanced: { sets: 3, sessions: 12, weeks: 8 },
+  /** The top of a strength strand. Reaching it is the point of the year. */
+  elite: { sets: 3, sessions: 15, weeks: 10 },
+
+  /** The first, safest version of a skill. */
+  drill: { sets: 2, sessions: 4, weeks: 4 },
+  /** The middle of a skill strand. */
+  practice: { sets: 2, sessions: 6, weeks: 6 },
+  /** The real version of a skill, done well. */
+  craft: { sets: 2, sessions: 9, weeks: 9 },
+  /** The one the strand was built for. */
+  signature: { sets: 2, sessions: 12, weeks: 12 },
+} as const;
+
+/**
+ * Used only by a movement that names no level of its own. Nothing in the
+ * catalogue should rely on it — `npm run check` fails a rung that does.
+ */
+export const DEFAULT_MASTERY = MASTERY.working;
 
 export function masterySets(m: Movement): number {
   return m.masterAt.sets ?? DEFAULT_MASTERY.sets;
@@ -135,6 +198,11 @@ export function masterySets(m: Movement): number {
 
 export function masterySessions(m: Movement): number {
   return m.masterAt.sessions ?? DEFAULT_MASTERY.sessions;
+}
+
+/** Distinct calendar weeks the clean sessions must span. */
+export function masteryWeeks(m: Movement): number {
+  return m.masterAt.weeks ?? DEFAULT_MASTERY.weeks;
 }
 
 /**
@@ -185,10 +253,11 @@ export interface Movement {
   /**
    * What counts as mastered, and therefore what unlocks the tier above.
    *
-   * Never a single set. The document's own rule is "only advance at a clean
-   * 3×12" — a number you hit once is a good day, not a level. `sets` is how many
-   * sets in one session must clear the bar; `sessions` is how many separate
-   * sessions must do that. Both default to `DEFAULT_MASTERY`.
+   * Always one of the `MASTERY` levels, optionally with the bar itself written
+   * alongside it. Never a single set, and never a fortnight: the point of the
+   * bar is that you are comfortable in the shape, not that the number once
+   * happened. There is no sense doing a complicated push-up while the elevated
+   * one is still a fight, and this field is where that is enforced.
    */
   masterAt: MasteryBar;
   /** Names this movement has been logged under before. Never remove one. */
@@ -214,7 +283,7 @@ const SOFT = ["mat", "gym"];
 export const MOVEMENTS: Movement[] = [
   // ── Pressing ──────────────────────────────────────────────
   {
-    name: "Push-ups against a wall",
+    name: "Wall push-up",
     family: "push",
     tier: 0,
     metric: "reps",
@@ -235,20 +304,21 @@ export const MOVEMENTS: Movement[] = [
       "Hips in line with the shoulders — the body is a plank, not a hinge. If your hips arrive at the wall first, you are bending rather than pressing, and the movement stops training anything.",
     cues: ["One straight line", "Chest first", "Elbows back, not out"],
     trains: ["chest", "front shoulder", "triceps", "the push-up shape"],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.intro, reps: 12 },
+    aliases: ["Push-ups against a wall"],
   },
   {
-    name: "Push-ups on a table",
+    name: "Incline push-up (waist height)",
     family: "push",
     tier: 1,
     metric: "reps",
     dose: "8–12",
     summary:
-      "The same movement with your hands on a table. Lower hands mean more of your weight on your arms — the whole pressing strand is this one dial, turned down.",
+      "The same movement with your hands on a kitchen counter or a sturdy table — roughly waist high. Lower hands mean more of your weight on your arms, and the whole pressing strand is that one dial, turned down a step at a time.",
     setup: [
-      "Hands on a sturdy table, shoulder-width, at the edge so your chest can pass between them.",
+      "Hands on a counter or table edge, shoulder-width, far enough out that your chest can pass between them.",
       "Walk your feet back until your body is one line from heel to head.",
-      "Check the table cannot slide before you load it.",
+      "Check the surface cannot slide before you load it.",
     ],
     execution: [
       "Lower until your chest touches the edge.",
@@ -259,23 +329,24 @@ export const MOVEMENTS: Movement[] = [
       "Elbows back at roughly 45°, not flared straight out. Flared elbows put the shoulder in the position it is weakest in, and it is the position most people default to when a set gets hard.",
     cues: ["Squeeze the glutes", "Chest to the edge", "Full lockout"],
     trains: ["chest", "front shoulder", "triceps", "trunk bracing"],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.foundation, reps: 12 },
+    aliases: ["Push-ups on a table"],
   },
   {
-    name: "Push-ups on a chair",
+    name: "Incline push-up (bench height)",
     family: "push",
     tier: 2,
     metric: "reps",
     dose: "8–12",
     summary:
-      "Hands on a chair seat. Noticeably harder than a table and the rung most people spend the longest on — that is normal and not a problem.",
+      "Hands on a chair seat, a sofa edge or a bench — around knee height. Noticeably harder than waist height, and the rung most people spend the longest on. That is normal and not a problem.",
     setup: [
-      "Hands on the seat of a stable chair, against a wall if it slides.",
+      "Hands on the seat of a stable chair or the front edge of a sofa, against a wall if it slides.",
       "Feet back until you are one straight line.",
       "Hands under the shoulders, not out in front of them.",
     ],
     execution: [
-      "Lower under control until your chest touches the seat.",
+      "Lower under control until your chest touches the surface.",
       "Pause for a moment at the bottom rather than bouncing.",
       "Press back up to straight arms.",
     ],
@@ -283,34 +354,13 @@ export const MOVEMENTS: Movement[] = [
       "Chest touches first. If the hips arrive first, go back a rung — that pattern gets grooved fast and is much harder to unlearn than it is to avoid.",
     cues: ["Ribs down", "Chest touches", "Push the floor away"],
     trains: ["chest", "front shoulder", "triceps", "trunk bracing"],
-    masterAt: { reps: 12 },
-    aliases: ["Elevated push-ups"],
+    masterAt: { ...MASTERY.working, reps: 12 },
+    aliases: ["Push-ups on a chair", "Elevated push-ups", "Push-ups on the sofa edge"],
   },
   {
-    name: "Push-ups on the sofa edge",
+    name: "Push-up",
     family: "push",
     tier: 3,
-    metric: "reps",
-    dose: "8–12",
-    summary: "The last elevated rung before the floor. Roughly two thirds of your weight is on your hands here.",
-    setup: [
-      "Hands on the front edge of a sofa or a low step.",
-      "Body in one line, feet together.",
-    ],
-    execution: [
-      "Lower until the chest touches the edge.",
-      "Press up without letting the hips drift up or down.",
-    ],
-    watch:
-      "Full range or it doesn't count — halfway down is a different exercise, and it is the one that stops you progressing while feeling like work.",
-    cues: ["All the way down", "Hips level", "Drive through the palms"],
-    trains: ["chest", "front shoulder", "triceps", "trunk bracing"],
-    masterAt: { reps: 12 },
-  },
-  {
-    name: "Push-ups",
-    family: "push",
-    tier: 4,
     metric: "reps",
     dose: "8–12",
     summary:
@@ -329,11 +379,42 @@ export const MOVEMENTS: Movement[] = [
       "The moment the lower back sags, the set is over. Sagging turns a chest exercise into a lumbar one, and the reps after it are worth nothing.",
     cues: ["Brace first", "Straight line", "Fist off the floor"],
     trains: ["chest", "front shoulder", "triceps", "anti-extension core"],
-    masterAt: { reps: 12 },
-    aliases: ["Deficit push-ups on parallettes"],
+    requires: [
+      {
+        family: "core",
+        seconds: 45,
+        why: "A floor push-up is a moving plank. Hold a still one for 45 seconds first, or the set becomes a lower-back exercise the moment it gets hard.",
+      },
+    ],
+    masterAt: { ...MASTERY.working, reps: 12 },
+    aliases: ["Push-ups", "Deficit push-ups on parallettes"],
   },
   {
-    name: "Diamond push-ups",
+    name: "Decline push-up",
+    family: "push",
+    tier: 4,
+    metric: "reps",
+    dose: "8–12",
+    summary:
+      "A floor push-up with your feet up on a chair or sofa. Tilting the body head-down moves weight onto the arms and shifts the emphasis toward the upper chest and shoulders — the same dial as the incline rungs, turned the other way past the floor.",
+    setup: [
+      "Feet on a chair, sofa or step, hands on the floor under the shoulders.",
+      "Higher feet make it harder; start at knee height before sofa height.",
+      "Brace as if for a plank before the first rep.",
+    ],
+    execution: [
+      "Lower until the chest is a fist's width off the floor.",
+      "Elbows at 45°, head in line with the spine rather than craning up.",
+      "Press to a full lockout without the hips folding.",
+    ],
+    watch:
+      "The hips want to pike upwards, which quietly shortens the range and takes the trunk out of it. If you cannot see a straight line from ankle to ear at the top, lower the feet.",
+    cues: ["Long line", "Look at the floor", "Hips forward"],
+    trains: ["upper chest", "front shoulder", "triceps", "anti-extension core"],
+    masterAt: { ...MASTERY.demanding, reps: 12 },
+  },
+  {
+    name: "Diamond push-up",
     family: "push",
     tier: 5,
     metric: "reps",
@@ -360,10 +441,11 @@ export const MOVEMENTS: Movement[] = [
         why: "A narrow base makes the trunk work harder to stay straight. A 45-second plank is the shape holding up on its own.",
       },
     ],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.demanding, reps: 12 },
+    aliases: ["Diamond push-ups"],
   },
   {
-    name: "Archer push-ups",
+    name: "Archer push-up",
     family: "push",
     tier: 6,
     metric: "reps",
@@ -384,10 +466,11 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Shift over one hand", "Far arm straight", "Hips square"],
     trains: ["one-arm pressing strength", "chest", "trunk anti-rotation"],
     perSide: true,
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.advanced, reps: 10 },
+    aliases: ["Archer push-ups"],
   },
   {
-    name: "Clap push-ups",
+    name: "Clap push-up",
     family: "push",
     tier: 7,
     metric: "reps",
@@ -403,12 +486,13 @@ export const MOVEMENTS: Movement[] = [
       "Land with soft elbows. Landing locked out sends the whole impact into the wrists and elbows, and that is how this movement injures people.",
     cues: ["Explode", "Soft landing", "Reset every rep"],
     trains: ["pressing power", "rate of force", "landing mechanics"],
-    masterAt: { reps: 8 },
+    masterAt: { ...MASTERY.elite, reps: 8 },
+    aliases: ["Clap push-ups"],
   },
 
   // ── Overhead ──────────────────────────────────────────────
   {
-    name: "Pike push-ups on a chair",
+    name: "Pike push-up with hands elevated",
     family: "vertical_push",
     tier: 0,
     metric: "reps",
@@ -429,10 +513,11 @@ export const MOVEMENTS: Movement[] = [
       "The head goes forward of the hands, not straight down, and never takes any load. If the neck is involved at all, raise the hands higher and start again.",
     cues: ["Hips high", "Head forward of the hands", "Elbows forward"],
     trains: ["shoulders", "triceps", "the overhead pressing pattern"],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.intro, reps: 12 },
+    aliases: ["Pike push-ups on a chair"],
   },
   {
-    name: "Pike push-ups",
+    name: "Pike push-up",
     family: "vertical_push",
     tier: 1,
     metric: "reps",
@@ -460,10 +545,11 @@ export const MOVEMENTS: Movement[] = [
         why: "The V position holds itself with the trunk. Forty-five seconds of plank is the minimum that keeps the lower back out of it.",
       },
     ],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.foundation, reps: 12 },
+    aliases: ["Pike push-ups"],
   },
   {
-    name: "Pike push-ups elevated",
+    name: "Feet-elevated pike push-up",
     family: "vertical_push",
     tier: 2,
     metric: "reps",
@@ -489,10 +575,11 @@ export const MOVEMENTS: Movement[] = [
         why: "Half a minute against the wall upside down first. Being inverted has to be familiar before it is also hard.",
       },
     ],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.working, reps: 12 },
+    aliases: ["Pike push-ups elevated"],
   },
   {
-    name: "Handstand push-up negatives",
+    name: "Wall handstand push-up negative",
     family: "vertical_push",
     tier: 3,
     metric: "reps",
@@ -519,12 +606,50 @@ export const MOVEMENTS: Movement[] = [
         why: "A minute in a wall handstand. If holding still is hard, moving is not the next step.",
       },
     ],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.demanding, reps: 5 },
+    aliases: ["Handstand push-up negatives"],
+  },
+  {
+    name: "Wall handstand push-up",
+    family: "vertical_push",
+    tier: 4,
+    metric: "reps",
+    dose: "5× 3",
+    summary:
+      "The whole rep, upside down against a wall: lower the head to the floor and press back to straight arms. The top of the overhead strand and the thing the pike ladder has been building toward all year.",
+    setup: [
+      "A folded towel or cushion where your head will go, and a clear space behind you.",
+      "Kick up to the wall, hands a little wider than shoulder-width, a hand's length off the skirting board.",
+      "Squeeze the glutes and ribs so the body is one line rather than an arch.",
+    ],
+    execution: [
+      "Lower under control until the top of your head touches the cushion, slightly in front of your hands.",
+      "Elbows forward past the ears rather than flaring out to the sides.",
+      "Press back to straight arms, keeping the heels on the wall.",
+    ],
+    watch:
+      "Press-outs, not head-stands. The head touches, it never rests — the moment you are pausing on your head, the neck is loaded and the set is over. Come down between reps rather than grinding a fourth one out of a fatigued shoulder.",
+    cues: ["Ribs in", "Head touches, never rests", "Elbows past the ears"],
+    trains: ["overhead pressing strength", "shoulder stability upside down", "trunk under load"],
+    needs: ["space", "gym"],
+    requires: [
+      {
+        family: "handstand",
+        seconds: 60,
+        why: "A minute upside down against the wall, still. Pressing from a position you cannot yet hold is how shoulders get hurt.",
+      },
+      {
+        family: "core",
+        seconds: 45,
+        why: "The line has to hold itself. Without a 45-second plank the press turns into an arched back with the floor a foot away.",
+      },
+    ],
+    masterAt: { ...MASTERY.advanced, reps: 5 },
   },
 
   // ── Dips ──────────────────────────────────────────────────
   {
-    name: "Triceps dips on chair edge, feet forward",
+    name: "Bench dip (bent legs)",
     family: "dip",
     tier: 0,
     metric: "reps",
@@ -544,10 +669,11 @@ export const MOVEMENTS: Movement[] = [
       "Shoulders down and back. If they roll forward toward your ears, straighten the legs less and bring the feet closer — a rolled shoulder under load is the single most common way this movement hurts people.",
     cues: ["Chest up", "Elbows straight back", "Shoulders down"],
     trains: ["triceps", "front shoulder", "lower chest"],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.intro, reps: 12 },
+    aliases: ["Triceps dips on chair edge, feet forward"],
   },
   {
-    name: "Triceps dips on chair edge",
+    name: "Bench dip",
     family: "dip",
     tier: 1,
     metric: "reps",
@@ -563,10 +689,11 @@ export const MOVEMENTS: Movement[] = [
       "Stop at 90° at the elbow. Deeper is where shoulders get hurt, not where progress is — the bottom quarter of a dip has a very poor ratio of stimulus to risk.",
     cues: ["Back close to the chair", "Stop at parallel", "Chest tall"],
     trains: ["triceps", "front shoulder", "lower chest"],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.foundation, reps: 12 },
+    aliases: ["Triceps dips on chair edge"],
   },
   {
-    name: "Dips between two chairs",
+    name: "Parallel bar dip",
     family: "dip",
     tier: 2,
     metric: "reps",
@@ -588,8 +715,33 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Test the setup", "Slight forward lean", "Stop at parallel"],
     trains: ["triceps", "lower chest", "shoulder strength at depth"],
     needs: ["gym", "rings", "parallettes", "space"],
-    masterAt: { reps: 12 },
-    aliases: ["Ring dips"],
+    masterAt: { ...MASTERY.working, reps: 12 },
+    aliases: ["Ring dips", "Dips between two chairs"],
+  },
+  {
+    name: "Straight bar dip",
+    family: "dip",
+    tier: 3,
+    metric: "reps",
+    dose: "8–12",
+    summary:
+      "A dip on a single bar rather than two, so the bar has to pass in front of your body. The forward lean it forces is the same lean a muscle-up needs, which is why it sits here rather than as a curiosity.",
+    setup: [
+      "A waist-to-chest-height bar you can support yourself over — the low bar of a pull-up frame, or a set of outdoor bars.",
+      "Jump to straight arms above the bar, hands just outside the hips.",
+      "Lean the chest forward over the bar and hold that lean before the first rep.",
+    ],
+    execution: [
+      "Lower by bending the elbows and letting the bar travel toward your lower chest.",
+      "Stop when the bar touches or the upper arms reach parallel, whichever comes first.",
+      "Press back up and finish with the chest leaning forward over the bar again.",
+    ],
+    watch:
+      "The lean is the whole movement. Staying upright turns this into a shoulder impingement drill — if you cannot keep the chest over the bar, go back to parallel bars until you can.",
+    cues: ["Chest over the bar", "Bar to the lower chest", "Lean, don't sit"],
+    trains: ["triceps", "lower chest", "the muscle-up lockout"],
+    needs: ["pullup_bar", "gym", "outdoor_bars", "rings"],
+    masterAt: { ...MASTERY.advanced, reps: 10 },
   },
 
   // ── Pulling ───────────────────────────────────────────────
@@ -615,13 +767,37 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Shoulders away from ears", "Body quiet", "Come down early"],
     trains: ["grip", "shoulder stability", "lats", "hanging tolerance"],
     needs: BAR,
-    masterAt: { seconds: 30 },
+    masterAt: { ...MASTERY.intro, seconds: 30 },
     aliases: ["Ring hang"],
   },
   {
-    name: "Negative pull-ups",
+    name: "Scapular pull-up",
     family: "pull",
     tier: 1,
+    metric: "reps",
+    dose: "8–12",
+    summary:
+      "Hanging from the bar and lifting yourself an inch or two using only the shoulder blades, arms staying straight. The smallest movement in the strand and the one that decides whether the pull-ups above it are done with the back or with the elbows.",
+    setup: [
+      "Overhand grip, shoulder-width, hanging with straight arms.",
+      "Let the shoulders come all the way up to the ears first — that is the start, not slack form.",
+    ],
+    execution: [
+      "Without bending the elbows, pull the shoulder blades down and together.",
+      "Your whole body rises an inch or two. That is the full range; there is no more.",
+      "Lower back to the passive hang under control and repeat.",
+    ],
+    watch:
+      "The elbows stay locked. The moment they bend it becomes a tiny pull-up and stops teaching the one thing it is for — that a pull starts at the shoulder blade, not the arm.",
+    cues: ["Arms stay straight", "Blades down and back", "Inch, not a rep"],
+    trains: ["lower traps", "lats", "shoulder health", "the start of every pull"],
+    needs: BAR,
+    masterAt: { ...MASTERY.foundation, reps: 10 },
+  },
+  {
+    name: "Negative pull-up",
+    family: "pull",
+    tier: 2,
     metric: "reps",
     dose: "5× 5 s",
     summary:
@@ -640,12 +816,37 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Five seconds", "Shoulders down", "Step back up"],
     trains: ["lats", "biceps", "the pull-up pattern", "elbow tolerance"],
     needs: BAR,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.foundation, reps: 5 },
+    aliases: ["Negative pull-ups"],
   },
   {
-    name: "Pull-ups",
+    name: "Chin-up",
     family: "pull",
-    tier: 2,
+    tier: 3,
+    metric: "reps",
+    dose: "5× 3",
+    summary:
+      "A pull-up with the palms facing you. The biceps get to help, which makes it the first full rep most people own — and owning one rep of something is worth more than five negatives of something else.",
+    setup: [
+      "Underhand grip, hands about shoulder-width.",
+      "Hang with straight arms and the shoulders active rather than slack.",
+    ],
+    execution: [
+      "Pull the shoulder blades down first, then bend the arms.",
+      "Chin clears the bar without the head craning forward to meet it.",
+      "Lower all the way to straight arms before the next rep.",
+    ],
+    watch:
+      "Elbows and wrists take more of this than they do a pull-up. If either starts to ache between sessions, drop the volume rather than pushing through — this is the rung where a year gets interrupted by tendinitis.",
+    cues: ["Blades down first", "Chin over, head neutral", "Straight arms at the bottom"],
+    trains: ["lats", "biceps", "grip", "the first full pull"],
+    needs: BAR,
+    masterAt: { ...MASTERY.working, reps: 5 },
+  },
+  {
+    name: "Pull-up",
+    family: "pull",
+    tier: 4,
     metric: "reps",
     dose: "5× 3",
     summary:
@@ -661,12 +862,13 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Blades down first", "Chest to the bar", "All the way down"],
     trains: ["lats", "biceps", "grip", "the V-shape the suit needs"],
     needs: BAR,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.working, reps: 5 },
+    aliases: ["Pull-ups"],
   },
   {
-    name: "Explosive pull-ups",
+    name: "Explosive pull-up",
     family: "pull",
-    tier: 3,
+    tier: 5,
     metric: "reps",
     dose: "5× 3",
     summary:
@@ -682,12 +884,13 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Pull hard", "Chest to the bar", "Slow on the way down"],
     trains: ["pulling power", "lats", "the muscle-up transition"],
     needs: BAR,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.demanding, reps: 5 },
+    aliases: ["Explosive pull-ups"],
   },
   {
-    name: "Muscle-up progression",
+    name: "Muscle-up",
     family: "pull",
-    tier: 4,
+    tier: 6,
     metric: "reps",
     dose: "5× 3",
     summary:
@@ -707,16 +910,18 @@ export const MOVEMENTS: Movement[] = [
     requires: [
       {
         family: "dip",
+        tier: 3,
         reps: 8,
-        why: "Dips first. The top half of a muscle-up is a dip out of the deepest position there is, and arriving there without one leaves you stuck on the bar with your shoulders taking the wait.",
+        why: "Eight straight bar dips first. The top half of a muscle-up is a dip out of the deepest position there is, with the bar in front of you — the part no amount of parallel-bar work prepares, and arriving there without it leaves you stuck on the bar with your shoulders taking the wait.",
       },
     ],
-    masterAt: { reps: 3 },
+    masterAt: { ...MASTERY.elite, reps: 3 },
+    aliases: ["Muscle-up progression"],
   },
 
   // ── Rowing ────────────────────────────────────────────────
   {
-    name: "Inverted rows under a table",
+    name: "Incline inverted row",
     family: "row",
     tier: 0,
     metric: "reps",
@@ -738,10 +943,11 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Blades together", "Chest to the edge", "Straight from heel to head"],
     trains: ["upper back", "rear shoulder", "biceps", "posture"],
     needs: ["pullup_bar", "rings", "gym", "outdoor_bars", "bench", "space"],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.intro, reps: 12 },
+    aliases: ["Inverted rows under a table"],
   },
   {
-    name: "Inverted rows",
+    name: "Inverted row",
     family: "row",
     tier: 1,
     metric: "reps",
@@ -761,13 +967,38 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Blades first", "Chest to the bar", "Body rigid"],
     trains: ["upper back", "rear shoulder", "biceps", "scapular control"],
     needs: ["pullup_bar", "rings", "gym", "outdoor_bars", "bench"],
-    masterAt: { reps: 12 },
-    aliases: ["Ring rows"],
+    masterAt: { ...MASTERY.foundation, reps: 12 },
+    aliases: ["Ring rows", "Inverted rows"],
   },
   {
-    name: "Archer rows",
+    name: "Feet-elevated inverted row",
     family: "row",
     tier: 2,
+    metric: "reps",
+    dose: "8–12",
+    summary:
+      "An inverted row with your heels up on a chair, so the body is level with the bar rather than angled under it. The last step before the row starts asking for one arm at a time.",
+    setup: [
+      "Bar or rings at roughly hip height, a chair or sofa the same height a body-length away.",
+      "Heels on the chair, hands on the bar shoulder-width, hanging with straight arms.",
+      "Squeeze the glutes so the hips do not sit below the line.",
+    ],
+    execution: [
+      "Pull the shoulder blades together, then the chest to the bar.",
+      "Hold for a beat at the top with the bar at the sternum.",
+      "Lower to straight arms without letting the hips drop first.",
+    ],
+    watch:
+      "Level means level. Once the feet are up there is nothing holding the hips except you, and a row done with a sagging middle trains the arms and the lower back rather than the back you came for.",
+    cues: ["Glutes on", "Blades first", "Sternum to the bar"],
+    trains: ["upper back", "rear shoulder", "biceps", "trunk under a horizontal pull"],
+    needs: ["pullup_bar", "rings", "gym", "outdoor_bars", "bench"],
+    masterAt: { ...MASTERY.working, reps: 12 },
+  },
+  {
+    name: "Archer inverted row",
+    family: "row",
+    tier: 3,
     metric: "reps",
     dose: "8–10 per side",
     summary: "An inverted row pulling to one side, the other arm straightening out. Most of the load on one arm.",
@@ -783,7 +1014,34 @@ export const MOVEMENTS: Movement[] = [
     trains: ["one-arm pulling", "upper back", "anti-rotation"],
     needs: ["pullup_bar", "rings", "gym", "outdoor_bars"],
     perSide: true,
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.demanding, reps: 10 },
+    aliases: ["Archer rows"],
+  },
+  {
+    name: "One-arm inverted row",
+    family: "row",
+    tier: 4,
+    metric: "reps",
+    dose: "3× 5 per side",
+    summary:
+      "The whole row on one arm, the other hand off the bar entirely. The top of the horizontal pull, and the single best counterweight to a year of pressing.",
+    setup: [
+      "Bar at hip height or a little above — higher is easier, and this is a rung to start easy on.",
+      "One hand on the bar over the centre of your chest, feet walked out until you are leaning back.",
+      "Free arm across the chest or reaching down the side, not helping.",
+    ],
+    execution: [
+      "Pull the shoulder blade down and back first, then bend the arm.",
+      "Bring the bar toward the armpit rather than the middle of the chest.",
+      "Lower all the way to a straight arm before the next rep.",
+    ],
+    watch:
+      "The body wants to rotate open toward the free arm. Squeeze the glutes and keep the hips square — a rotated rep loads the shoulder in a position it cannot defend, and the reps are worth nothing anyway.",
+    cues: ["Hips square", "Blade down first", "Bar to the armpit"],
+    trains: ["one-arm pulling strength", "upper back", "anti-rotation core"],
+    needs: ["pullup_bar", "rings", "gym", "outdoor_bars"],
+    perSide: true,
+    masterAt: { ...MASTERY.advanced, reps: 5 },
   },
 
   // ── Bracing ───────────────────────────────────────────────
@@ -809,7 +1067,7 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Back flat", "Slow", "Breathe out on the way down"],
     trains: ["deep core", "anti-extension", "coordination"],
     perSide: true,
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.intro, reps: 10 },
   },
   {
     name: "Plank",
@@ -832,7 +1090,7 @@ export const MOVEMENTS: Movement[] = [
       "It ends when the hips drop, not when it starts hurting. Time spent in a sagging plank counts for nothing and teaches the spine to take load it should not.",
     cues: ["Glutes tight", "Ribs down", "Keep breathing"],
     trains: ["anti-extension core", "shoulder stability", "glutes"],
-    masterAt: { seconds: 45 },
+    masterAt: { ...MASTERY.foundation, seconds: 45 },
   },
   {
     name: "Hollow hold",
@@ -855,12 +1113,36 @@ export const MOVEMENTS: Movement[] = [
       "Lower back stays flat on the floor. It ends when the gap opens — everything after that is being held by the hip flexors and paid for by the spine.",
     cues: ["Back glued down", "Long, not curled", "Legs lower = harder"],
     trains: ["anti-extension core", "the hollow shape", "hip flexors"],
-    masterAt: { seconds: 30 },
+    masterAt: { ...MASTERY.foundation, seconds: 30 },
   },
   {
-    name: "L-sit tuck",
+    name: "Hollow body rock",
     family: "core",
     tier: 3,
+    metric: "reps",
+    dose: "3× 15",
+    summary:
+      "The hollow hold, rocking gently back and forth like a rocking chair. The shape has to survive being moved, which is the whole point — every skill above this one moves through it rather than sitting in it.",
+    setup: [
+      "Take a hollow hold: on your back, lower back pressed flat, shoulder blades and legs a few inches off the floor.",
+      "Arms overhead if you can hold the shape there; by your sides if not.",
+      "Get the shape right and still before you add any movement.",
+    ],
+    execution: [
+      "Rock from the upper back toward the hips and back again, driving from the shoulders.",
+      "The body stays one rigid banana — nothing bends and nothing changes shape.",
+      "Small rocks first. Bigger comes from a better shape, not from more effort.",
+    ],
+    watch:
+      "The instant the shape breaks the rep is over, and the shape breaks silently — the lower back lifts, the legs drop, and it becomes a sit-up on your back. If you cannot see the same silhouette at both ends of the rock, go back to holding still.",
+    cues: ["One rigid banana", "Rock from the shoulders", "Same shape at both ends"],
+    trains: ["the hollow shape under movement", "anti-extension core", "kip-up preparation"],
+    masterAt: { ...MASTERY.working, reps: 15 },
+  },
+  {
+    name: "Tuck L-sit",
+    family: "core",
+    tier: 4,
     metric: "time",
     dose: "3× 10 s",
     summary: "Supporting yourself on your hands with the knees tucked to the chest and the feet off the floor.",
@@ -877,12 +1159,13 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Press the floor down", "Shoulders down", "Knees to chest"],
     trains: ["compression strength", "hip flexors", "straight-arm scapular strength"],
     needs: ["parallettes", "rings", "gym", "space"],
-    masterAt: { seconds: 15 },
+    masterAt: { ...MASTERY.working, seconds: 15 },
+    aliases: ["L-sit tuck"],
   },
   {
-    name: "Hanging knee raises",
+    name: "Hanging knee raise",
     family: "core",
-    tier: 4,
+    tier: 5,
     metric: "reps",
     dose: "3× 10",
     summary: "Hanging from the bar and lifting the knees. Phase 4's daily core block.",
@@ -903,12 +1186,13 @@ export const MOVEMENTS: Movement[] = [
         why: "Thirty seconds of dead hang, or the grip fails before the abs do.",
       },
     ],
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.demanding, reps: 10 },
+    aliases: ["Hanging knee raises"],
   },
   {
     name: "L-sit",
     family: "core",
-    tier: 5,
+    tier: 6,
     metric: "time",
     dose: "3× max hold",
     summary:
@@ -927,12 +1211,12 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Press the floor down", "Legs locked", "Shoulders down"],
     trains: ["compression strength", "hip flexors", "straight-arm scapular strength"],
     needs: ["parallettes", "rings", "gym", "space"],
-    masterAt: { seconds: 10 },
+    masterAt: { ...MASTERY.advanced, seconds: 10 },
   },
   {
-    name: "Dragon flag negatives",
+    name: "Dragon flag negative",
     family: "core",
-    tier: 6,
+    tier: 7,
     metric: "reps",
     dose: "3× 5",
     summary:
@@ -950,14 +1234,39 @@ export const MOVEMENTS: Movement[] = [
       "The whole body moves as one piece. The instant it bends at the hips the load transfers to the lower back, which is exactly what this movement is famous for doing to people who rush it.",
     cues: ["One rigid piece", "Stop before the back lifts", "Slow"],
     trains: ["anti-extension core at long lever", "lats"],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.elite, reps: 5 },
+    aliases: ["Dragon flag negatives"],
   },
 
   // ── Squatting ─────────────────────────────────────────────
   {
-    name: "Bodyweight squats",
+    name: "Box squat",
     family: "squat",
     tier: 0,
+    metric: "reps",
+    dose: "12–15",
+    summary:
+      "A squat down to a chair or box and straight back up. The box removes the question of how deep to go and gives you somewhere to fail safely, which is the whole reason the strand starts here rather than at a free squat.",
+    setup: [
+      "A chair, sofa or box behind you — the higher it is, the easier the rep.",
+      "Feet shoulder-width, toes turned slightly out, arms out in front as a counterweight.",
+      "Stand far enough forward that sitting back reaches the seat without stepping.",
+    ],
+    execution: [
+      "Push the hips back and sit down until you touch the seat.",
+      "Touch, do not drop and rest — the point is to control the last inch.",
+      "Drive up through the whole foot without rocking forward onto the toes.",
+    ],
+    watch:
+      "Touch and stand, not sit and heave. Landing on the box and bouncing off it skips exactly the part that builds the squat, and the bounce loads the lower back at the worst possible moment.",
+    cues: ["Hips back first", "Touch, don't sit", "Whole foot"],
+    trains: ["quads", "glutes", "the squat pattern", "confidence at depth"],
+    masterAt: { ...MASTERY.intro, reps: 15 },
+  },
+  {
+    name: "Bodyweight squat",
+    family: "squat",
+    tier: 1,
     metric: "reps",
     dose: "15",
     summary: "The squat with nothing added. Where the leg strand starts.",
@@ -971,13 +1280,13 @@ export const MOVEMENTS: Movement[] = [
       "Heels stay down. If they lift, you are being pulled forward by tight ankles — put a book under them and work the range instead of forcing it.",
     cues: ["Sit back", "Knees over toes", "Whole foot"],
     trains: ["quads", "glutes", "the squat pattern", "ankle range"],
-    masterAt: { reps: 20 },
-    aliases: ["Bodyweight squat, slow tempo"],
+    masterAt: { ...MASTERY.foundation, reps: 20 },
+    aliases: ["Bodyweight squat, slow tempo", "Bodyweight squats"],
   },
   {
     name: "Goblet squat",
     family: "squat",
-    tier: 1,
+    tier: 2,
     metric: "reps",
     dose: "12–15",
     summary:
@@ -997,12 +1306,12 @@ export const MOVEMENTS: Movement[] = [
     trains: ["quads", "glutes", "upper back posture", "squat depth"],
     needs: LOAD,
     loaded: true,
-    masterAt: { reps: 15 },
+    masterAt: { ...MASTERY.working, reps: 15 },
   },
   {
     name: "Split squat",
     family: "squat",
-    tier: 2,
+    tier: 3,
     metric: "reps",
     dose: "10 per side",
     summary: "A stationary lunge. One leg at a time, both feet on the floor.",
@@ -1016,12 +1325,12 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Straight down", "Front heel drives", "Torso tall"],
     trains: ["quads", "glutes", "single-leg balance"],
     perSide: true,
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.working, reps: 12 },
   },
   {
-    name: "Bulgarian split squats",
+    name: "Bulgarian split squat",
     family: "squat",
-    tier: 3,
+    tier: 4,
     metric: "reps",
     dose: "10 per side",
     summary: "A split squat with the back foot elevated. Much harder than it sounds, and a Phase 2 staple.",
@@ -1039,12 +1348,13 @@ export const MOVEMENTS: Movement[] = [
     trains: ["quads", "glutes", "hip stability", "single-leg strength"],
     needs: ["bench", "gym"],
     perSide: true,
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.demanding, reps: 12 },
+    aliases: ["Bulgarian split squats"],
   },
   {
-    name: "Pistol squat progression",
+    name: "Assisted pistol squat",
     family: "squat",
-    tier: 4,
+    tier: 5,
     metric: "reps",
     dose: "5 per side",
     summary: "A one-legged squat sitting back to a chair. Phase 3.",
@@ -1059,12 +1369,47 @@ export const MOVEMENTS: Movement[] = [
     trains: ["single-leg strength", "balance", "ankle range"],
     needs: ["bench", "gym", "space"],
     perSide: true,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.advanced, reps: 5 },
+    aliases: ["Pistol squat progression"],
+  },
+  {
+    name: "Pistol squat",
+    family: "squat",
+    tier: 6,
+    metric: "reps",
+    dose: "3× 5 per side",
+    summary:
+      "A full squat on one leg, the other held straight out in front, from standing to the bottom and back up with nothing to touch. The top of the leg strand and one of the year's real milestones.",
+    setup: [
+      "Stand on one leg with the other extended forward, arms out in front as a counterweight.",
+      "A wall or doorframe within reach for the first weeks — a fingertip on it is still a pistol.",
+      "Shoes off, or flat shoes. A raised heel hides the ankle range this needs.",
+    ],
+    execution: [
+      "Sit back and down slowly, letting the free leg travel forward as you descend.",
+      "Bottom out with the hamstring on the calf, free heel still clear of the floor.",
+      "Stand up through the whole foot without the free leg touching down.",
+    ],
+    watch:
+      "The knee wants to collapse inward on the way up, and that is the one thing this movement must never be allowed to teach. If it caves on the last rep, that rep was one too many — this is a strength movement pretending to be a party trick.",
+    cues: ["Knee tracks over the toes", "Free leg long", "Slow all the way down"],
+    trains: ["single-leg strength", "ankle range", "balance", "knee control"],
+    needs: ["space", "gym"],
+    requires: [
+      {
+        family: "hold",
+        tier: 1,
+        seconds: 60,
+        why: "A minute resting in the bottom of a two-legged squat. Without that ankle range the pistol is done on a rolled-in foot, which is where the knee pays.",
+      },
+    ],
+    perSide: true,
+    masterAt: { ...MASTERY.elite, reps: 5 },
   },
 
   // ── Hinging ───────────────────────────────────────────────
   {
-    name: "Glute bridges",
+    name: "Glute bridge",
     family: "hinge",
     tier: 0,
     metric: "reps",
@@ -1079,12 +1424,38 @@ export const MOVEMENTS: Movement[] = [
       "The glutes do the lifting, not the lower back. If you feel it in your back, tuck the ribs down and stop the hips lower.",
     cues: ["Drive the heels", "Squeeze at the top", "Ribs down"],
     trains: ["glutes", "hamstrings", "hip extension"],
-    masterAt: { reps: 20 },
+    masterAt: { ...MASTERY.intro, reps: 20 },
+    aliases: ["Glute bridges"],
+  },
+  {
+    name: "Single-leg glute bridge",
+    family: "hinge",
+    tier: 1,
+    metric: "reps",
+    dose: "12 per side",
+    summary:
+      "A glute bridge driven by one leg, the other held up off the floor. Doubles the load on the working side and immediately shows you which hip has been doing less of the work all along.",
+    setup: [
+      "On your back, one knee bent with the foot flat and close to the hip.",
+      "Lift the other knee toward your chest and hold it there, or keep that leg straight along the line of the thigh.",
+      "Press the lower back flat and tuck the ribs down before the first rep.",
+    ],
+    execution: [
+      "Drive through the heel of the planted foot and lift the hips until the body is straight from knee to shoulder.",
+      "Keep both hip bones level with each other the whole way.",
+      "Lower under control rather than dropping.",
+    ],
+    watch:
+      "The hip on the free-leg side drops. Watch for it, because it is what turns this into a lower-back exercise, and it is nearly impossible to feel — if you cannot keep the hips level, do fewer reps or go back to two legs.",
+    cues: ["Hips level", "Drive the heel", "Ribs down"],
+    trains: ["glutes", "hamstrings", "hip stability", "left-to-right balance"],
+    perSide: true,
+    masterAt: { ...MASTERY.foundation, reps: 12 },
   },
   {
     name: "Romanian deadlift",
     family: "hinge",
-    tier: 1,
+    tier: 2,
     metric: "reps",
     dose: "12",
     summary:
@@ -1101,12 +1472,12 @@ export const MOVEMENTS: Movement[] = [
     trains: ["hamstrings", "glutes", "spinal position under load"],
     needs: LOAD,
     loaded: true,
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.working, reps: 12 },
   },
   {
     name: "Single-leg Romanian deadlift",
     family: "hinge",
-    tier: 2,
+    tier: 3,
     metric: "reps",
     dose: "10 per side",
     summary: "The same hinge on one leg, the other extending behind you as a counterweight.",
@@ -1121,12 +1492,12 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Back leg in line", "Hips level", "Slow"],
     trains: ["hamstrings", "glutes", "balance", "anti-rotation"],
     perSide: true,
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.demanding, reps: 10 },
   },
   {
-    name: "Nordic curl negatives",
+    name: "Nordic curl negative",
     family: "hinge",
-    tier: 3,
+    tier: 4,
     metric: "reps",
     dose: "3× 5",
     summary:
@@ -1144,7 +1515,8 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Straight from knee to head", "Catch with the hands", "Slow as possible"],
     trains: ["hamstrings eccentrically", "knee resilience"],
     needs: ["bench", "mat", "gym"],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.advanced, reps: 5 },
+    aliases: ["Nordic curl negatives"],
   },
 
   // ── Holds ─────────────────────────────────────────────────
@@ -1160,7 +1532,7 @@ export const MOVEMENTS: Movement[] = [
     watch: "Thighs parallel. It ends when they aren't — creeping upward is how a wall sit becomes standing.",
     cues: ["Thighs parallel", "Back flat", "Breathe"],
     trains: ["quads", "isometric endurance"],
-    masterAt: { seconds: 60 },
+    masterAt: { ...MASTERY.intro, seconds: 60 },
   },
   {
     name: "Deep squat hold",
@@ -1179,7 +1551,88 @@ export const MOVEMENTS: Movement[] = [
       "Heels stay on the floor. The clock stops the moment one lifts — an elevated heel makes it a different, much easier position.",
     cues: ["Heels down", "Elbows push the knees out", "Relax"],
     trains: ["ankle range", "hip range", "the resting squat"],
-    masterAt: { seconds: 60 },
+    masterAt: { ...MASTERY.foundation, seconds: 60 },
+  },
+  {
+    name: "Single-leg wall sit",
+    family: "hold",
+    tier: 2,
+    metric: "time",
+    dose: "3× 30 s per side",
+    summary:
+      "A wall sit held on one leg, the other lifted clear. Roughly twice the load on the working quad, and the isometric that makes the single-leg squatting above it possible.",
+    setup: [
+      "Slide down the wall into a normal wall sit, thighs parallel, back flat.",
+      "Shift your weight onto one foot and slide it slightly toward the middle.",
+      "Lift the other foot off the floor and hold that leg straight out in front.",
+    ],
+    execution: [
+      "Hold with the working thigh parallel to the floor and the knee stacked over the ankle.",
+      "Weight through the heel, not the ball of the foot.",
+      "Put the foot down and switch rather than letting the position creep upward.",
+    ],
+    watch:
+      "The knee drifts inward as the quad tires, and that is the position this is meant to train out of you, not into you. The moment the knee starts tracking inside the foot, put the other leg down — the clock has stopped whether or not you are still up there.",
+    cues: ["Knee over the ankle", "Thigh parallel", "Heel takes it"],
+    trains: ["quads", "single-leg isometric strength", "knee tracking"],
+    perSide: true,
+    masterAt: { ...MASTERY.working, seconds: 30 },
+  },
+  {
+    name: "Chin-over-bar hold",
+    family: "hold",
+    tier: 3,
+    metric: "time",
+    dose: "3× 20 s",
+    summary:
+      "Hanging at the top of a pull-up and staying there. The strongest position of the pull, held still — which is the cheapest way to build the top half of a rep you cannot yet finish.",
+    setup: [
+      "Overhand grip, shoulder-width. Step or jump so your chin starts above the bar.",
+      "Pull the shoulder blades down and the chest toward the bar before the clock starts.",
+    ],
+    execution: [
+      "Hold with the chin clear of the bar and the chest close to it.",
+      "Elbows stay in rather than winging out to the sides as it gets hard.",
+      "Lower under control when the position starts to sink — do not hang on until you drop.",
+    ],
+    watch:
+      "The chin sliding down to rest on the bar is the end of the set, not a way to extend it. And come down under control: dropping from the top of a pull-up onto straight arms is the classic way to strain a biceps tendon.",
+    cues: ["Chest to the bar", "Elbows in", "Lower, don't drop"],
+    trains: ["the top of the pull-up", "grip", "biceps and lats isometrically"],
+    needs: BAR,
+    requires: [
+      {
+        family: "pull",
+        tier: 2,
+        why: "Negative pull-ups first. Holding the top means being able to get to the top and come down from it under control.",
+      },
+    ],
+    masterAt: { ...MASTERY.demanding, seconds: 20 },
+  },
+  {
+    name: "Support hold on parallel bars",
+    family: "hold",
+    tier: 4,
+    metric: "time",
+    dose: "3× 30 s",
+    summary:
+      "Holding yourself above two bars on straight, locked arms. The top of a dip, standing still — and the position everything at the top of the pressing strands finishes in.",
+    setup: [
+      "Parallel bars, rings or two solid chair backs a little wider than your shoulders.",
+      "Press up to straight arms with the shoulders pushed down away from the ears.",
+      "Legs together and slightly forward, glutes and ribs tight so the body is a line rather than a hang.",
+    ],
+    execution: [
+      "Hold with the elbows locked and the shoulders actively depressed.",
+      "Look forward, not down.",
+      "Come off before the shoulders start to rise toward the ears.",
+    ],
+    watch:
+      "Shrugged shoulders are the whole failure mode. Sinking into the joint rather than holding yourself out of it is what makes this position hurt people, and it happens quietly the moment the set gets long.",
+    cues: ["Push the bars down", "Shoulders away from the ears", "One line"],
+    trains: ["straight-arm shoulder strength", "scapular depression", "the top of a dip"],
+    needs: ["parallettes", "rings", "gym", "space"],
+    masterAt: { ...MASTERY.advanced, seconds: 30 },
   },
 
   // ── Inverting ─────────────────────────────────────────────
@@ -1205,7 +1658,7 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Push the floor away", "Ribs down", "Come down early"],
     trains: ["shoulder endurance overhead", "being inverted", "wrist tolerance"],
     needs: ["space", "gym"],
-    masterAt: { seconds: 30 },
+    masterAt: { ...MASTERY.intro, seconds: 30 },
   },
   {
     // The middle step of the document's handstand protocol — "Wall Handstand →
@@ -1215,7 +1668,7 @@ export const MOVEMENTS: Movement[] = [
     family: "handstand",
     tier: 1,
     metric: "time",
-    dose: "5 min",
+    dose: "5× 20 s",
     summary:
       "Kicking up into a handstand with your back to the wall instead of walking up it belly-first. The wall stops becoming a support and starts being a safety net.",
     setup: [
@@ -1232,14 +1685,46 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Kick to arrive, not to bang", "Ribs down", "Down one leg at a time"],
     trains: ["finding the balance point", "kicking with control", "shoulder stacking"],
     needs: ["space", "gym"],
-    masterAt: { seconds: 30 },
+    masterAt: { ...MASTERY.foundation, seconds: 30 },
   },
   {
-    name: "Freestanding handstand attempts",
+    name: "Handstand shoulder taps",
     family: "handstand",
     tier: 2,
+    metric: "reps",
+    dose: "3× 10",
+    summary:
+      "In a handstand against the wall, taking one hand off to tap the opposite shoulder, then the other. Being upside down on one arm for a moment at a time — which is what balancing freestanding actually is.",
+    setup: [
+      "Kick or walk up to the wall, hands shoulder-width, a hand's length from the skirting board.",
+      "Squeeze the ribs and glutes so the body is a line, not an arch.",
+      "Get still first. A shape that is already wobbling has nothing to give.",
+    ],
+    execution: [
+      "Shift your weight fully onto one hand, then lift the other and touch the opposite shoulder.",
+      "Put it back down where it started and shift to the other side.",
+      "One tap each side is two reps. Slow beats many.",
+    ],
+    watch:
+      "This is where the wrists get their first real complaint. Warm them up, spread the fingers and grip the floor, and stop the set at the first ache rather than the first failure — a wrist that hurts in month three costs you every strand that goes through the hands.",
+    cues: ["Get still first", "Grip the floor", "Ribs in"],
+    trains: ["one-arm loading upside down", "balance", "wrist tolerance"],
+    needs: ["space", "gym"],
+    requires: [
+      {
+        family: "core",
+        seconds: 45,
+        why: "A 45-second plank. The line has to hold itself before you start taking hands away from it.",
+      },
+    ],
+    masterAt: { ...MASTERY.working, reps: 10 },
+  },
+  {
+    name: "Freestanding handstand",
+    family: "handstand",
+    tier: 3,
     metric: "time",
-    dose: "5 min",
+    dose: "5× max hold",
     summary: "Kicking up away from the wall and holding what you can. Phase 2 onward, five minutes a day.",
     setup: ["Clear space, something soft, nothing breakable within reach."],
     execution: [
@@ -1252,14 +1737,64 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Fingertips steer", "Bail sideways", "Little and often"],
     trains: ["balance", "shoulder stability", "the handstand"],
     needs: ["space", "gym"],
-    masterAt: { seconds: 10 },
+    masterAt: { ...MASTERY.demanding, seconds: 10 },
+    aliases: ["Freestanding handstand attempts"],
+  },
+  {
+    name: "Handstand walk",
+    family: "handstand",
+    tier: 4,
+    metric: "reps",
+    dose: "3× 5 steps",
+    summary:
+      "Travelling on your hands. The top of the inverting strand, and the point at which being upside down has stopped being a position and become somewhere you can go.",
+    setup: [
+      "Open floor, nothing to hit, ideally something soft to bail onto.",
+      "Kick up freestanding and find the balance before trying to move.",
+      "Wrists thoroughly warm — this asks more of them than anything else in the plan.",
+    ],
+    execution: [
+      "Fall very slightly forward from the shoulders and let a hand step out to catch it.",
+      "Small steps, fingers gripping the floor on every placement.",
+      "Count a step as a rep, and stop the set while the shape is still good.",
+    ],
+    watch:
+      "Walking out of a handstand you never balanced is just a slow fall with extra steps. Hold ten still seconds freestanding first, and keep the bail-out — turn out sideways — automatic, because you will need it more here than anywhere.",
+    cues: ["Lean, then step", "Grip the floor", "Small steps"],
+    trains: ["balance in motion", "shoulder stability", "wrist strength"],
+    needs: ["space", "gym"],
+    masterAt: { ...MASTERY.advanced, reps: 5 },
   },
 
   // ── Crawling ──────────────────────────────────────────────
   {
-    name: "Bear crawl",
+    name: "Bear crawl hold",
     family: "crawl",
     tier: 0,
+    metric: "time",
+    dose: "3× 30 s",
+    summary:
+      "The bear crawl position held still, knees hovering a hand's width off the floor. Everything that makes crawling hard is already here; taking the travelling away just means you can find out whether the shape is right before you start moving it.",
+    setup: [
+      "Hands under the shoulders, knees under the hips, toes tucked.",
+      "Flatten the lower back — think of pushing the floor away and tucking the ribs down.",
+      "Lift the knees a hand's width and no more.",
+    ],
+    execution: [
+      "Hold, with the hips level and no higher than the shoulders.",
+      "Breathe. A position you are holding by holding your breath is a position you are bracing wrong.",
+      "Put the knees down before the hips start to rise.",
+    ],
+    watch:
+      "The hips climb as the shoulders tire, and once they are above the shoulders the shape has quietly become a downward dog with the knees bent. Level, low and boring is the whole exercise.",
+    cues: ["Knees a hand's width up", "Flat back", "Keep breathing"],
+    trains: ["shoulders", "deep core", "the crawling shape"],
+    masterAt: { ...MASTERY.intro, seconds: 30 },
+  },
+  {
+    name: "Bear crawl",
+    family: "crawl",
+    tier: 1,
     metric: "time",
     dose: "3× 30 s",
     summary: "Crawling on hands and feet with the knees just off the floor. Deceptively hard.",
@@ -1272,12 +1807,36 @@ export const MOVEMENTS: Movement[] = [
     watch: "Knees a hand's width off the floor the whole time. That is what makes it hard; letting them drift up is opting out.",
     cues: ["Knees low", "Opposite hand and foot", "Hips level"],
     trains: ["shoulders", "core", "contralateral coordination"],
-    masterAt: { seconds: 45 },
+    masterAt: { ...MASTERY.foundation, seconds: 45 },
   },
   {
-    name: "Spider crawl",
+    name: "Crab walk",
     family: "crawl",
-    tier: 1,
+    tier: 2,
+    metric: "time",
+    dose: "3× 30 s",
+    summary:
+      "Crawling backwards face-up, on your hands and feet with the hips held off the floor. The mirror image of a bear crawl, and the one that opens the front of the shoulders and the hips instead of closing them.",
+    setup: [
+      "Sit down, hands on the floor behind you with the fingers pointing toward your feet.",
+      "Feet flat, knees bent to roughly a right angle.",
+      "Press the hips up until the body is level from knee to shoulder.",
+    ],
+    execution: [
+      "Move an opposite hand and foot together, travelling backwards or sideways.",
+      "The hips stay up the entire time — that is the exercise.",
+      "Keep the chest open and the shoulders away from the ears.",
+    ],
+    watch:
+      "Fingers point toward the feet, never away. Turning the hands out puts the wrist and the front of the shoulder in the position they are weakest in, under your whole bodyweight, and it is the single reason this movement has a bad reputation.",
+    cues: ["Hips up", "Fingers toward the feet", "Chest open"],
+    trains: ["triceps", "rear shoulder", "hip extension under load", "the front of the body"],
+    masterAt: { ...MASTERY.working, seconds: 30 },
+  },
+  {
+    name: "Spiderman crawl",
+    family: "crawl",
+    tier: 3,
     metric: "time",
     dose: "3× 20 s",
     summary: "A bear crawl with the body low and the knees out wide. The one the app is named after.",
@@ -1290,12 +1849,20 @@ export const MOVEMENTS: Movement[] = [
       "Low is the whole point. Rising up turns it into a slow bear crawl and loses the hip range that makes it worth doing.",
     cues: ["Stay low", "Knee to elbow", "Quiet hands"],
     trains: ["shoulders", "core", "hip mobility under load"],
-    masterAt: { seconds: 30 },
+    requires: [
+      {
+        family: "core",
+        seconds: 45,
+        why: "Held an inch off the floor, the trunk is the only thing keeping your hips out of the carpet. A 45-second plank is that, standing still.",
+      },
+    ],
+    masterAt: { ...MASTERY.demanding, seconds: 30 },
+    aliases: ["Spider crawl"],
   },
 
   // ── Jumping ───────────────────────────────────────────────
   {
-    name: "Squat jumps",
+    name: "Squat jump",
     family: "jump",
     tier: 0,
     metric: "reps",
@@ -1312,12 +1879,37 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Explode up", "Land quiet", "Reset each rep"],
     trains: ["leg power", "landing mechanics"],
     needs: ["space", "gym", "outdoor_bars"],
-    masterAt: { reps: 12 },
+    masterAt: { ...MASTERY.intro, reps: 12 },
+    aliases: ["Squat jumps"],
   },
   {
-    name: "Broad jumps",
+    name: "Tuck jump",
     family: "jump",
     tier: 1,
+    metric: "reps",
+    dose: "3× 8",
+    summary:
+      "A vertical jump where you pull both knees up toward your chest at the top. Asks you to produce force and then reorganise in the air — which is the difference between jumping and landing well, and everything the vault strand later needs.",
+    setup: [
+      "Feet hip-width, somewhere with give underfoot.",
+      "Arms free, room above your head.",
+    ],
+    execution: [
+      "Dip to a quarter squat and jump straight up as hard as you can.",
+      "At the top, pull the knees toward the chest — do not reach down for them with the hands.",
+      "Extend the legs again before you land, and absorb through hips and knees.",
+    ],
+    watch:
+      "The knees come up to the chest; the chest does not come down to the knees. Folding forward to meet them puts you in the air leaning, which is a bad way to arrive back on the floor — and stop the set the moment the landings get loud.",
+    cues: ["Knees to chest", "Stay tall", "Land quiet"],
+    trains: ["leg power", "in-air control", "landing mechanics"],
+    needs: ["space", "gym", "outdoor_bars"],
+    masterAt: { ...MASTERY.foundation, reps: 8 },
+  },
+  {
+    name: "Broad jump",
+    family: "jump",
+    tier: 2,
     metric: "reps",
     dose: "3× 5",
     summary: "Jumping forward for distance from a standstill. Phase 3.",
@@ -1331,12 +1923,37 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Arms back then through", "Stick the landing", "Quality over distance"],
     trains: ["horizontal power", "landing absorption"],
     needs: ["space", "gym", "outdoor_bars"],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.working, reps: 5 },
+    aliases: ["Broad jumps"],
   },
   {
-    name: "Precision jumps",
+    name: "Box jump",
     family: "jump",
-    tier: 2,
+    tier: 3,
+    metric: "reps",
+    dose: "3× 5",
+    summary:
+      "Jumping up onto a box, bench or low wall and landing on it in a quarter squat. Landing higher than you took off means far less impact than a broad jump for the same amount of power — which is why it belongs before the jumps you can miss.",
+    setup: [
+      "A stable box, bench or step. Start low enough that you can land softly, not high enough to be impressive.",
+      "Stand a foot's length back from it, feet hip-width.",
+    ],
+    execution: [
+      "Swing the arms back, dip, and jump up onto the box.",
+      "Land with both feet fully on the surface in a quarter squat, quietly.",
+      "Step down. Never jump down — that is where the impact and the injuries are.",
+    ],
+    watch:
+      "Step down, every rep, without exception. Jumping off a box repeatedly is the way this movement wrecks Achilles tendons, and it buys you nothing the jump up did not already give you. And pick a height you can land on standing tall-ish: a box you only reach by folding into a deep squat is a box that is too high.",
+    cues: ["Land soft and high", "Full foot on the box", "Step down"],
+    trains: ["leg power", "landing absorption", "commitment to a target"],
+    needs: ["bench", "gym", "outdoor_bars"],
+    masterAt: { ...MASTERY.demanding, reps: 5 },
+  },
+  {
+    name: "Precision jump",
+    family: "jump",
+    tier: 4,
     metric: "reps",
     dose: "3× 5",
     summary:
@@ -1358,11 +1975,12 @@ export const MOVEMENTS: Movement[] = [
     requires: [
       {
         family: "roll",
-        reps: 5,
-        why: "A precision jump you miss is a fall forward. Learn to roll out of one before you start jumping onto edges.",
+        tier: 3,
+        why: "A precision jump you miss is a fall forward, from standing, at speed. Be able to roll out of one from standing before you start jumping onto edges.",
       },
     ],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.advanced, reps: 5 },
+    aliases: ["Precision jumps"],
   },
 
   // ── Falling ───────────────────────────────────────────────
@@ -1373,7 +1991,7 @@ export const MOVEMENTS: Movement[] = [
   // and 4 below. Rungs 0 and 1 are EXTRAPOLATED — the document starts from a
   // crouch, and a crouch is already a fall for someone who has never rolled.
   {
-    name: "Rock-backs",
+    name: "Backward breakfall",
     family: "roll",
     tier: 0,
     metric: "reps",
@@ -1394,7 +2012,8 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Chin to chest", "Round like a ball", "Silent"],
     trains: ["a rounded spine under load", "the chin-tuck habit", "trust in the floor"],
     needs: SOFT,
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.drill, reps: 10 },
+    aliases: ["Rock-backs"],
   },
   {
     name: "Shoulder roll from a kneel",
@@ -1428,7 +2047,7 @@ export const MOVEMENTS: Movement[] = [
         why: "30 s of plank first. A trunk that gives way mid-roll drops your spine onto the floor flat, which is what the rounded shape is there to stop.",
       },
     ],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.drill, reps: 5 },
   },
   {
     name: "Shoulder roll from a crouch",
@@ -1454,7 +2073,7 @@ export const MOVEMENTS: Movement[] = [
     trains: ["rolling with momentum", "landing on your feet"],
     needs: SOFT,
     perSide: true,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.practice, reps: 5 },
   },
   {
     name: "Shoulder roll from standing",
@@ -1476,7 +2095,7 @@ export const MOVEMENTS: Movement[] = [
     trains: ["falling under control", "the entry at speed"],
     needs: SOFT,
     perSide: true,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.practice, reps: 5 },
   },
   {
     name: "Shoulder roll from a walk",
@@ -1498,8 +2117,32 @@ export const MOVEMENTS: Movement[] = [
     trains: ["rolling out of movement", "the skill you would actually use"],
     needs: SOFT,
     perSide: true,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.craft, reps: 5 },
     aliases: ["Shoulder roll"],
+  },
+  {
+    name: "Dive roll",
+    family: "roll",
+    tier: 5,
+    metric: "reps",
+    dose: "2× 5",
+    summary:
+      "A shoulder roll entered by leaving the ground first — a short dive forward, hands down, and straight into the same diagonal line across the back. The top of the falling strand, and the version that covers a fall you did not choose.",
+    setup: [
+      "A mat, and more of a run-out than you think you need.",
+      "Start with almost no dive at all: a step in and a slight lean is enough for the first weeks.",
+    ],
+    execution: [
+      "Take one step, push off and reach both hands to the mat in front of you.",
+      "Take the landing on the arms, bending them to absorb rather than locking out.",
+      "Convert straight into the roll — leading shoulder blade, across the back, out at the opposite hip — and come up on your feet.",
+    ],
+    watch:
+      "Locked arms on the way in is how wrists and collarbones break, and it is what everybody does the first time they add height. Add distance before you add height, keep the elbows soft, and if the roll after the dive is anything other than silent, take the dive back out of it.",
+    cues: ["Soft elbows", "Distance before height", "Straight into the line"],
+    trains: ["rolling out of a real fall", "absorbing on the arms", "committing forwards"],
+    needs: SOFT,
+    masterAt: { ...MASTERY.signature, reps: 5 },
   },
 
   // ── Tumbling ──────────────────────────────────────────────
@@ -1537,11 +2180,11 @@ export const MOVEMENTS: Movement[] = [
       },
       {
         family: "roll",
-        reps: 5,
-        why: "You will fall out of early cartwheels sideways. Being able to roll out of one turns that into a non-event.",
+        tier: 2,
+        why: "You will fall out of early cartwheels sideways. Rolling from a crouch — the document's own first step — turns that into a non-event.",
       },
     ],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.practice, reps: 5 },
   },
   {
     name: "Roundoff",
@@ -1562,7 +2205,40 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Snap the legs together", "Push out of the hands", "Land facing back"],
     trains: ["reversing direction upside down", "explosive shoulder push"],
     needs: SOFT,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.craft, reps: 5 },
+  },
+  {
+    name: "One-handed cartwheel",
+    family: "acro",
+    tier: 2,
+    metric: "reps",
+    dose: "2× 5 per side",
+    summary:
+      "A cartwheel on one hand. Everything the two-handed version taught, with twice the load and half the margin — and the last thing on this strand that is learned rather than performed.",
+    setup: [
+      "A mat and a line, exactly as for a cartwheel.",
+      "Start by using the near hand only — the far-hand version is a different and harder movement.",
+      "Do not attempt this on a day the wrists already ache.",
+    ],
+    execution: [
+      "Enter as a normal cartwheel but plant only the leading hand.",
+      "Push through that arm hard and keep it locked — the hips have to pass over a straight arm, not a bent one.",
+      "Land one foot then the other on the line, facing back the way you came.",
+    ],
+    watch:
+      "One arm now takes what two shared, and it takes it while moving. A bent elbow at the bottom is the whole failure: it collapses you onto your shoulder. If you cannot cartwheel slowly with the hips genuinely stacked over the hands, this is not the next thing.",
+    cues: ["Straight arm", "Hips over the hand", "Slow all the way through"],
+    trains: ["one-arm loading upside down", "wrist and shoulder strength", "commitment"],
+    needs: SOFT,
+    perSide: true,
+    requires: [
+      {
+        family: "handstand",
+        seconds: 60,
+        why: "A minute upside down against the wall. One arm catches your whole weight here, and it catches it moving.",
+      },
+    ],
+    masterAt: { ...MASTERY.signature, reps: 5 },
   },
 
   // ── Getting up ────────────────────────────────────────────
@@ -1571,9 +2247,40 @@ export const MOVEMENTS: Movement[] = [
   // rungs, and it says outright that it takes months — which is exactly why it
   // should not have been one line item arriving in a Friday session.
   {
-    name: "Kip-up to sitting",
+    name: "Candlestick roll to a squat",
     family: "kipup",
     tier: 0,
+    metric: "reps",
+    dose: "3× 8",
+    summary:
+      "Rolling back onto your shoulders with the legs straight up, then rolling forward and standing out of it without hands. The kip-up's landing, learned on its own — you get the feet under a rising body without needing the snap that gets you airborne.",
+    setup: [
+      "Sit on a mat with your knees bent and your feet flat, arms across your chest or reaching forward.",
+      "Chin tucked to the chest before anything moves.",
+    ],
+    execution: [
+      "Rock back onto your shoulder blades and extend both legs straight up toward the ceiling, body long.",
+      "Pause there for a beat — that stack is the position, not a moment you pass through.",
+      "Roll forward, pull the feet in under your hips, and stand up without putting a hand down.",
+    ],
+    watch:
+      "Chin to chest on every rep, and never let the weight travel onto your neck at the top — the stack sits on the shoulder blades. If you need a hand to stand up, that is fine and normal; keep the reps and take the hand away over weeks rather than forcing it today.",
+    cues: ["Chin tucked", "Stack on the shoulder blades", "Feet under the hips"],
+    trains: ["getting the feet under a rising body", "spinal segmentation", "the kip-up landing"],
+    needs: SOFT,
+    requires: [
+      {
+        family: "core",
+        seconds: 30,
+        why: "30 s of hollow hold. The whole roll happens in that shape, and without it the legs land before the hips arrive.",
+      },
+    ],
+    masterAt: { ...MASTERY.drill, reps: 8 },
+  },
+  {
+    name: "Kip-up to sitting",
+    family: "kipup",
+    tier: 1,
     metric: "reps",
     dose: "3× 5",
     summary:
@@ -1598,12 +2305,12 @@ export const MOVEMENTS: Movement[] = [
         why: "30 s of hollow hold first. The kip-up is a hollow-to-arch snap, and without the hollow there is nothing to snap out of.",
       },
     ],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.practice, reps: 5 },
   },
   {
     name: "Kip-up to a crouch",
     family: "kipup",
-    tier: 1,
+    tier: 2,
     metric: "reps",
     dose: "3× 5",
     summary:
@@ -1619,7 +2326,7 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Knees through", "Feet under the hips", "Land in the crouch"],
     trains: ["getting the feet under a rising body", "the full snap"],
     needs: SOFT,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.craft, reps: 5 },
     // The plan names the whole strand "Kip-up progression", and what it means by
     // it is checkpoint 3's target: into a crouch. Naming the middle rung leaves
     // the top one reachable, since placement never goes more than one above what
@@ -1629,7 +2336,7 @@ export const MOVEMENTS: Movement[] = [
   {
     name: "Kip-up to standing",
     family: "kipup",
-    tier: 2,
+    tier: 3,
     metric: "reps",
     dose: "3× 3",
     summary:
@@ -1645,14 +2352,14 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Hips high and forward", "Arrive balanced", "Stop when they get scruffy"],
     trains: ["the complete kip-up"],
     needs: SOFT,
-    masterAt: { reps: 3 },
+    masterAt: { ...MASTERY.signature, reps: 3 },
   },
 
   // ── Obstacles ─────────────────────────────────────────────
   // From the document's optional Parkour-Basics Saturday, plus the wall run
   // that Phase 3's Friday adds. Ordered by how far off the ground you end up.
   {
-    name: "Safety vault over a bench",
+    name: "Safety vault",
     family: "vault",
     tier: 0,
     metric: "reps",
@@ -1674,16 +2381,42 @@ export const MOVEMENTS: Movement[] = [
     requires: [
       {
         family: "roll",
-        reps: 5,
-        why: "Vaults are the first thing in the plan where a mistake puts you on the floor moving forwards. Roll first.",
+        tier: 2,
+        why: "Vaults are the first thing in the plan where a mistake puts you on the floor moving forwards. Be able to roll from a crouch before you cross anything.",
       },
     ],
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.drill, reps: 5 },
+    aliases: ["Safety vault over a bench"],
+  },
+  {
+    name: "Speed vault",
+    family: "vault",
+    tier: 1,
+    metric: "reps",
+    dose: "3× 5 per side",
+    summary:
+      "Crossing the same obstacle sideways with one hand on it and both legs swinging through together, without breaking stride. The safety vault with the foot taken off the top — which is what makes it a vault you can do while moving rather than a step-over.",
+    setup: [
+      "The same stable hip-height bench or wall, with clear landing ground on the far side.",
+      "Approach from the side at a walk to begin with; speed is the last thing you add, not the first.",
+    ],
+    execution: [
+      "Plant the trailing hand on the top as you pass and take some weight through it.",
+      "Swing both legs over together, sideways, feet staying together.",
+      "Land on the far foot first and keep walking through — a vault that ends in a stop was a step-over.",
+    ],
+    watch:
+      "One hand takes real weight here for the first time, and it takes it at an angle. Push down through the whole palm rather than the heel of the hand, and do not add speed until the walking version is silent — a caught trailing foot at pace puts you on the floor sideways with an arm out.",
+    cues: ["Legs together", "Push through the palm", "Keep walking through"],
+    trains: ["crossing obstacles in motion", "one-arm support at an angle"],
+    needs: ["space", "gym", "outdoor_bars"],
+    perSide: true,
+    masterAt: { ...MASTERY.practice, reps: 5 },
   },
   {
     name: "Wall run",
     family: "vault",
-    tier: 1,
+    tier: 2,
     metric: "reps",
     dose: "3× 3",
     summary:
@@ -1705,16 +2438,17 @@ export const MOVEMENTS: Movement[] = [
     requires: [
       {
         family: "pull",
+        tier: 4,
         reps: 3,
         why: "3 pull-ups first. The top of a wall run is a pull-up done tired, and arriving there without one leaves you hanging with nowhere to go.",
       },
     ],
-    masterAt: { reps: 3 },
+    masterAt: { ...MASTERY.craft, reps: 3 },
   },
   {
     name: "Kong vault",
     family: "vault",
-    tier: 2,
+    tier: 3,
     metric: "reps",
     dose: "3× 3",
     summary:
@@ -1733,12 +2467,19 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Hands well over", "Knees between the arms", "Mat on the far side"],
     trains: ["committing to a dive", "tucking under pressure"],
     needs: SOFT,
-    masterAt: { reps: 3 },
+    requires: [
+      {
+        family: "roll",
+        tier: 5,
+        why: "A kong vault that clips the obstacle puts you on the ground head-first and moving. The dive roll is the only thing that turns that into a landing rather than an accident.",
+      },
+    ],
+    masterAt: { ...MASTERY.signature, reps: 3 },
   },
 
   // ── Lunging ───────────────────────────────────────────────
   {
-    name: "Reverse lunges",
+    name: "Reverse lunge",
     family: "lunge",
     tier: 0,
     metric: "reps",
@@ -1756,12 +2497,56 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Step back, not forward", "Tall chest", "Knee over the foot"],
     trains: ["single-leg strength", "balance", "quads and glutes"],
     perSide: true,
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.intro, reps: 10 },
+    aliases: ["Reverse lunges"],
+  },
+  {
+    name: "Forward lunge",
+    family: "lunge",
+    tier: 1,
+    metric: "reps",
+    dose: "3× 10 per side",
+    summary:
+      "Stepping forward into the lunge instead of backward. Harder than it sounds: the front leg has to catch the step as well as press out of it, which is exactly the demand every landing and every vault makes later.",
+    setup: ["Stand tall, feet hip-width, hands on the hips.", "Clear floor in front of you, not a rug that slides."],
+    execution: [
+      "Step one foot forward and lower until both knees are near 90°.",
+      "Land through the whole front foot, not the heel alone — the step is absorbed, not stamped.",
+      "Push back off the front leg to return to standing.",
+    ],
+    watch:
+      "The front knee is being asked to decelerate you, and that is where it caves inward. Take a shorter step than feels natural and stop the set the moment the knee starts wandering — this rung is about catching the step cleanly, not about how far you can reach.",
+    cues: ["Absorb the step", "Knee over the foot", "Push back, don't fall back"],
+    trains: ["single-leg strength", "deceleration", "quads and glutes"],
+    perSide: true,
+    masterAt: { ...MASTERY.foundation, reps: 10 },
+  },
+  {
+    name: "Walking lunge",
+    family: "lunge",
+    tier: 2,
+    metric: "reps",
+    dose: "3× 10 per side",
+    summary:
+      "Lunging forward continuously, bringing the back foot through into the next rep rather than returning to standing. There is no rest between reps and no moment of balance to gather yourself in — which is the point.",
+    setup: ["A clear run of floor, ten metres or a length you can walk back and forth along.", "Hands on the hips or holding a light weight at the chest."],
+    execution: [
+      "Step forward into a lunge, both knees near 90°.",
+      "Drive through the front heel and bring the back foot straight through into the next step.",
+      "Keep the torso tall throughout — no leaning forward to generate the next step.",
+    ],
+    watch:
+      "The rep that goes wrong is the one where you are already moving into the next. If you find yourself falling forward into each step, the set is over — stop, walk it off, and do fewer next time rather than finishing the number.",
+    cues: ["Tall through the middle", "Straight through, no wobble", "Fewer and clean"],
+    trains: ["single-leg strength", "balance in motion", "glutes", "hip stability"],
+    needs: ["space", "gym", "outdoor_bars"],
+    perSide: true,
+    masterAt: { ...MASTERY.working, reps: 10 },
   },
   {
     name: "Cossack squat",
     family: "lunge",
-    tier: 1,
+    tier: 3,
     metric: "reps",
     dose: "3× 8 per side",
     summary:
@@ -1777,7 +2562,33 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Heel down", "Sit into the bent leg", "Chest up"],
     trains: ["hip range under load", "adductors", "ankle range"],
     perSide: true,
-    masterAt: { reps: 8 },
+    masterAt: { ...MASTERY.demanding, reps: 8 },
+  },
+  {
+    name: "Jumping lunge",
+    family: "lunge",
+    tier: 4,
+    metric: "reps",
+    dose: "3× 8 per side",
+    summary:
+      "A split squat jumped hard enough to swap the legs in the air. The top of the lunging strand, and the one that turns single-leg strength into single-leg power.",
+    setup: [
+      "Somewhere with a bit of give underfoot, and enough headroom to jump.",
+      "Start in a lunge, front shin vertical, back knee just off the floor.",
+      "Warm the ankles and knees properly first. This is not a first-exercise-of-the-session movement.",
+    ],
+    execution: [
+      "Drive up hard off both legs so you leave the floor.",
+      "Swap the legs in the air and land in the opposite lunge.",
+      "Absorb the landing by sinking straight back into the bottom position — every rep lands, then jumps.",
+    ],
+    watch:
+      "Loud landings mean the legs have stopped absorbing and the joints have started. Count the set in clean reps, not in total reps: eight quiet ones is the set, and the ninth noisy one undoes them.",
+    cues: ["Land quiet", "Swap in the air", "Stop when it gets loud"],
+    trains: ["single-leg power", "landing absorption", "reactive strength"],
+    needs: ["space", "gym"],
+    perSide: true,
+    masterAt: { ...MASTERY.advanced, reps: 8 },
   },
 
   // ── Range ─────────────────────────────────────────────────
@@ -1807,7 +2618,7 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Knees stay stacked", "Eyes follow the hand", "Breathe out at the end"],
     trains: ["thoracic rotation", "shoulder range"],
     perSide: true,
-    masterAt: { reps: 10 },
+    masterAt: { ...MASTERY.intro, reps: 10 },
   },
   {
     name: "Jefferson curl",
@@ -1832,12 +2643,60 @@ export const MOVEMENTS: Movement[] = [
     trains: ["spinal flexion under control", "hamstrings", "posterior chain range"],
     needs: LOAD,
     loaded: true,
-    masterAt: { reps: 8 },
+    masterAt: { ...MASTERY.foundation, reps: 8 },
   },
   {
-    name: "Pancake progression",
+    name: "Reverse plank",
+    family: "spine",
+    tier: 2,
+    metric: "time",
+    dose: "3× 30 s",
+    summary:
+      "Face-up, propped on your hands with the body in one straight line from heel to shoulder. Also called a straight bridge, and it is the honest first step toward a back bridge: the same shoulder and hip extension, with none of the arch.",
+    setup: [
+      "Sit with the legs straight out, hands on the floor behind your hips, fingers pointing toward your feet.",
+      "Heels down, toes pointed away.",
+    ],
+    execution: [
+      "Press through the hands and heels and lift the hips until the body is one line.",
+      "Squeeze the glutes and open the chest — the shoulders pull back and down, not up toward the ears.",
+      "Hold, breathing normally. Lower under control rather than dropping.",
+    ],
+    watch:
+      "Fingers point toward the feet, never away, and the head stays in line rather than dropping back. Letting the head hang is the reflex here and it is the one that makes the neck sore for two days after.",
+    cues: ["Fingers toward the feet", "Hips to the ceiling", "Chest open"],
+    trains: ["hip extension", "shoulder extension", "the front of the body"],
+    masterAt: { ...MASTERY.working, seconds: 30 },
+  },
+  {
+    name: "Frog stretch",
     family: "hips",
     tier: 0,
+    metric: "time",
+    dose: "3× 45 s",
+    summary:
+      "On your forearms and knees with the knees spread wide and the shins turned out, rocking the hips gently back. The gentlest way into the range the pancake later asks for, and the one you can do on a day nothing else feels like moving.",
+    setup: [
+      "Kneel on something soft and take the knees as wide as is comfortable.",
+      "Shins turned out so the inside edges of the feet are on the floor, ankles in line with the knees.",
+      "Come down onto the forearms with the back long.",
+    ],
+    execution: [
+      "Rock the hips gently backwards until you feel a broad stretch through the inner thighs.",
+      "Rock forward again. Move in and out of it rather than sitting still and enduring it.",
+      "Breathe out as you rock back — the range arrives on the exhale, not on the effort.",
+    ],
+    watch:
+      "This is felt in the inner thigh, never in the knee. A sharp or pinching knee means the shin has turned out further than the hip has, so bring the feet in toward each other and take less width.",
+    cues: ["Inner thigh, never the knee", "Rock, don't sit", "Breathe out to go further"],
+    trains: ["adductors", "hip abduction range", "the pancake's raw material"],
+    needs: SOFT,
+    masterAt: { ...MASTERY.intro, seconds: 45 },
+  },
+  {
+    name: "Seated straddle sit",
+    family: "hips",
+    tier: 1,
     metric: "time",
     dose: "3× 45 s",
     summary:
@@ -1855,12 +2714,13 @@ export const MOVEMENTS: Movement[] = [
       "Knees point at the ceiling throughout. Letting them roll inward gives you a lower position that is coming from the knee joint rather than the hip, which is both useless and the way this position causes trouble.",
     cues: ["Hinge from the hips", "Knees to the ceiling", "Breathe in the position"],
     trains: ["hip range in the splits direction", "adductors", "hamstrings"],
-    masterAt: { seconds: 45 },
+    masterAt: { ...MASTERY.foundation, seconds: 45 },
+    aliases: ["Pancake progression"],
   },
   {
-    name: "Bridge",
+    name: "Back bridge",
     family: "spine",
-    tier: 2,
+    tier: 3,
     metric: "time",
     dose: "3× 20 s",
     summary:
@@ -1879,12 +2739,13 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Hips first", "Chest through the arms", "Head last on the way down"],
     trains: ["spinal extension", "shoulder range overhead", "hip flexor length"],
     needs: SOFT,
-    masterAt: { seconds: 20 },
+    masterAt: { ...MASTERY.demanding, seconds: 20 },
+    aliases: ["Bridge"],
   },
   {
     name: "Pancake",
     family: "hips",
-    tier: 1,
+    tier: 3,
     metric: "time",
     dose: "3× 45 s",
     summary: "The pancake with your chest to the floor and nothing propping you up. Phase 3.",
@@ -1898,12 +2759,12 @@ export const MOVEMENTS: Movement[] = [
       "Chest to the floor, not the forehead. Rounding the back to touch down looks like progress and is the opposite — it takes the stretch off the hips, which is the only thing this position is for.",
     cues: ["Chest, not forehead", "Long back", "Knees to the ceiling"],
     trains: ["end-range hip flexion", "adductors"],
-    masterAt: { seconds: 45 },
+    masterAt: { ...MASTERY.demanding, seconds: 45 },
   },
   {
-    name: "Bridge push-up",
+    name: "Wall walk-down to bridge",
     family: "spine",
-    tier: 3,
+    tier: 4,
     metric: "reps",
     dose: "3× 5",
     summary:
@@ -1919,10 +2780,11 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Walk the wall down", "Reach back, don't fall back", "Lower only"],
     trains: ["active spinal extension", "overhead shoulder strength at range"],
     needs: SOFT,
-    masterAt: { reps: 5 },
+    masterAt: { ...MASTERY.advanced, reps: 5 },
+    aliases: ["Bridge push-up"],
   },
   {
-    name: "Active hip rotations",
+    name: "90/90 hip lift-off",
     family: "hips",
     tier: 2,
     metric: "reps",
@@ -1940,12 +2802,13 @@ export const MOVEMENTS: Movement[] = [
     cues: ["Hands off", "Lift, don't push", "Small and controlled"],
     trains: ["active hip rotation", "hip stability at range"],
     perSide: true,
-    masterAt: { reps: 8 },
+    masterAt: { ...MASTERY.working, reps: 8 },
+    aliases: ["Active hip rotations"],
   },
 
   // ── Engine ────────────────────────────────────────────────
   {
-    name: "Squat thrusts",
+    name: "Squat thrust",
     family: "conditioning",
     tier: 0,
     metric: "reps",
@@ -1962,10 +2825,11 @@ export const MOVEMENTS: Movement[] = [
       "Step the feet back rather than jumping them if the landing is heavy. A heavy landing repeated for three sets is a lot of load through wrists and shoulders that have not asked for it, and stepping trains the same thing.",
     cues: ["Hands down, feet back", "Step if it lands heavy", "Keep it steady"],
     trains: ["heart rate", "whole-body coordination"],
-    masterAt: { reps: 8 },
+    masterAt: { ...MASTERY.intro, reps: 8 },
+    aliases: ["Squat thrusts"],
   },
   {
-    name: "Burpees",
+    name: "Burpee",
     family: "conditioning",
     tier: 1,
     metric: "reps",
@@ -1986,11 +2850,73 @@ export const MOVEMENTS: Movement[] = [
     requires: [
       {
         family: "push",
+        tier: 3,
         reps: 8,
         why: "8 floor push-ups first. A burpee has a push-up in the middle of it, and doing one you cannot yet do, tired, twenty-four times, is how a shoulder gets hurt on the easiest day of the week.",
       },
     ],
-    masterAt: { reps: 8 },
+    masterAt: { ...MASTERY.foundation, reps: 8 },
+    aliases: ["Burpees"],
+  },
+  {
+    name: "Broad jump burpee",
+    family: "conditioning",
+    tier: 2,
+    metric: "reps",
+    dose: "3× 8",
+    summary:
+      "A burpee that finishes with a jump forward instead of a jump up, so every rep travels. Same engine, considerably more of it, and the landing has to be absorbed rather than simply survived.",
+    setup: ["A clear run of floor — five or six metres, or turn around and come back.", "Somewhere with a bit of give underfoot."],
+    execution: [
+      "Squat, hands down, feet back to a plank, one full push-up.",
+      "Feet back in, then jump forward as far as you can control rather than as far as you can reach.",
+      "Land on both feet, absorb, and go straight into the next rep from where you are.",
+    ],
+    watch:
+      "The landing is the part that gets you hurt, and it is the part that degrades first when you are out of breath. If you are stumbling out of the landings, jump shorter — the conditioning comes from the number of reps, not the distance of any one of them.",
+    cues: ["Real push-up", "Jump what you can stick", "Shorter when tired"],
+    trains: ["heart rate", "horizontal power under fatigue", "landing absorption"],
+    needs: ["space", "gym", "outdoor_bars"],
+    requires: [
+      {
+        family: "jump",
+        tier: 2,
+        why: "Broad jumps on their own first, fresh. Learning to land a jump while out of breath is learning it in the worst possible conditions.",
+      },
+    ],
+    masterAt: { ...MASTERY.working, reps: 8 },
+  },
+  {
+    name: "Burpee pull-up",
+    family: "conditioning",
+    tier: 3,
+    metric: "reps",
+    dose: "3× 5",
+    summary:
+      "A burpee performed under a pull-up bar, where the jump at the top becomes a pull-up. The top of the engine strand: everything the year has built, joined together and done out of breath.",
+    setup: [
+      "Stand under a bar you can reach by jumping — high enough that the jump is part of the rep, low enough that you are not leaping for it.",
+      "Clear floor underneath, and nothing to catch a heel on.",
+    ],
+    execution: [
+      "Squat, hands down, feet back, one full push-up.",
+      "Feet in, jump up and catch the bar.",
+      "One pull-up, chin clear of the bar, then lower under control and drop from a bent-arm position — never from a straight-arm hang.",
+    ],
+    watch:
+      "Dropping off the bar with straight arms, repeatedly, while tired, is the single most reliable way to injure a shoulder in this whole plan. Lower yourself first and drop from low. If you cannot lower under control, the set is finished.",
+    cues: ["Lower before you drop", "Chin clear, then down", "Quality over the number"],
+    trains: ["heart rate", "pulling under fatigue", "the whole body at once"],
+    needs: BAR,
+    requires: [
+      {
+        family: "pull",
+        tier: 4,
+        reps: 5,
+        why: "Five clean pull-ups fresh before any are asked for out of breath. A pull-up you are already fighting for becomes a swing the moment your heart rate is at 170.",
+      },
+    ],
+    masterAt: { ...MASTERY.demanding, reps: 5 },
   },
 
   // ═══════════════════════════════════════════════════════════
@@ -2000,6 +2926,159 @@ export const MOVEMENTS: Movement[] = [
   // and the three dumbbell lifts whose progression is load rather than shape.
   // These carry a `masterAt` because the type asks for one and because the
   // number is a sensible target, but nothing unlocks from it.
+
+  // ── Substitutes ───────────────────────────────────────────
+  // What the equipment rules drop you onto when the kit for a rung is missing.
+  // They are groundwork rather than rungs: nothing unlocks from a calf raise,
+  // and a strand must not advance on evidence from a movement that replaced it.
+  // But they are prescribed, so they are explained.
+  {
+    name: "Prone back extension",
+    family: "row",
+    track: "groundwork",
+    tier: 0,
+    metric: "reps",
+    dose: "12–15",
+    summary:
+      "Lying face down and lifting the chest and legs off the floor. What the rowing strand becomes when there is nothing to row under — it works the same back, without needing anything to hang from.",
+    setup: [
+      "Lie face down on the floor or a mat, arms out in front or by your ears.",
+      "Forehead down, neck long.",
+    ],
+    execution: [
+      "Squeeze the glutes first, then lift the chest and the thighs a few inches off the floor.",
+      "Hold for a second at the top with the shoulder blades pulled down and back.",
+      "Lower under control. Small and controlled beats high and thrown.",
+    ],
+    watch:
+      "Height is not the goal. Cranking the head back to get higher hinges the whole thing at one point in the lower back, which is the joint this is meant to protect rather than punish. Eyes stay down at the floor.",
+    cues: ["Glutes first", "Long neck", "Low and controlled"],
+    trains: ["spinal erectors", "glutes", "upper back"],
+    masterAt: { reps: 15 },
+  },
+  {
+    name: "Towel row in a doorway",
+    family: "row",
+    track: "groundwork",
+    tier: 0,
+    metric: "reps",
+    dose: "10–12 per side",
+    summary:
+      "Holding a towel looped round a doorframe, leaning back on straight arms and pulling yourself upright. A rowing pattern that needs nothing but a door.",
+    setup: [
+      "Loop a towel around a doorframe or a solid handle at chest height and hold both ends.",
+      "Walk the feet forward and lean back until the arms are straight and your weight is on the towel.",
+      "Feet flat, body in one line from heel to head.",
+    ],
+    execution: [
+      "Pull the shoulder blades together first, then bend the arms.",
+      "Pull your chest toward the frame and pause.",
+      "Lower back to straight arms under control.",
+    ],
+    watch:
+      "Test the door and the towel with your weight before you commit to a set. Beyond that, the failure is the hips sagging back — one line from heel to head, the same as any other row.",
+    cues: ["Blades first", "One straight line", "Test it first"],
+    trains: ["upper back", "biceps", "grip"],
+    perSide: true,
+    masterAt: { reps: 12 },
+  },
+  {
+    name: "Seated leg lifts",
+    family: "core",
+    track: "groundwork",
+    tier: 0,
+    metric: "reps",
+    dose: "10",
+    summary:
+      "Sitting on the floor with the hands beside the hips, lifting the feet clear. The L-sit's work without needing anything to press down on for clearance.",
+    setup: [
+      "Sit on the floor with the legs straight out in front, hands flat beside the hips.",
+      "Sit tall — think of a long spine rather than a rounded one.",
+    ],
+    execution: [
+      "Press down through the hands and lift both heels a few inches off the floor.",
+      "Hold for a beat with the legs straight and the toes pointed.",
+      "Lower without letting them land heavily.",
+    ],
+    watch:
+      "Shoulders push down away from the ears. Shrugging up into the position is what makes it feel impossible, and it puts the load into the neck rather than the trunk.",
+    cues: ["Press the floor down", "Legs locked", "Shoulders down"],
+    trains: ["compression strength", "hip flexors", "straight-arm shoulder strength"],
+    masterAt: { reps: 10 },
+  },
+  {
+    name: "Glute bridge march",
+    family: "hinge",
+    track: "groundwork",
+    tier: 0,
+    metric: "reps",
+    dose: "10 per side",
+    summary:
+      "Holding the top of a glute bridge and lifting one knee at a time. What the hamstring work becomes when there is nowhere to anchor your feet.",
+    setup: [
+      "Lie on your back, knees bent, feet flat and close to the hips.",
+      "Drive the hips up into a bridge and hold that height.",
+    ],
+    execution: [
+      "Without letting the hips drop, lift one knee toward your chest.",
+      "Place it back down and lift the other.",
+      "One lift each side is two reps.",
+    ],
+    watch:
+      "The hips must not drop and must not tilt. If either happens the exercise has become a slow bridge with leg movement in it, which trains nothing — go back to holding still.",
+    cues: ["Hips stay up", "Hips stay level", "Slow"],
+    trains: ["glutes", "hamstrings", "hip stability"],
+    perSide: true,
+    masterAt: { reps: 10 },
+  },
+  {
+    name: "Calf raises",
+    family: "jump",
+    track: "groundwork",
+    tier: 0,
+    metric: "reps",
+    dose: "15–20",
+    summary:
+      "Rising onto the balls of the feet and lowering. What the jumping work becomes when there is no room to jump — the same ankles and calves, without leaving the floor.",
+    setup: [
+      "Stand tall, feet hip-width, fingertips on a wall for balance if you need them.",
+      "On a step with the heels hanging off if you want more range.",
+    ],
+    execution: [
+      "Rise as high onto the balls of the feet as you can and pause at the top.",
+      "Lower slowly, all the way down.",
+      "Weight stays over the big toe rather than rolling to the outside of the foot.",
+    ],
+    watch:
+      "The bottom half is the half that matters. Bouncing at the top for speed gets you a number and no range — slow down and take the heel all the way to the floor between reps.",
+    cues: ["All the way up", "All the way down", "Over the big toe"],
+    trains: ["calves", "achilles resilience", "ankle strength"],
+    masterAt: { reps: 20 },
+  },
+  {
+    name: "Seated forward fold",
+    family: "spine",
+    track: "groundwork",
+    tier: 0,
+    metric: "time",
+    dose: "60 s",
+    summary:
+      "Sitting with the legs straight and folding forward over them. The unloaded version of the Jefferson curl's position, for when there is nothing to hold.",
+    setup: [
+      "Sit on the floor with the legs straight out in front, or on a folded cushion if your back rounds hard immediately.",
+      "Sit tall first, then begin.",
+    ],
+    execution: [
+      "Hinge forward from the hips and reach toward the feet.",
+      "Let the spine round gently, one segment at a time, rather than holding it rigid.",
+      "Breathe out at the end of the range. Come out of it slowly.",
+    ],
+    watch:
+      "Never pull yourself down with your arms into a position your hamstrings have not agreed to. This is a place to breathe, not a place to win — the stretch that hurts is the one you feel for three days.",
+    cues: ["Hinge, then round", "Breathe out to go further", "Never force it"],
+    trains: ["hamstrings", "spinal flexion", "posterior chain range"],
+    masterAt: { seconds: 60 },
+  },
 
   {
     name: "Arm circles",
@@ -2431,5 +3510,7 @@ export function setBarLabel(m: Movement): string {
 export function masteryLabel(m: Movement): string {
   const sets = masterySets(m);
   const sessions = masterySessions(m);
-  return `${sets}\u00d7${setBarLabel(m)}, ${sessions === 1 ? "once" : sessions === 2 ? "twice" : `${sessions} times`}`;
+  const weeks = masteryWeeks(m);
+  const times = sessions === 1 ? "once" : sessions === 2 ? "twice" : `${sessions} times`;
+  return `${sets}\u00d7${setBarLabel(m)}, ${times} across ${weeks} weeks`;
 }

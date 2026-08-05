@@ -66,8 +66,9 @@ export function WebTree({ web }: { web: WebSummary }) {
         <TensionLine accent={web.totalMastered > 0} />
         <p className="text-sm leading-relaxed text-muted">
           Every strand starts with a version anyone can do and ends with the one the year is aiming at.
-          A movement is mastered when you hold the bar across separate sessions, not once — and the
-          next one opens then. Nothing here is unlocked by time.
+          A movement is mastered when you hold its bar across enough separate sessions, spread over
+          enough separate weeks — and the next one opens then. Nothing is unlocked by turning up; the
+          weeks are there so nothing harder arrives while the one under it is still a fight.
         </p>
         <button
           type="button"
@@ -321,14 +322,19 @@ function bestOf(n: WebNode): string {
  *
  * Which number counts as "how far along" changes with where you are. Before a
  * single clean session the useful figure is how many sets in your best session
- * cleared the bar; after one it is sessions, because that is the part still
- * outstanding.
+ * cleared the bar; after one it is sessions — until the sessions are banked and
+ * the only thing left is the calendar, at which point the weeks are the answer
+ * and saying "5/5 sessions" would look like a bug.
  */
 function subtitle(n: WebNode): string {
   if (n.state === "unequipped") return "Needs kit you don't own";
   if (n.state === "locked") return n.gate ? `Needs ${FAMILY_LABELS[n.gate.family].toLowerCase()} first` : "Clear the level below";
   if (n.state === "mastered") return `Mastered · ${bestOf(n)}`;
-  if (n.sets === 0) return `${masteryLabel(n.movement)} to master`;
+  // The compact form: the full sentence is one tap away and does not fit here.
+  if (n.sets === 0)
+    return `${n.needSets}×${setBarLabel(n.movement)} · ${n.needSessions} sessions / ${n.needWeeks} weeks`;
+  if (n.cleanSessions >= n.needSessions && n.needWeeks > 0)
+    return `${n.cleanWeeks}/${n.needWeeks} weeks · ${bestOf(n)}`;
   if (n.cleanSessions > 0) return `${n.cleanSessions}/${n.needSessions} clean sessions · ${bestOf(n)}`;
   return `${n.bestCleanSets}/${n.needSets} sets clean · ${bestOf(n)}`;
 }
@@ -526,10 +532,15 @@ function Sheet({ node, onClose }: { node: WebNode; onClose: () => void }) {
             <p className="label-xs text-cobalt-lift">Mastered at {masteryLabel(m)}</p>
             <p className="text-xs leading-relaxed text-muted">
               {node.needSets} sets that clear {setBarLabel(m)} in one session, on {node.needSessions}{" "}
-              separate days. One good set is a good day, not a level — and a session where you
-              reported that something hurt doesn&apos;t count towards it.
+              separate days, spread across at least {node.needWeeks} different weeks. One good set is
+              a good day and one good fortnight is a good fortnight — the weeks are there so nothing
+              harder arrives while this one is still a fight. A session where you reported that
+              something hurt doesn&apos;t count towards any of it.
               {node.sets > 0 && node.state !== "mastered" && node.cleanSessions === 0
                 ? ` Your best session so far cleared ${node.bestCleanSets} of ${node.needSets}.`
+                : ""}
+              {node.state !== "mastered" && node.cleanSessions > 0
+                ? ` So far: ${node.cleanSessions} of ${node.needSessions} sessions, across ${node.cleanWeeks} of ${node.needWeeks} weeks.`
                 : ""}
             </p>
           </div>

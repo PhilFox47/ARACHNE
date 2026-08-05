@@ -289,63 +289,76 @@ interface Upgrade {
   match: RegExp;
   /** All of these must be owned. */
   needs: string[];
-  to: { name: string; dose?: string; note: string };
+  note: string;
 }
 
 /**
  * Gating only ever goes downward. Upgrades are the other half: if you own
- * something better, the session should use it rather than leave the kit in a
+ * something better, the session should say so rather than leave the kit in a
  * cupboard.
  *
- * Every upgrade stays inside the same movement pattern the plan prescribed —
- * a ring dip is still a dip. Equipment changes how a movement is loaded, never
- * which movement the day is for.
+ * An upgrade is a note and nothing else. It used to rename the movement, and
+ * that turned out to be a quiet way of breaking the tree in two directions at
+ * once:
+ *
+ *   Backwards.  "Ring rows" is the app's own alias for the plain inverted row —
+ *               rung one. Owning rings therefore dragged every rung above it,
+ *               feet-elevated and archer included, back down to rung one, and
+ *               logged them there. The rowing strand could not advance past its
+ *               second movement for the whole year, and nothing said why.
+ *   Sideways.   "Ab wheel rollouts" and "L-sit on parallettes" are in no strand
+ *               at all. A session upgraded onto one logged sets against a name
+ *               the catalogue does not know, so the tree simply never saw them
+ *               and the bracing strand stalled the same way.
+ *
+ * Rings change how a dip is loaded; they do not change which rung of the dip
+ * strand you are on. So the movement, its dose and its identity stay exactly
+ * where placement put them, and the kit gets a sentence.
  */
 const UPGRADES: Upgrade[] = [
   {
-    match: /triceps dips on chair edge|dips between two chairs/i,
+    match: /\bdip\b/i,
     needs: ["rings"],
-    to: { name: "Ring dips", note: "Rings — harder through the shoulder, and kinder to the wrist." },
+    note: "On rings if you have them — harder through the shoulder, and kinder to the wrist.",
   },
   {
     match: /inverted row/i,
     needs: ["rings"],
-    to: { name: "Ring rows", note: "Rings — free rotation, so the shoulder tracks naturally." },
+    note: "On rings if you have them — free rotation, so the shoulder tracks naturally.",
   },
   {
-    match: /^push-?ups?$|elevated push-?ups/i,
+    match: /^push-up$|^decline push-up$|^diamond push-up$|^archer push-up$/i,
     needs: ["parallettes"],
-    to: { name: "Deficit push-ups on parallettes", note: "Parallettes — deeper range, neutral wrists." },
+    note: "On parallettes if you have them — deeper range and neutral wrists.",
   },
   {
-    match: /l-?sit tuck|^l-?sit$/i,
+    match: /l-sit/i,
     needs: ["parallettes"],
-    to: { name: "L-sit on parallettes", note: "Parallettes — clearance, so the progression actually moves." },
+    note: "On parallettes if you have them — clearance, so the legs are not what stops you.",
   },
   {
     match: /hollow hold/i,
     needs: ["ab_wheel"],
-    to: { name: "Ab wheel rollouts", dose: "8–10", note: "Ab wheel — the loaded version of the same brace." },
+    note: "You own an ab wheel: a set of rollouts is the loaded version of this same brace, and worth swapping in once the hold is easy.",
   },
   {
     match: /dead hang/i,
     needs: ["rings"],
-    to: { name: "Ring hang", note: "Rings — the shoulder is free to rotate under load." },
+    note: "On rings if you have them — the shoulder is free to rotate under load.",
   },
 ];
 
 export interface UpgradeResult {
-  name: string;
-  dose: string | null;
+  /** Advice only. The movement and its dose are never changed by owning kit. */
   note: string;
 }
 
-/** Returns a better variant when the kit for it is owned. */
-export function upgradeExercise(name: string, dose: string, owned: Set<string>): UpgradeResult | null {
+/** A note about better kit for the movement already chosen, or null. */
+export function upgradeExercise(name: string, owned: Set<string>): UpgradeResult | null {
   for (const u of UPGRADES) {
     if (!u.match.test(name)) continue;
     if (!u.needs.every((k) => owned.has(k))) continue;
-    return { name: u.to.name, dose: u.to.dose ?? dose, note: u.to.note };
+    return { note: u.note };
   }
   return null;
 }

@@ -16,7 +16,9 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { exerciseLogs, sessionPlans } from "./db/schema";
+import { exerciseLogs, foodEntries, sessionPlans, sessions } from "./db/schema";
+import { addDays } from "./dates";
+import { getHqStats } from "./stats";
 import { apiKey, baseUrl } from "./nanogpt";
 import { activeVisionModel, getSettings } from "./settings";
 import { equipmentSummary, gateExercise, ownedKeys, upgradeExercise } from "./equipment";
@@ -28,15 +30,18 @@ import {
   type Exercise,
   type PhaseId,
 } from "./plan";
-import { findMovement, ladder, masteryLabel, type MovementFamily } from "./movements";
+import { findMovement, ladder, masteryLabel, type Movement, type MovementFamily } from "./movements";
 import {
   baselineEndDate,
   baselineSlotFor,
   bestSecondsFor,
+  headroomForPhase,
+  lockedBy,
   placeOnLadder,
   seedHoldTarget,
   standings,
   sweepMovement,
+  type Placement,
   type Standing,
 } from "./baseline";
 import { stripFences } from "./vision";
@@ -113,7 +118,22 @@ export function exerciseKey(name: string): string {
  * Reads the plan's dose strings — "8–12", "3× 45 s", "10 per side",
  * "5× 5 s" — into something a form can prefill.
  */
-export function parseDose(dose: string, defaultSets: number, baseline = false): {
+export function parseDose(
+  dose: string,
+  defaultSets: number,
+  baseline = false,
+  /**
+   * The catalogue's metric for this movement, which overrides what the wording
+   * of the dose looks like.
+   *
+   * Without it the dead hang was logged in reps: its dose is "3× to just short
+   * of letting go", which contains no unit for the sniffer to find, so it fell
+   * through to reps — and a hold recorded in reps can never clear a bar written
+   * in seconds. The pulling strand sat at rung one for the entire year because
+   * of a regex.
+   */
+  metric?: Metric,
+): {
   sets: number;
   metric: Metric;
   repRange: string | null;
@@ -129,7 +149,7 @@ export function parseDose(dose: string, defaultSets: number, baseline = false): 
   const sets = setMatch ? Number(setMatch[1]) : defaultSets;
   const rest = setMatch ? d.slice(setMatch[0].length) : d;
 
-  const isTime = /\bs\b|\bsec|\bmin/i.test(rest);
+  const isTime = metric ? metric === "time" : /\bs\b|\bsec|\bmin/i.test(rest);
   const range = rest.match(/(\d+)\s*[–-]\s*(\d+)/);
   const single = rest.match(/(\d+)/);
 
@@ -175,20 +195,26 @@ export function baselinePrescription(
   const rounds = roundsForWeek(weekIdx);
   const source: Exercise[] = session ? [...session.main, ...(session.extras ?? [])] : [];
 
-  // Where the ladders currently put you. Computed once for the whole session —
-  // it's one grouped query, and it must not change between two exercises.
-  const st = standings();
+  // Where the ladders currently put you, as of this session's date rather than
+  // the wall clock. Computed once for the whole session — it's one grouped
+  // query, and it must not change between two exercises.
+  const st = standings(date);
   const everLogged = loggedKeys();
 
   const exercises: PrescribedExercise[] = [];
   const locked: LockedOut[] = [];
   const seen = new Set<string>();
+  // Rungs already handed out this session, per strand. Wednesday names three
+  // squat-family movements and Friday names two crawls; without this they all
+  // place onto the same rung and the session silently loses exercises.
+  const usedTiers = new Map<MovementFamily, Set<number>>();
+  const headroom = headroomForPhase(phase);
 
   for (const e of source) {
     // Ladder placement runs before gating, so the equipment rules are applied
     // to the variation you'll actually be doing rather than the one the plan
     // named for a beginner you may no longer be.
-    const placed = placeOnLadder(e.name, e.dose, e.note ?? null, st);
+    let placed = placeOnLadder(e.name, e.dose, e.note ?? null, st, headroom);
 
     // A strand that is shut at the bottom is left out rather than swapped for
     // something off another strand. The plan puts the shoulder roll on your
@@ -199,6 +225,16 @@ export function baselinePrescription(
       continue;
     }
 
+    // Two plan entries from one strand collapse onto one rung as soon as your
+    // standing is below both of them — the plan's goblet squat, Bulgarian split
+    // squat and pistol progression all become a split squat, and two of the
+    // three vanish. Step down to the next rung nobody has been given instead:
+    // three squat-family movements is what the session was written to contain,
+    // and an easier one still trains the pattern.
+    const stepped = stepDownToFree(placed, usedTiers, st);
+    if (stepped === null) continue;
+    placed = stepped;
+
     // Gate before prescribing. Opening a session and finding work you
     // physically cannot do is worse than a substitution.
     const gate = gateExercise(placed.name, owned);
@@ -208,10 +244,10 @@ export function baselinePrescription(
       ? { name: placed.name, dose: placed.dose, note: placed.note }
       : { name: gate.substitute!.name, dose: gate.substitute!.dose, note: gate.substitute!.note };
 
-    // Gating only goes down. If better kit is owned, use it — a ring dip is
-    // still a dip, so this stays inside the movement the plan prescribed.
-    const up = upgradeExercise(use.name, use.dose, owned);
-    if (up) use = { name: up.name, dose: up.dose ?? use.dose, note: up.note };
+    // Gating only goes down. Owning better kit adds a line about how to load
+    // the movement — it never changes which movement, or which rung, this is.
+    const up = upgradeExercise(use.name, owned);
+    if (up) use = { ...use, note: use.note ? `${use.note} ${up.note}` : up.note };
 
     const key = exerciseKey(use.name);
     // Sets are keyed by movement, so the same movement twice in one session
@@ -220,7 +256,7 @@ export function baselinePrescription(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const p = parseDose(use.dose, rounds, false);
+    const p = parseDose(use.dose, rounds, false, findMovement(use.name)?.metric);
     exercises.push({
       key,
       name: use.name,
@@ -247,6 +283,46 @@ export function baselinePrescription(
     exercises: seedHolds(exercises),
     locked,
   };
+}
+
+/**
+ * Moves a placement down its strand until it lands on a rung this session has
+ * not already handed out.
+ *
+ * Returns null when every rung at or below it is taken, which is the honest
+ * answer: there is nothing left in that strand to give, and inventing a harder
+ * one would put a number on a ladder nothing earned. Gated rungs are stepped
+ * over on the way down for the same reason placement walks past them.
+ */
+function stepDownToFree(
+  placed: Placement,
+  usedTiers: Map<MovementFamily, Set<number>>,
+  st: Map<MovementFamily, Standing>,
+): Placement | null {
+  const m = findMovement(placed.name);
+  if (!m || m.track === "groundwork") return placed;
+
+  const strand = ladder(m.family);
+  if (strand.length === 0) return placed;
+
+  const used = usedTiers.get(m.family) ?? new Set<number>();
+  usedTiers.set(m.family, used);
+
+  for (let tier = m.tier; tier >= 0; tier--) {
+    if (used.has(tier)) continue;
+    if (lockedBy(strand[tier], st)) continue;
+    used.add(tier);
+    if (tier === m.tier) return placed;
+    const down = strand[tier];
+    return {
+      name: down.name,
+      dose: down.dose,
+      note: `Second movement from this strand today — ${down.name.toLowerCase()} rather than repeating ${strand[m.tier].name.toLowerCase()}.`,
+      movedFrom: placed.movedFrom ?? placed.name,
+      blocked: null,
+    };
+  }
+  return null;
 }
 
 /**
@@ -295,14 +371,21 @@ function sweepPrescription(
 
   const exercises: PrescribedExercise[] = [];
   const seen = new Set<string>();
-  const st = standings();
+  const usedTiers = new Map<MovementFamily, Set<number>>();
+  const st = standings(date);
   const everLogged = loggedKeys();
 
   for (const probe of slot.patrol.probes) {
     // A ladder probe opens at the bottom and climbs as the fortnight earns it,
     // so the first patrol of someone's life is the easiest version of each
     // movement rather than the plan's default one.
-    const rung = probe.ladder ? sweepMovement(probe.family, st) : null;
+    //
+    // Two probes on one strand — the Control patrol measures both crawls — sweep
+    // to the same rung, and the second would simply be dropped as a duplicate.
+    // It walks up instead: the rung below has just been measured in this very
+    // session, so the next one is exactly what a sweep is for.
+    const rung = probe.ladder ? sweepUp(probe.family, st, usedTiers) : null;
+    if (probe.ladder && rung === null) continue;
     const wanted = rung?.name ?? probe.name;
     // The rung carries its own metric — a dead hang is seconds where the rest
     // of the pull ladder is reps — and the probe's is only right for its own
@@ -319,14 +402,11 @@ function sweepPrescription(
       if (gate.substitute === null) continue;
     }
 
-    let name = gate.allowed ? wanted : gate.substitute!.name;
+    const name = gate.allowed ? wanted : gate.substitute!.name;
     let note = gate.allowed ? probe.how : `${gate.substitute!.note} ${probe.how}`;
 
-    const up = upgradeExercise(name, "", owned);
-    if (up) {
-      name = up.name;
-      note = `${up.note} ${probe.how}`;
-    }
+    const up = upgradeExercise(name, owned);
+    if (up) note = `${note} ${up.note}`;
     // The technique warning goes last, so it is the line left on screen next to
     // the set you are about to do.
     if (rung?.watch) note = `${note} ${rung.watch}`;
@@ -353,6 +433,30 @@ function sweepPrescription(
   }
 
   return { ...empty, exercises };
+}
+
+/**
+ * The rung this probe should measure: the one the sweep is on, or the next one
+ * up if this session has already measured that one. Null when the strand has
+ * nothing left to offer.
+ */
+function sweepUp(
+  family: MovementFamily,
+  st: Map<MovementFamily, Standing>,
+  usedTiers: Map<MovementFamily, Set<number>>,
+): Movement | null {
+  const strand = ladder(family);
+  if (strand.length === 0) return null;
+  const used = usedTiers.get(family) ?? new Set<number>();
+  usedTiers.set(family, used);
+
+  const start = Math.min(st.get(family)?.tier ?? 0, strand.length - 1);
+  for (let tier = start; tier < strand.length; tier++) {
+    if (used.has(tier)) continue;
+    used.add(tier);
+    return strand[tier];
+  }
+  return null;
 }
 
 /** Every movement with at least one logged set, for the first-time check. */
@@ -404,7 +508,44 @@ function historyWindow(phase: PhaseId): string | undefined {
   return isBaselinePhase(phase) ? undefined : baselineEndDate(getSettings().startDate);
 }
 
-/** Applies the last session's numbers so a repeat session isn't a blank form. */
+/**
+ * The working range behind a display string like "8–12" or "30–45 s".
+ *
+ * Read back out of `repRange` rather than carried separately, because that
+ * string is already on every stored prescription and adding a field would mean
+ * every session saved before this release had none.
+ */
+function workingRange(repRange: string | null, fallback: number | null): { floor: number; top: number } | null {
+  const m = repRange?.match(/(\d+)(?:\s*[–-]\s*(\d+))?/);
+  if (m) return { floor: Number(m[1]), top: Number(m[2] ?? m[1]) };
+  return fallback === null ? null : { floor: fallback, top: fallback };
+}
+
+/** Never suggest more than double what the plan asked for. */
+const RUNAWAY_MULTIPLE = 2;
+
+/**
+ * Applies the last session's numbers, and adds to them.
+ *
+ * The old version prefilled last session's best exactly, which meant that with
+ * no model configured — or on any day the model call failed — the plan quietly
+ * stopped progressing. A form that suggests precisely what you already did is a
+ * form that asks you to volunteer for overload, every session, forever.
+ *
+ * The rule is ordinary double progression, and it deliberately lives here in
+ * the fallback rather than only in the prompt:
+ *
+ *   Fell short of the working range   →  repeat it. Nothing is added to a set
+ *                                        you did not finish.
+ *   Inside the range                  →  one more rep, or five more seconds.
+ *   At the top of the range, loaded   →  2.5 kg more and back to the bottom of
+ *                                        the range. That is what the weight is
+ *                                        for.
+ *   At the top, bodyweight            →  keep adding reps. The tree decides when
+ *                                        the movement itself gets harder, and it
+ *                                        now takes weeks to do it — reps are what
+ *                                        carries the load in the meantime.
+ */
 function withHistory(p: Prescription): Prescription {
   const after = historyWindow(p.phase);
   return {
@@ -413,15 +554,94 @@ function withHistory(p: Prescription): Prescription {
       const hist = exerciseHistory(e.key, 1, after);
       if (hist.length === 0) return e;
       const last = hist[0];
-      return {
-        ...e,
-        targetReps: e.metric === "reps" ? (last.bestReps ?? e.targetReps) : e.targetReps,
-        targetSeconds: e.metric === "time" ? (last.bestSeconds ?? e.targetSeconds) : e.targetSeconds,
-        targetWeightKg: last.bestWeightKg ?? e.targetWeightKg,
-        // Once you've loaded a movement, keep showing the field.
-        loaded: e.loaded || last.bestWeightKg !== null,
-      };
+      const loaded = e.loaded || last.bestWeightKg !== null;
+
+      if (e.metric === "time") {
+        const range = workingRange(e.repRange, e.targetSeconds);
+        const from = last.bestSeconds;
+        const next =
+          from === null || range === null
+            ? (from ?? e.targetSeconds)
+            : from >= range.floor
+              ? Math.min(from + 5, range.top * RUNAWAY_MULTIPLE)
+              : from;
+        return { ...e, targetSeconds: next, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
+      }
+
+      const range = workingRange(e.repRange, e.targetReps);
+      const from = last.bestReps;
+      if (from === null || range === null) {
+        return { ...e, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
+      }
+
+      // Top of the range on a loaded movement: the weight goes up and the reps
+      // go back to the bottom. On a bodyweight movement there is nothing to add
+      // but reps, so they keep climbing.
+      if (from >= range.top && last.bestWeightKg !== null) {
+        return { ...e, targetReps: range.floor, targetWeightKg: last.bestWeightKg + 2.5, loaded };
+      }
+
+      const next = from >= range.floor ? Math.min(from + 1, range.top * RUNAWAY_MULTIPLE) : from;
+      return { ...e, targetReps: next, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
     }),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// What the body is being asked to recover from
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * How hard the last few sessions felt, how much you weigh, and how far under
+ * maintenance you have been eating.
+ *
+ * None of this reached the model before, which meant it was programming
+ * progression for someone with no bodyweight, no fatigue and no calorie
+ * deficit. All three change the right answer: a 100 kg athlete's push-up is a
+ * different exercise from a 80 kg athlete's, four sessions at RPE 9 means the
+ * next one holds rather than adds, and a month at 800 kcal under maintenance is
+ * a month in which strength is defended rather than built.
+ */
+function recoveryContext(date: string) {
+  const from = addDays(date, -13);
+
+  const rpe = db
+    .select({ date: sessions.date, rpe: sessions.rpe })
+    .from(sessions)
+    .where(and(sql`${sessions.date} < ${date}`, sql`${sessions.rpe} IS NOT NULL`))
+    .orderBy(desc(sessions.date))
+    .limit(6)
+    .all();
+
+  const days = db
+    .select({ date: foodEntries.date, kcal: sql<number>`SUM(COALESCE(${foodEntries.kcal}, 0))` })
+    .from(foodEntries)
+    .where(and(sql`${foodEntries.date} >= ${from}`, sql`${foodEntries.date} < ${date}`))
+    .groupBy(foodEntries.date)
+    .all();
+
+  const hq = getHqStats();
+  // Only days with something logged: a day nobody recorded is a day with no
+  // reading, not a day with no food, and averaging zeros in would invent a
+  // deficit large enough for the model to hold every number in the session.
+  const eaten = days.filter((d) => d.kcal > 0);
+  const meanIntake =
+    eaten.length === 0 ? null : Math.round(eaten.reduce((n, d) => n + d.kcal, 0) / eaten.length);
+
+  const recent = rpe.map((r) => r.rpe as number);
+  const meanRpe = recent.length === 0 ? null : recent.reduce((a, b) => a + b, 0) / recent.length;
+
+  return {
+    bodyweight_kg: hq.avg7 ?? hq.latest?.weightKg ?? null,
+    weight_change_kg_since_start: hq.deltaFromStart,
+    kcal_target: hq.kcalTarget,
+    mean_kcal_last_14_days: meanIntake,
+    // Negative means eating under target. Stated rather than left to be worked
+    // out, because it is the number that decides whether to push at all.
+    kcal_vs_target: meanIntake === null ? null : meanIntake - hq.kcalTarget,
+    days_of_intake_logged: eaten.length,
+    recent_session_rpe: recent,
+    mean_recent_rpe: meanRpe === null ? null : Math.round(meanRpe * 10) / 10,
   };
 }
 
@@ -462,6 +682,19 @@ RULES — these are not yours to change:
   session back rather than resuming where they left off.
 - Where "form_risk" describes something that goes wrong, prefer fewer clean sets
   to more fatigued ones. A movement done badly is worse than one not done.
+- "recovery" says what the body is being asked to recover from. Read it before
+  deciding to add anything:
+    * "mean_recent_rpe" at or above 8 means the last sessions were already near
+      the limit. Hold every number where it is. Above 9, reduce.
+    * "kcal_vs_target" well below zero, or a "bodyweight_kg" falling faster than
+      about 1 kg a week, means they are in a real deficit. Strength is defended
+      in a deficit, not built: hold, and add at most on a movement that was
+      clearly easy.
+    * "bodyweight_kg" is what every bodyweight movement here is actually loaded
+      with. A push-up at 100 kg is a different exercise from one at 80 kg, and a
+      rep target that made sense last month may be a heavier set now.
+  When recovery says hold and the history says progress, hold. Missing a small
+  gain costs a week; an injury costs the year.
 
 Return ONLY a JSON object. No markdown, no code fences, no commentary.
 
@@ -602,6 +835,9 @@ export async function generatePrescription(
               session: base.dayKey,
               deload_week: isDeload,
               equipment_available: equipmentSummary(getSettings().equipment),
+              // Bodyweight, deficit and how hard the last sessions felt. Without
+              // these the model is programming for a body it knows nothing about.
+              recovery: recoveryContext(base.date),
               // The skill tree, so the model isn't guessing at a fitness level
               // the database already knows.
               skill_tree: skillTreeContext(st),
@@ -668,13 +904,14 @@ export async function generatePrescription(
  * was waiting on and yesterday's saved session should stop claiming it is still
  * shut.
  */
-export function lockedFor(phase: PhaseId, dayKey: DayKey): LockedOut[] {
+export function lockedFor(phase: PhaseId, dayKey: DayKey, date?: string): LockedOut[] {
   const session = sessionFor(phase, dayKey);
   if (!session) return [];
-  const st = standings();
+  const st = standings(date);
+  const headroom = headroomForPhase(phase);
   const out: LockedOut[] = [];
   for (const e of [...session.main, ...(session.extras ?? [])]) {
-    const placed = placeOnLadder(e.name, e.dose, e.note ?? null, st);
+    const placed = placeOnLadder(e.name, e.dose, e.note ?? null, st, headroom);
     if (placed.blocked) out.push({ name: e.name, why: placed.blocked.why });
   }
   return out;
@@ -691,7 +928,7 @@ export function storedPrescription(date: string): Prescription | null {
       source: row.source,
       model: row.model,
       exercises: JSON.parse(row.payload) as PrescribedExercise[],
-      locked: lockedFor(row.phase as PhaseId, row.dayKey as DayKey),
+      locked: lockedFor(row.phase as PhaseId, row.dayKey as DayKey, row.date),
     };
   } catch {
     return null;

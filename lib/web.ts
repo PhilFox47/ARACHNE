@@ -18,6 +18,7 @@ import {
   ladder,
   masterySessions,
   masterySets,
+  masteryWeeks,
   masteryLabel,
   type Movement,
   type MovementFamily,
@@ -49,6 +50,9 @@ export interface WebNode {
   /** Sessions where enough sets cleared the bar, and how many are wanted. */
   cleanSessions: number;
   needSessions: number;
+  /** Distinct weeks those sessions fell in, and how many are wanted. */
+  cleanWeeks: number;
+  needWeeks: number;
   /** Best sets-in-one-session against the bar, and how many are wanted. */
   bestCleanSets: number;
   needSets: number;
@@ -144,6 +148,8 @@ export function buildWeb(): WebSummary {
         lastDate: rec?.lastDate ?? null,
         cleanSessions: rec?.cleanSessions ?? 0,
         needSessions: masterySessions(m),
+        cleanWeeks: rec?.cleanWeeks ?? 0,
+        needWeeks: masteryWeeks(m),
         bestCleanSets: rec?.bestCleanSets ?? 0,
         needSets: masterySets(m),
         progress: rec?.progress ?? 0,
@@ -186,6 +192,8 @@ export function buildWeb(): WebSummary {
         lastDate: rec?.lastDate ?? null,
         cleanSessions: 0,
         needSessions: 0,
+        cleanWeeks: 0,
+        needWeeks: 0,
         bestCleanSets: 0,
         needSets: 0,
         progress: 0,

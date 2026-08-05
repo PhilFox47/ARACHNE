@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.8";
+export const APP_VERSION = "1.6.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-04";
+export const RELEASED = "2026-08-05";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,23 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.6.0",
+    date: "2026-08-05",
+    kind: "minor",
+    headline: "Mastery takes months, and the tree now lasts the year",
+    changes: [
+      "A best-case simulation — never missing a session, clearing every bar on every set — had every strand topped out by week 30. Twenty-two weeks with nothing left to unlock. That is what this release is about.",
+      "Mastering a movement now needs the clean sessions spread across separate calendar weeks, not just separate days. Sessions can be crammed; weeks cannot, and there is no sense being handed a complicated push-up while the elevated one is still a fight.",
+      "Three sets rather than two from the second rung of every strand upward — the document's own rule is a clean 3×12. The bottom rung stays at two so the baseline fortnight can still find your level.",
+      "The catalogue went from 73 rungs to 103. Every movement is now named something you can search for and find a tutorial on, every rename keeps its old name so nothing logged is lost, and the thin strands — lunging, holds, crawling, the engine — were filled in with the movements that were missing between the ones already there.",
+      "A gate can name a rung now, not just a number. The cartwheel waits on the shoulder roll from a crouch rather than on five reps of anything in the falling strand.",
+      "Press and pull happen twice a week in months 1–3, and Friday is built skills-first, engine-last in every phase — the document's own rule is that no skill gets tried quickly at the tired end of a session.",
+      "Without an AI key the plan used to prefill exactly what you did last time, forever. It adds a rep, or five seconds, or 2.5 kg at the top of the range.",
+      "The model is now told your bodyweight, how far under your calorie target you have been eating and how hard the last six sessions felt — and told to hold rather than add when those say to.",
+      "Four bugs the simulation found: the dead hang was being logged in reps and could never be mastered; owning rings moved you *down* the rowing strand; nine baseline probes started you partway up a strand instead of at the bottom; and two movements from the same strand collapsed into one, silently shortening Wednesday.",
+    ],
+  },
   {
     version: "1.5.8",
     date: "2026-08-04",

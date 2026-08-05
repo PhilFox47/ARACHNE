@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs } from "./db/schema";
 import { addDays, dayKeyOf, daysBetween, todayISO } from "./dates";
-import { gateExercise, ownedKeys, upgradeExercise } from "./equipment";
+import { gateExercise, ownedKeys } from "./equipment";
 import { getSettings } from "./settings";
 import {
   BASELINE_MODE,
@@ -135,12 +135,22 @@ const bigger = (a: number | null, b: number | null) =>
  */
 export const PAIN_DEMOTES_AT = 2;
 
-/** Whether a strand has produced the number another movement is waiting on. */
+/**
+ * Whether a strand has got far enough for something else to open.
+ *
+ * Every condition the gate states has to hold, not just the first one. `tier`
+ * asks how far up the other strand you have actually climbed and is read from
+ * `loggedTier` rather than the earned tier: pass 1 fills that in and pass 2
+ * never touches it, so the answer cannot depend on which strand happens to be
+ * resolved first. Since a rung is only ever prescribed once the one below it is
+ * mastered, having logged a rung is already evidence of everything under it.
+ */
 export function meetsPrerequisite(req: Prerequisite, st: Map<MovementFamily, Standing>): boolean {
   const s = st.get(req.family);
   if (!s) return false;
-  if (req.reps !== undefined) return (s.familyBestReps ?? 0) >= req.reps;
-  if (req.seconds !== undefined) return (s.familyBestSeconds ?? 0) >= req.seconds;
+  if (req.tier !== undefined && s.loggedTier < req.tier) return false;
+  if (req.reps !== undefined && (s.familyBestReps ?? 0) < req.reps) return false;
+  if (req.seconds !== undefined && (s.familyBestSeconds ?? 0) < req.seconds) return false;
   return true;
 }
 
@@ -272,23 +282,48 @@ export interface Placement {
 }
 
 /**
+ * How far above the plan's own named variation you may be put, by phase.
+ *
+ * The plan names one variation per movement per phase, and for months that
+ * name is a floor written for someone at the start. Holding a hard cap of one
+ * rung above it all year was measurably wrong: several strands reached the cap
+ * by month six and then sat there for the next twenty-five weeks with the tree
+ * saying "earned" and the session still prescribing the document's beginner
+ * variation.
+ *
+ * So the leash lengthens. Early on the document knows better than your logs do;
+ * by Phase 3 your logs are a year of evidence and the document is a guess made
+ * before you started. What does *not* change is the other cap — `standing.tier`
+ * — which is what actually keeps you off movements you have not earned.
+ */
+export function headroomForPhase(phase: number): number {
+  return phase <= 1 ? 1 : phase === 2 ? 2 : 3;
+}
+
+/**
  * Puts a prescribed movement on the tier your logs justify.
  *
  * The plan owns the shape of the year and your logs own how hard it gets. A
- * variation is never prescribed more than one tier above what you have actually
- * done, and never one whose prerequisites are unmet — so the harder movements
- * unlock rather than arrive on schedule.
+ * variation is never prescribed above what you have actually earned, never more
+ * than `headroom` rungs above the one the plan named, and never one whose
+ * prerequisites are unmet — so the harder movements unlock rather than arrive
+ * on schedule.
  */
 export function placeOnLadder(
   name: string,
   dose: string,
   note: string | null,
   st: Map<MovementFamily, Standing>,
+  headroom = 1,
 ): Placement {
-  const unchanged: Placement = { name, dose, note, movedFrom: null, blocked: null };
-
   const planned = findMovement(name);
-  if (!planned) return unchanged;
+  if (!planned) return { name, dose, note, movedFrom: null, blocked: null };
+
+  // The catalogue's own spelling, not the plan's. The plan says "Clap push-ups"
+  // and the catalogue calls it "Clap push-up"; both resolve to the same movement
+  // but they key differently in the logs, which would split a movement's history
+  // — and its personal best, and the numbers the next session prefills — in two.
+  const unchanged: Placement = { name: planned.name, dose, note, movedFrom: null, blocked: null };
 
   // Groundwork is not on a ladder and is never moved. A warm-up you have to
   // earn is a warm-up nobody does.
@@ -329,7 +364,7 @@ export function placeOnLadder(
     };
   }
 
-  const target = Math.min(standing.tier, Math.min(planned.tier + 1, strand.length - 1));
+  const target = Math.min(standing.tier, Math.min(planned.tier + headroom, strand.length - 1));
   if (target === planned.tier) return unchanged;
 
   const movement = strand[target];
@@ -537,9 +572,8 @@ export function baselineCoverage(startDate: string): {
       const gate = gateExercise(probe.name, owned);
       if (!gate.allowed && gate.substitute === null) continue;
       const name = gate.allowed ? probe.name : gate.substitute!.name;
-      const up = upgradeExercise(name, "", owned);
       probes++;
-      if (!done.has(key(up ? up.name : name))) missing.push({ patrol: p.index, name: up ? up.name : name });
+      if (!done.has(key(name))) missing.push({ patrol: p.index, name });
     }
   }
   return { probes, measured: probes - missing.length, missing };

@@ -57,6 +57,87 @@ no explanation and no preparation, which is how the shoulder roll ended up in we
   closed the movement leaves the session and the session says which movement is waiting and on what.
 - **An untouched strand opens at the bottom**, not at the plan's rung — see below.
 
+## What shipped (v1.6.0)
+
+A cold audit of the generated sessions, run against measurement rather than intuition, found the
+tree emptying itself long before the year did — a best-case 52-week simulation had **every strand
+topped out by week 30** — and found the fallback path not progressing at all. Six things changed.
+
+**Mastery got much harder, and the hardest lever is the calendar.** `MasteryBar` gained `weeks`: the
+clean sessions have to land in that many *different* calendar weeks. Sessions can be crammed; weeks
+cannot. A movement trained twice a week banks six clean sessions in three weeks, which is a good
+three weeks rather than a movement you own. Every rung now names one of ten shared levels rather
+than writing its own numbers:
+
+| Level | Sets | Sessions | Weeks | For |
+|---|---|---|---|---|
+| `intro` | 2 | 3 | 2 | the version almost anyone can do |
+| `foundation` | 3 | 5 | 3 | the early rungs of a strength strand |
+| `working` | 3 | 7 | 4 | the rungs most of the year is spent on |
+| `demanding` | 3 | 9 | 6 | the rung before a real step up |
+| `advanced` | 3 | 12 | 8 | hard strength |
+| `elite` | 3 | 15 | 10 | the top of a strength strand |
+| `drill` | 2 | 4 | 4 | the first, safest version of a skill |
+| `practice` | 2 | 6 | 6 | the middle of a skill strand |
+| `craft` | 2 | 9 | 9 | the real version of a skill |
+| `signature` | 2 | 12 | 12 | the one the strand was built for |
+
+Three sets from `foundation` up, because that is the document's own rule — "only advance at a clean
+3×12". `intro` keeps two, because the baseline fortnight prescribes two and a bar the sweep cannot
+clear would leave every strand stuck at rung 0. Skills take two sets and pay in sessions instead:
+three clean sets of a kip-up is asking for the tired third set the document explicitly warns against.
+
+**The catalogue was overhauled**: 73 rungs became 103, across the same 20 strands. Every name is one
+you can search for and find a tutorial — `Push-ups on a table`, `Push-ups on a chair` and
+`Push-ups on the sofa edge` were three names for an incline push-up at two heights, and `Rock-backs`
+was invented here. Every rename carries the old name in `aliases`, permanently, so logged history
+still resolves. The thin strands were deepened with legitimate intermediate movements rather than
+harder ones: lunging went from 2 rungs to 5, holds 2 → 5, crawling 2 → 4, the engine 2 → 4.
+
+**Gates can name a rung, not just a number.** `Prerequisite.tier` was the missing half. "Five reps in
+the falling strand" is satisfied by five backward breakfalls, which is not what a cartwheel is
+waiting for — it is waiting for you to be able to roll out of one. Cartwheels now want the roll from
+a crouch; vaults want the same; the kong vault wants the dive roll; the muscle-up wants a straight
+bar dip; the wall run wants an actual pull-up.
+
+**The fallback path progresses.** `withHistory` used to prefill exactly last session's best, so with
+no model configured — or on any day the model call failed — nothing ever went up. It is ordinary
+double progression now: short of the range repeats it, inside the range adds a rep or five seconds,
+top of the range on a loaded movement adds 2.5 kg and drops back to the bottom of the range.
+
+**The model is told what the body is recovering from.** Bodyweight, weight change since the start,
+calorie target versus the last fortnight's mean intake, and the RPE of the last six sessions — none
+of which it had. A push-up at 100 kg is a different exercise from one at 80 kg, four sessions at
+RPE 9 means hold rather than add, and a month at 800 kcal under maintenance is a month in which
+strength is defended rather than built.
+
+**Press and pull happen twice a week in months 1–3**, and Friday is built skills-first, engine-last
+in every phase — the document's own rule is that no skill is tried quickly at the tired end of a
+session, and the week it was written into was appending every new skill after the burpees.
+
+Four bugs the simulation surfaced, all of which had been quietly capping the year:
+
+- **The dead hang was logged in reps.** Its dose is "3× to just short of letting go", which contains
+  no unit for the dose parser to find, so it fell through to reps — and a hold recorded in reps can
+  never clear a bar written in seconds. The pulling strand sat at rung one for the whole year
+  because of a regex. `parseDose` now takes the catalogue's metric.
+- **Equipment upgrades renamed movements.** "Ring rows" is this app's own alias for the plain
+  inverted row, rung one — so owning rings dragged every rung above it back down and logged them
+  there. "Ab wheel rollouts" and "L-sit on parallettes" are in no strand at all, so sessions upgraded
+  onto them logged against names the tree has never heard of. An upgrade is a note now, and nothing
+  else.
+- **Nine baseline probes named a movement partway up its strand** without being ladder probes, so
+  the fortnight logged them verbatim and parked a beginner on that rung. The Control patrol's
+  "Shoulder roll" put week one at the roll from a walk.
+- **Two plan entries from one strand collapsed onto one rung.** Wednesday names a goblet squat, a
+  Bulgarian split squat and a pistol progression; below all three they became the same movement and
+  two of them silently vanished from the session.
+
+After the changes, the same best-case simulation unlocks something in **every month from 1 to 11**,
+finishes with 4 of 20 strands still having room above them, and leaves the top rung of the pressing,
+overhead, squatting and tumbling strands unreached — by an athlete who never missed a session and
+cleared every bar on every set. A real year will be slower.
+
 Still open: slots instead of session lists (proposal 1's remaining half), letting the model choose
 within the earned range (5), fatigue-aware volume (6), in-session ramping for tests (7), and skills
 as practice rather than sets (8).
@@ -75,21 +156,27 @@ Three layers, each with a different authority.
 A **ladder** is an ordered list of variations for one movement family:
 
 ```
-push:  wall → table → chair → sofa edge → floor → diamond → archer → clap
-pull:  dead hang → negative pull-ups → pull-ups → explosive pull-ups
+push:  wall → incline (waist) → incline (bench) → floor → decline → diamond → archer → clap
+pull:  dead hang → scapular pull-up → negative → chin-up → pull-up → explosive → muscle-up
+roll:  backward breakfall → from a kneel → a crouch → standing → a walk → dive roll
 ```
 
 A **strand** is every movement of one family, ordered by tier. Your **standing** on it is read out of
 the logs: the highest tier you have a set on, plus one if that movement is mastered, minus one if
 you have been away three weeks, and then walked down past anything whose cross-strand gates are
-shut. Prescription takes `min(standing, planTier + 1)` — never above what you have done, never more
-than one above what the plan asked.
+shut. Prescription takes `min(standing, planTier + headroom)` — never above what you have done, never
+more than `headroom` rungs above the one the plan named. Headroom is 1 in Phase 1, 2 in Phase 2 and 3
+from Phase 3 on: early in the year the document knows better than your logs do, and by month nine
+your logs are a year of evidence against a guess made before you started. A flat cap of 1 was
+measurably wrong — several strands hit it by month six and sat there for the next twenty-five weeks
+with the tree saying "earned" and the session still prescribing the beginner variation.
 
-**Mastered** means two sets clearing the movement's bar within one session, on two separate
-sessions, with no session you reported as painful. Two sets rather than the document's three because
-the baseline fortnight prescribes two, and a bar the sweep cannot clear would strand every ladder at
-the bottom; two sessions rather than one for the same reason the fortnight repeats itself — a single
-reading is a guess. `npm run check` fails if any movement asks for more than the fortnight can give.
+**Mastered** means enough sets clearing the movement's bar within one session, on enough separate
+sessions, spread across enough separate calendar weeks, with no session you reported as painful. The
+numbers come from the level the rung names (table above). `npm run check` fails a rung whose bar asks
+for more sets than its dose prescribes, one that does not name a shared level, one whose weeks
+outnumber its sessions, one that is cheaper than the rung below it, and any entry rung the baseline
+fortnight's two sets could not clear.
 
 A strand with **no standing at all** opens at its easiest movement. This matters more than it sounds:
 `min(standing, planTier + 1)` only helps once there is a standing, so before v1.4.0 a strand nothing

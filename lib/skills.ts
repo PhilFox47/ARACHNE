@@ -3,12 +3,19 @@
  *
  * Two things live here because they are the same question asked twice:
  *
- *   Mastery is not a number you hit once. The document's rule is "only advance
- *   at a clean 3×12", and a single good set is a good day. A movement is
- *   mastered when enough sets cleared the bar in one session, on enough separate
- *   sessions — and a session where you reported that something hurt does not
- *   count towards it, because the point of the bar is that the movement is under
+ *   Mastery is not a number you hit once, and it is not a good fortnight either.
+ *   The document's rule is "only advance at a clean 3×12", and a single good set
+ *   is a good day. A movement is mastered when enough sets cleared the bar in one
+ *   session, on enough separate sessions, spread across enough separate calendar
+ *   weeks — and a session where you reported that something hurt does not count
+ *   towards any of it, because the point of the bar is that the movement is under
  *   control, not that the number happened.
+ *
+ *   The week count is the part that cannot be rushed. Sessions can be crammed;
+ *   weeks cannot. A movement trained twice a week banks six clean sessions in
+ *   three weeks, which is a good three weeks rather than a movement you own — and
+ *   there is no sense being handed a complicated push-up while the elevated one
+ *   is still a fight.
  *
  *   A reset draws a line rather than deleting anything. Sets logged before it
  *   stop counting toward the tree; they stay in the log, because the log is the
@@ -19,11 +26,12 @@
 import { asc } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs, movementFeedback, skillResets } from "./db/schema";
-import { toISODate } from "./dates";
+import { mondayOf, toISODate } from "./dates";
 import {
   findMovement,
   masterySessions,
   masterySets,
+  masteryWeeks,
   movementKey,
   setClears,
   type Movement,
@@ -43,8 +51,10 @@ export interface MovementRecord {
   bestCleanSets: number;
   /** Sessions in which `masterAt.sets` sets cleared the bar. */
   cleanSessions: number;
+  /** Distinct calendar weeks those clean sessions fell in. */
+  cleanWeeks: number;
   mastered: boolean;
-  /** 0–1 toward mastery, counting sessions first and the set bar within one. */
+  /** 0–1 toward mastery, counting whichever requirement is furthest away. */
   progress: number;
   /** Times you reported this movement hurting. */
   painReports: number;
@@ -170,6 +180,7 @@ export function movementRecords(): Map<string, MovementRecord> {
     const movement = findMovement(name)!;
     const needSets = masterySets(movement);
     const needSessions = masterySessions(movement);
+    const needWeeks = masteryWeeks(movement);
 
     let bestReps: number | null = null;
     let bestSeconds: number | null = null;
@@ -177,6 +188,9 @@ export function movementRecords(): Map<string, MovementRecord> {
     let bestCleanSets = 0;
     let cleanSessions = 0;
     let lastDate: string | null = null;
+    // Keyed by the week's Monday, so "twice this week" counts once towards the
+    // spread however many clean sessions it contained.
+    const cleanWeekKeys = new Set<string>();
 
     for (const [date, daySets] of days) {
       sets += daySets.length;
@@ -194,18 +208,25 @@ export function movementRecords(): Map<string, MovementRecord> {
       const hurt = pain.get(movementKey(name))?.has(date) ?? false;
       if (!hurt) {
         bestCleanSets = Math.max(bestCleanSets, clean);
-        if (clean >= needSets) cleanSessions++;
+        if (clean >= needSets) {
+          cleanSessions++;
+          cleanWeekKeys.add(mondayOf(date));
+        }
       }
     }
 
-    const progress =
-      needSessions === 0
-        ? 1
-        : Math.min(
-            1,
-            (cleanSessions + Math.min(1, bestCleanSets / Math.max(1, needSets))) /
-              (needSessions + 1),
-          );
+    const cleanWeeks = cleanWeekKeys.size;
+    const mastered = cleanSessions >= needSessions && cleanWeeks >= needWeeks;
+
+    // Whichever requirement is furthest away is the one shown, because that is
+    // the one you are actually waiting on. A partial session's worth of credit
+    // for sets cleared today keeps the bar from reading zero on a good day.
+    const share = (have: number, need: number) => (need <= 0 ? 1 : have / need);
+    const toward = Math.min(share(cleanSessions, needSessions), share(cleanWeeks, needWeeks));
+    const partial = Math.min(1, bestCleanSets / Math.max(1, needSets));
+    const progress = mastered
+      ? 1
+      : Math.min(0.99, (toward * needSessions + partial) / (needSessions + 1));
 
     out.set(name, {
       movement,
@@ -216,7 +237,8 @@ export function movementRecords(): Map<string, MovementRecord> {
       lastDate,
       bestCleanSets,
       cleanSessions,
-      mastered: cleanSessions >= needSessions,
+      cleanWeeks,
+      mastered,
       progress,
       painReports: pain.get(movementKey(name))?.size ?? 0,
     });

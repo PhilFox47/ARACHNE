@@ -107,8 +107,9 @@ export const PHASES: Phase[] = [
     focus: "Habit, not performance",
     changes: [
       "Turning up five times a week for twelve weeks is the win. The muscle follows on its own.",
-      "Push-ups start elevated and walk down: table → chair → sofa edge → floor. Only advance at a clean 3×12.",
+      "Push-ups start elevated and walk down: wall → waist height → bench height → floor. Only advance at a clean 3×12.",
       "Three dead hangs every Wednesday — grip and shoulder stability underpin everything later.",
+      "Pressing and pulling both happen twice a week here. Once a week is enough to learn a pattern and not enough to build one, and these are the twelve weeks where the patterns are actually laid down.",
       "40 g of protein per meal, non-negotiable. Weigh daily, judge weekly.",
       "The deficit starts in week 3, at 2,300 kcal.",
     ],
@@ -528,6 +529,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Plank",
         family: "core",
+        ladder: true,
         metric: "time",
         sets: 2,
         how: "It ends when the hips drop, not when it starts hurting.",
@@ -544,13 +546,15 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Deep squat hold",
         family: "hold",
+        ladder: true,
         metric: "time",
         sets: 2,
         how: "Heels flat on the floor. The clock stops the moment a heel lifts.",
       },
       {
         name: "Cossack squat",
-        family: "mobility",
+        family: "lunge",
+        ladder: true,
         metric: "reps",
         sets: 2,
         how: "As deep as you go without rolling onto the edge of the foot.",
@@ -607,6 +611,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Goblet squat",
         family: "squat",
+        ladder: true,
         metric: "reps",
         sets: 2,
         how: "Both dumbbells at the chest. Log the weight alongside the reps.",
@@ -615,6 +620,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Romanian deadlift",
         family: "hinge",
+        ladder: true,
         metric: "reps",
         sets: 2,
         how: "Stop the moment the lower back rounds. That's the number, whatever it is.",
@@ -623,6 +629,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Wall sit",
         family: "hold",
+        ladder: true,
         metric: "time",
         sets: 2,
         how: "Thighs parallel. Ends when they aren't.",
@@ -639,6 +646,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Burpees",
         family: "conditioning",
+        ladder: true,
         metric: "reps",
         sets: 1,
         how: "As many as you can in three minutes. Pace it — this is the one everyone blows up on.",
@@ -646,6 +654,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Squat jumps",
         family: "jump",
+        ladder: true,
         metric: "reps",
         sets: 2,
         how: "Land soft and quiet. When the landings get loud, the set is over.",
@@ -662,6 +671,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Wall handstand",
         family: "handstand",
+        ladder: true,
         metric: "time",
         sets: 2,
         how: "Belly to the wall, walk the feet up as far as is comfortable. Time the hold.",
@@ -669,6 +679,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Bear crawl",
         family: "crawl",
+        ladder: true,
         metric: "time",
         sets: 2,
         how: "Knees a hand's width off the floor the whole time. That's what makes it hard.",
@@ -676,6 +687,7 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Hollow hold",
         family: "core",
+        ladder: true,
         metric: "time",
         sets: 2,
         how: "Lower back stays flat on the floor. It ends when the gap opens.",
@@ -683,13 +695,15 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
       {
         name: "Spider crawl",
         family: "crawl",
+        ladder: true,
         metric: "time",
         sets: 2,
         how: "Low — belly close to the floor.",
       },
       {
         name: "Shoulder roll",
-        family: "mobility",
+        family: "roll",
+        ladder: true,
         metric: "reps",
         sets: 2,
         how: "Slow, from a crouch, both sides. Count the ones that didn't land on the spine.",
@@ -766,7 +780,7 @@ const MON_COOLDOWN: Exercise[] = [
 ];
 
 const MON_RULE =
-  "The flatter your hands, the harder it gets. Table → chair → sofa edge → floor. Only move on at a clean 3×12.";
+  "The flatter your hands, the harder it gets. Wall → waist height → bench height → floor. Only move on at a clean 3×12.";
 
 // ── Wednesday ────────────────────────────────────────────────
 
@@ -797,6 +811,52 @@ const VR_OPTIONS = [
 const VR_RULE =
   "The goal is being out of breath, not the high score. If you're not sweating after 25 minutes, it was too easy.";
 
+// ── Friday ───────────────────────────────────────────────────
+// Built skills first, engine last, in every phase.
+//
+// The document's own injury rule is "Kein Skill wird bei Müdigkeit am Ende der
+// Einheit noch schnell probiert" — no skill gets tried quickly at the end of a
+// session when you are tired. The week it was written into was doing the
+// opposite: burpees and squat jumps sat in the middle of Friday's list and
+// every skill the later phases added was appended after them, so the cartwheel,
+// the kip-up and the wall run all arrived at the point of the week with the
+// least left in the tank. The engine work is now a block of its own at the end,
+// and everything that needs a clear head comes before it.
+
+const FRI_ENGINE: Exercise[] = [
+  { name: "Squat jumps", dose: "3× 8" },
+  { name: "Hollow hold", dose: "3× 20 s" },
+  { name: "Burpees", dose: "3× 8" },
+];
+
+const FRI_SKILLS_P1: Exercise[] = [
+  { name: "Wall handstand", dose: "3× 20–30 s", note: "Belly to wall, walk up" },
+  { name: "Shoulder roll", dose: "10 per side", note: "On the mat" },
+  { name: "Bear crawl", dose: "3× 30 s", note: "Forwards and backwards" },
+  { name: "Spider crawl", dose: "3× 20 s", note: "Low — belly close to the floor" },
+];
+
+const FRI_SKILLS_P2: Exercise[] = [
+  { name: "Freestanding handstand attempts", dose: "5 min", since: 2 },
+  { name: "Cartwheel", dose: "5 per side", since: 2 },
+  { name: "Kip-up progression", dose: "5", note: "To sitting, then to a crouch, then to standing", since: 2 },
+  { name: "L-sit tuck", dose: "3× 10 s", since: 2 },
+];
+
+const FRI_SKILLS_P3: Exercise[] = [
+  { name: "Roundoff", dose: "5", since: 3 },
+  { name: "Muscle-up progression", dose: "5", note: "Explosive pull-ups + dips", since: 3 },
+  { name: "Precision jumps", dose: "8", since: 3 },
+  { name: "Wall run", dose: "5", since: 3 },
+  { name: "L-sit", dose: "3× 10 s" },
+];
+
+const FRI_RULE =
+  "Skills first, while you are fresh — that is why they are at the top of this list and the burpees are at the bottom. No skill gets tried quickly at the end of a session when you are tired; a shape learned badly is a shape you will use badly. The shoulder roll is the foundational parkour skill and your insurance against injury in everything that follows: slow from a crouch first, then from standing, then from a walk.";
+
+const FRI_RULE_LATE =
+  "Skills first, while you are fresh. Everything new is learned on a soft surface and in slow motion, and no skill gets tried quickly at the end of a session when you are tired — which is why the engine work is last on this list and nothing else may move below it. Pain that isn't muscle soreness → stop, and see a physio if it persists. A torn ligament in month 8 costs you the whole year.";
+
 // ── Session table ────────────────────────────────────────────
 // Phases 2–4 are stated in the document as deltas against Phase 1. Each session
 // below is the resolved result. See docs/PLAN-EXTRACT.md §3 for the derivation
@@ -808,9 +868,14 @@ const P1: Record<DayKey, Session | null> = {
     title: "Push & Core",
     warmup: MON_WARMUP,
     main: [
-      { name: "Elevated push-ups", dose: "8–12", note: "Hands on table or sofa edge" },
+      { name: "Elevated push-ups", dose: "8–12", note: "Hands on a counter, chair or sofa edge" },
       { name: "Dumbbell shoulder press", dose: "10–12" },
       { name: "Triceps dips on chair edge", dose: "8–12" },
+      {
+        name: "Inverted rows",
+        dose: "8–12",
+        note: "Second pull of the week. Once a week is enough to learn a pattern and not enough to build one — and a pressing day with no pulling in it is how shoulders get sore.",
+      },
       { name: "Lateral raises", dose: "12–15", note: "Light — 4–5 kg is plenty" },
       { name: "Dead bug", dose: "10 per side" },
       { name: "Plank", dose: "30–45 s" },
@@ -844,6 +909,11 @@ const P1: Record<DayKey, Session | null> = {
       { name: "Single-arm dumbbell row", dose: "10–12 per side" },
       { name: "Romanian deadlift", dose: "12" },
       { name: "Inverted rows", dose: "8–12", note: "Under the table or on the bar" },
+      {
+        name: "Elevated push-ups",
+        dose: "8–12",
+        note: "Second press of the week. Months 1–3 are where the pressing pattern is actually learned, and a pattern trained once a week is a pattern you re-learn every Monday.",
+      },
       { name: "Reverse lunges", dose: "10 per side" },
       { name: "Wall sit", dose: "30–45 s" },
     ],
@@ -860,17 +930,8 @@ const P1: Record<DayKey, Session | null> = {
   fri: {
     dayKey: "fri",
     title: "Skills & Explosive",
-    main: [
-      { name: "Bear crawl", dose: "3× 30 s", note: "Forwards and backwards" },
-      { name: "Spider crawl", dose: "3× 20 s", note: "Low — belly close to the floor" },
-      { name: "Wall handstand", dose: "3× 20–30 s", note: "Belly to wall, walk up" },
-      { name: "Shoulder roll", dose: "10 per side", note: "On the mat" },
-      { name: "Squat jumps", dose: "3× 8" },
-      { name: "Hollow hold", dose: "3× 20 s" },
-      { name: "Burpees", dose: "3× 8" },
-    ],
-    rule:
-      "The shoulder roll is the foundational parkour skill and your insurance against injury in everything that follows. Slow from a crouch first, then from standing, then from a walk.",
+    main: [...FRI_SKILLS_P1, ...FRI_ENGINE],
+    rule: FRI_RULE,
   },
   sat: null,
   sun: null,
@@ -919,13 +980,7 @@ const P2: Record<DayKey, Session | null> = {
   },
   fri: {
     ...P1.fri!,
-    main: [
-      ...P1.fri!.main,
-      { name: "Cartwheel", dose: "5 per side", since: 2 },
-      { name: "Kip-up progression", dose: "5", note: "To sitting, then to a crouch, then to standing", since: 2 },
-      { name: "L-sit tuck", dose: "3× 10 s", since: 2 },
-      { name: "Freestanding handstand attempts", dose: "5 min", since: 2 },
-    ],
+    main: [...FRI_SKILLS_P2, ...FRI_SKILLS_P1, ...FRI_ENGINE],
   },
   sat: null,
   sun: null,
@@ -976,18 +1031,8 @@ const P3: Record<DayKey, Session | null> = {
   },
   fri: {
     ...P1.fri!,
-    main: [
-      ...P1.fri!.main,
-      { name: "Cartwheel", dose: "5 per side" },
-      { name: "Kip-up progression", dose: "5" },
-      { name: "Roundoff", dose: "5", since: 3 },
-      { name: "Muscle-up progression", dose: "5", note: "Explosive pull-ups + dips", since: 3 },
-      { name: "Precision jumps", dose: "8", since: 3 },
-      { name: "Wall run", dose: "5", since: 3 },
-      { name: "L-sit", dose: "3× 10 s" },
-    ],
-    rule:
-      "Injury rule for this phase: everything new is learned on a soft surface and in slow motion. No skill gets tried “quickly” at the end of a session when you're tired. Pain that isn't muscle soreness → stop, and see a physio if it persists. A torn ligament in month 8 costs you the whole year.",
+    main: [...FRI_SKILLS_P3, ...FRI_SKILLS_P2, ...FRI_SKILLS_P1, ...FRI_ENGINE],
+    rule: FRI_RULE_LATE,
   },
   sat: null,
   sun: null,
