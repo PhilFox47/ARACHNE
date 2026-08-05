@@ -17,6 +17,47 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.7.2 — 2026-08-05
+
+FUEL opens any day, so an entry you want gone can actually be reached.
+
+The report was "the statistics count things I deleted". Measured, the counts
+themselves were right: `deleteEntry` really does remove the row, and every
+figure on the review — including "14× morning coffee" — is derived from the
+rows that are still there.
+
+The actual fault was one line up. **FUEL only ever showed today.** There was no
+way to open yesterday, or last Tuesday, so a test entry logged on any earlier
+day could never be corrected and never be deleted — while the review went on
+counting it for the next ninety days. Every number on the screen was reachable
+and none of the entries behind them were.
+
+FUEL now has a day above the log: arrows either side, "back to today" when you
+have stepped away, and `?date=` in the address if you would rather type it. Any
+past day can be read, added to, corrected and deleted from. Tomorrow cannot —
+the forward arrow stops on today and a future date in the URL clamps to it,
+because there is no such thing as a meal you have not eaten yet.
+
+Everything on the page follows the day you are on rather than the clock: the
+entries, the water, the totals, and the calorie target, which now comes from
+that day's phase instead of the current one.
+
+One real bug did turn up next to it. **The favourites row was ordered by a
+counter that only ever went up.** `uses` is incremented on every quick-log and
+nothing has ever decremented it, so a coffee tapped forty times during an
+evening of testing kept its place at the front of the row even after every one
+of those entries was deleted — and starring something you had eaten fifty times
+started it at zero. The order is counted from the entries themselves now, which
+is the same answer without either failure.
+
+`npm run check` grew the case: fourteen coffees, twelve deleted, and every
+surface has to agree that two are left — the review's count, and the order of
+the favourites row, while the old stored counter still reads forty.
+
+No schema change.
+
+---
+
 ## 1.7.1 — 2026-08-05
 
 The hold timer got a voice, and a longer run-up.

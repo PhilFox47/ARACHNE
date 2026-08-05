@@ -280,16 +280,36 @@ export async function quickLogCandidates(limit = 8) {
 
 /**
  * Most-used first, so the coffee you have every morning settles at the front on
- * its own and stays there. No manual ordering to maintain, and a favourite you
- * stop using drifts out of the way without needing to be deleted.
+ * its own and stays there.
+ *
+ * "Most used" is counted from the entries themselves rather than read off the
+ * stored `uses` column. That column only ever goes up: it is incremented on
+ * every quick-log and nothing decrements it, so a favourite tapped nine times
+ * during an evening of testing and then deleted nine times still sorted to the
+ * front of the row afterwards, permanently. It is also blind in the other
+ * direction — starring something you have eaten fifty times begins at zero.
+ *
+ * Counting the rows is the same answer without either failure, and it costs one
+ * grouped query on a table this app will never have a large number of rows in.
  */
 export async function listFavourites() {
   await guard();
+
+  const counts = new Map(
+    db
+      .select({ normKey: foodEntries.normKey, n: sql<number>`COUNT(*)` })
+      .from(foodEntries)
+      .groupBy(foodEntries.normKey)
+      .all()
+      .map((r) => [r.normKey, r.n] as const),
+  );
+
   return db
     .select()
     .from(favourites)
-    .orderBy(desc(favourites.uses), desc(favourites.createdAt))
-    .all();
+    .all()
+    .map((f) => ({ ...f, uses: counts.get(f.normKey) ?? 0 }))
+    .sort((a, b) => b.uses - a.uses || b.createdAt - a.createdAt);
 }
 
 /**
@@ -390,6 +410,9 @@ export async function logFavourite(id: number, date?: string) {
     })
     .run();
 
+  // `uses` is no longer what orders the row — `listFavourites` counts the
+  // entries — but `lastUsedAt` is still worth having, and keeping the column
+  // moving costs nothing.
   db.update(favourites)
     .set({ uses: fav.uses + 1, lastUsedAt: now })
     .where(eq(favourites.id, id))
@@ -401,7 +424,7 @@ export async function logFavourite(id: number, date?: string) {
 }
 
 /** One-tap repeat: copies the averaged values, no photo, no model call. */
-export async function quickLog(normKey: string) {
+export async function quickLog(normKey: string, date?: string) {
   await guard();
 
   const src = db
@@ -417,7 +440,7 @@ export async function quickLog(normKey: string) {
   db.insert(foodEntries)
     .values({
       loggedAt: Math.floor(now.getTime() / 1000),
-      date: todayISO(),
+      date: date ?? todayISO(),
       description: src.description,
       normKey: src.normKey,
       kcal: src.kcal,

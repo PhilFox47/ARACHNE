@@ -8,6 +8,10 @@
  *   3. A re-analysis prompt carries the name, the portion and the ingredients —
  *      and never the numbers. That last one is the whole reason the button
  *      exists, and it is a single line away from silently regressing.
+ *   4. Nothing on the review screen counts an entry that no longer exists. Every
+ *      figure is derived from the rows, so deleting one has to move all of them
+ *      — including the order of the favourites row, which used to be driven by
+ *      a stored counter that only ever went up.
  *
  * `DATABASE_PATH` and `UPLOAD_DIR` are set before anything is imported, so this
  * runs against throwaway files and never touches ./data.
@@ -39,7 +43,7 @@ async function main() {
   const { parseIngredients, readIngredients, serialiseIngredients } = await import("../lib/meal");
   const { buildUserText, parseVisionJson } = await import("../lib/vision");
   const { UPLOAD_DIR, resolveStored, saveDataUrl } = await import("../lib/photos");
-  const { eq } = await import("drizzle-orm");
+  const { eq, sql } = await import("drizzle-orm");
 
   // ── Several photos of one meal ──
   console.log("a meal can have several photos");
@@ -171,6 +175,91 @@ async function main() {
   ok("the cover moved on", cover === paths[1], String(cover));
   ok("and points at a file that exists", cover !== null && resolveStored(cover) !== null);
   ok("the deleted file is gone", resolveStored(paths[0]) === null);
+
+  // ── Nothing counts an entry that is gone ──
+  console.log("\nthe review counts rows, not history");
+
+  const { favourites } = await import("../lib/db/schema");
+  const { buildFuelStats } = await import("../lib/fuelStats");
+  const { setSetting } = await import("../lib/settings");
+  const { todayISO, addDays } = await import("../lib/dates");
+
+  setSetting("start_date", addDays(todayISO(), -40));
+  db.delete(foodEntries).run();
+
+  const norm = (t: string) =>
+    t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+
+  const snack = (desc: string, dayBack: number) =>
+    db
+      .insert(foodEntries)
+      .values({
+        loggedAt: Math.floor(Date.now() / 1000) - dayBack * 86400,
+        date: addDays(todayISO(), -dayBack),
+        description: desc,
+        normKey: norm(desc),
+        kcal: 25,
+        mealType: "snack",
+        source: "manual",
+      })
+      .returning({ id: foodEntries.id })
+      .get().id;
+
+  const coffees: number[] = [];
+  for (let i = 0; i < 14; i++) coffees.push(snack("Morning coffee", i));
+  for (let i = 0; i < 3; i++) snack("Handful of nuts", i);
+
+  // Both starred. The coffee's stored counter is inflated the way an evening of
+  // testing inflates it; the nuts have never been quick-logged.
+  db.insert(favourites)
+    .values({ normKey: norm("Morning coffee"), label: "Morning coffee", kcal: 25, mealType: "snack", uses: 40 })
+    .run();
+  db.insert(favourites)
+    .values({ normKey: norm("Handful of nuts"), label: "Handful of nuts", kcal: 90, mealType: "snack", uses: 0 })
+    .run();
+
+  const counted = (desc: string) =>
+    buildFuelStats(30).topSnacks.find((t) => t.description === desc)?.count ?? 0;
+
+  // `listFavourites` is a server action behind an auth guard, so the ordering it
+  // performs is reproduced here against the same tables.
+  const favouriteOrder = () => {
+    const counts = new Map(
+      db
+        .select({ normKey: foodEntries.normKey, n: sql<number>`COUNT(*)` })
+        .from(foodEntries)
+        .groupBy(foodEntries.normKey)
+        .all()
+        .map((r) => [r.normKey, r.n] as const),
+    );
+    return db
+      .select()
+      .from(favourites)
+      .all()
+      .map((f) => ({ ...f, live: counts.get(f.normKey) ?? 0 }))
+      .sort((a, b) => b.live - a.live || b.createdAt - a.createdAt)
+      .map((f) => f.label);
+  };
+
+  ok("fourteen coffees are counted as fourteen", counted("Morning coffee") === 14);
+  ok("and the coffee leads the favourites", favouriteOrder()[0] === "Morning coffee");
+
+  for (const id of coffees.slice(2)) db.delete(foodEntries).where(eq(foodEntries.id, id)).run();
+
+  ok(
+    "deleting twelve leaves two",
+    counted("Morning coffee") === 2,
+    `counted ${counted("Morning coffee")}`,
+  );
+  ok(
+    "the nuts now lead the favourites",
+    favouriteOrder()[0] === "Handful of nuts",
+    favouriteOrder().join(" → "),
+  );
+  ok(
+    "even though the stored counter still says forty",
+    db.select().from(favourites).all().find((f) => f.label === "Morning coffee")?.uses === 40,
+  );
 
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);

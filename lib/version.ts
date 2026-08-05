@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.7.1";
+export const APP_VERSION = "1.7.2";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-05";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.7.2",
+    date: "2026-08-05",
+    kind: "patch",
+    headline: "FUEL opens any day, not just today",
+    changes: [
+      "The counts on the review were right — but FUEL only ever showed today, so an entry logged on any earlier day could never be corrected or deleted while the review went on counting it for ninety days.",
+      "There are arrows above the log now. Step back to any day, read it, add to it, fix it, delete from it. Tomorrow is not reachable, because there is no such thing as a meal you have not eaten yet.",
+      "The totals, the water and the calorie target all follow the day on screen rather than the clock — a Tuesday in Phase 1 is no longer judged against Phase 3's number.",
+      "The favourites row was ordered by a counter that only ever went up: a coffee tapped forty times during testing kept its place even after every entry was deleted. It counts the entries themselves now.",
+    ],
+  },
   {
     version: "1.7.1",
     date: "2026-08-05",

@@ -40,9 +40,12 @@ async function compress(file: File, maxEdge = 1200, quality = 0.82): Promise<str
 }
 
 export function FuelCapture({
+  date,
   quickItems,
   favourites,
 }: {
+  /** The day being logged to — not always today, since any past day is editable. */
+  date: string;
   quickItems: QuickItem[];
   favourites: FavouriteItem[];
 }) {
@@ -80,6 +83,7 @@ export function FuelCapture({
     const created = await createEntry({
       description: ANALYSING_PLACEHOLDER,
       photos: shots.map((dataUrl) => ({ dataUrl, kind: "dish" as const })),
+      date,
     });
     if (!created.ok) {
       finish(created.error);
@@ -132,7 +136,7 @@ export function FuelCapture({
   const onText = () => {
     if (text.trim().length === 0) return;
     start(async () => {
-      const res = await createEntry({ description: text.trim() });
+      const res = await createEntry({ description: text.trim(), date });
       setText("");
       finish(res.ok ? "Logged." : "Couldn't save that.");
     });
@@ -211,7 +215,7 @@ export function FuelCapture({
         />
       ) : null}
 
-      <Favourites items={favourites} onLogged={() => finish("Logged.")} />
+      <Favourites items={favourites} date={date} onLogged={() => finish("Logged.")} />
 
       {quickItems.length > 0 ? (
         <div className="flex flex-col gap-2">
@@ -226,7 +230,7 @@ export function FuelCapture({
                 disabled={pending}
                 onClick={() =>
                   start(async () => {
-                    await quickLog(q.normKey);
+                    await quickLog(q.normKey, date);
                     if (navigator.vibrate) navigator.vibrate(10);
                     finish("Logged.");
                   })

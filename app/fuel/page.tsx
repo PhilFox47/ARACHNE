@@ -7,8 +7,9 @@ import { db } from "@/lib/db";
 import { foodEntries, mealPhotos } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
-import { todayISO } from "@/lib/dates";
+import { addDays, daysBetween, formatShort, todayISO } from "@/lib/dates";
 import { PROTEIN_PER_MEAL_G } from "@/lib/plan";
+import { kcalTargetForDay } from "@/lib/course";
 import { listFavourites, quickLogCandidates } from "./actions";
 import { waterForDate } from "./water";
 import { FuelCapture } from "@/components/FuelCapture";
@@ -19,17 +20,37 @@ import { TensionLine } from "@/components/TensionLine";
 
 export const dynamic = "force-dynamic";
 
-export default async function Fuel() {
+export default async function Fuel({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   if (!(await isAuthed())) redirect("/login");
   if (needsOnboarding()) redirect("/onboarding");
 
   const stats = getHqStats();
   const today = todayISO();
 
+  /**
+   * Which day's log is on screen.
+   *
+   * This page was hard-wired to today, which meant a meal logged yesterday
+   * could never be corrected and never be deleted — while the stats screen went
+   * on counting it for the next ninety days. Every number on the review was
+   * therefore reachable and none of the entries behind it were.
+   *
+   * Never later than today: there is no such thing as a meal you have not
+   * eaten yet, and a date box that accepts one is a way to lose an entry.
+   */
+  const params = await searchParams;
+  const asked = /^\d{4}-\d{2}-\d{2}$/.test(params.date ?? "") ? params.date! : today;
+  const date = asked > today ? today : asked;
+  const isToday = date === today;
+
   const entries = db
     .select()
     .from(foodEntries)
-    .where(eq(foodEntries.date, today))
+    .where(eq(foodEntries.date, date))
     .orderBy(asc(foodEntries.loggedAt))
     .all();
 
@@ -50,7 +71,7 @@ export default async function Fuel() {
   const quick = await quickLogCandidates();
   const favourites = await listFavourites();
   const starred = new Set(favourites.map((f) => f.normKey));
-  const water = await waterForDate(today);
+  const water = await waterForDate(date);
   const settings = getSettings();
 
   type NutrientKey = "kcal" | "proteinG" | "carbsG" | "fatG" | "fiberG" | "sugarG" | "saltG";
@@ -70,7 +91,10 @@ export default async function Fuel() {
   const snackPct = kcal > 0 ? Math.round((snackKcal / kcal) * 100) : 0;
 
   const isPhase0 = stats.phase.id === 0;
-  const target = stats.kcalTarget;
+  // The target belongs to the day on screen, not to today. Judging a Tuesday in
+  // Phase 1 against Phase 3's number would be quietly wrong every time you
+  // stepped back to check one.
+  const target = kcalTargetForDay(Math.max(0, daysBetween(settings.startDate, date))).kcal;
   const pct = target > 0 ? Math.min(100, Math.round((kcal / target) * 100)) : 0;
   const over = kcal > target;
   const unpriced = entries.filter((e) => e.kcal === null).length;
@@ -89,6 +113,39 @@ export default async function Fuel() {
         </div>
       </header>
 
+      {/* ── Which day ── */}
+      <nav className="flex items-center justify-between gap-2">
+        <Link
+          href={`/fuel?date=${addDays(date, -1)}`}
+          aria-label="The day before"
+          className="tap flex items-center px-1 text-muted active:text-crimson"
+        >
+          ‹
+        </Link>
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="display text-lg text-ink">
+            {isToday ? "Today" : formatShort(date)}
+          </span>
+          {!isToday ? (
+            <Link href="/fuel" className="label-xs text-cobalt-lift underline">
+              Back to today
+            </Link>
+          ) : (
+            <span className="label-xs">{formatShort(date)}</span>
+          )}
+        </div>
+        <Link
+          href={isToday ? "/fuel" : `/fuel?date=${addDays(date, 1)}`}
+          aria-label="The day after"
+          aria-disabled={isToday}
+          className={`tap flex items-center px-1 ${
+            isToday ? "pointer-events-none opacity-25" : "text-muted active:text-crimson"
+          }`}
+        >
+          ›
+        </Link>
+      </nav>
+
       {isPhase0 ? (
         <div className="panel border-l-2 border-l-cobalt p-3.5">
           <p className="label-xs text-cobalt-lift">Calibration</p>
@@ -104,7 +161,10 @@ export default async function Fuel() {
       <section className="swing panel halftone flex flex-col gap-4 p-4">
         <div className="flex items-end justify-between gap-4">
           <div className="flex flex-col gap-1.5">
-            <p className="label-xs">{isPhase0 ? "Today · tracking only" : "Today"}</p>
+            <p className="label-xs">
+              {isToday ? "Today" : formatShort(date)}
+              {isPhase0 ? " · tracking only" : ""}
+            </p>
             <p className={`numeral text-[3.75rem] tabular ${over && !isPhase0 ? "text-crimson" : "text-ink"}`}>
               {Math.round(kcal).toLocaleString("en-GB")}
               <span className="ml-1.5 text-[0.28em] tracking-normal text-muted">KCAL</span>
@@ -139,9 +199,10 @@ export default async function Fuel() {
         </div>
       </section>
 
-      <WaterTracker initialMl={water.ml} targetMl={settings.waterTargetMl} date={today} />
+      <WaterTracker initialMl={water.ml} targetMl={settings.waterTargetMl} date={date} />
 
       <FuelCapture
+        date={date}
         quickItems={quick}
         favourites={favourites.map((f) => ({
           id: f.id,
@@ -156,13 +217,15 @@ export default async function Fuel() {
       {/* ── The log ── */}
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between">
-          <p className="label-xs">Today&apos;s log</p>
+          <p className="label-xs">{isToday ? "Today's log" : `${formatShort(date)} — log`}</p>
           {unpriced > 0 ? <p className="label-xs text-crimson">{unpriced} without numbers</p> : null}
         </div>
 
         {entries.length === 0 ? (
           <div className="panel p-4">
-            <p className="text-sm text-muted">Nothing logged today.</p>
+            <p className="text-sm text-muted">
+              {isToday ? "Nothing logged today." : "Nothing logged on this day."}
+            </p>
           </div>
         ) : (
           <ul className="flex flex-col gap-2">

@@ -157,6 +157,11 @@ export default async function FuelStats({
               </li>
             ))}
           </ul>
+          <p className="text-xs leading-relaxed text-muted-dim">
+            Counted from the entries themselves over the last {period} days, so a count that looks
+            wrong is an entry still sitting on some day. FUEL opens any day now — step back with the
+            arrows above the log and delete it there.
+          </p>
         </section>
       ) : null}
 

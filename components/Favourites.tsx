@@ -39,7 +39,16 @@ function Star({ filled = true, size = 11 }: { filled?: boolean; size?: number })
  * decided was worth naming — and the morning coffee belongs in the second list
  * long before it has earned a place in the first.
  */
-export function Favourites({ items, onLogged }: { items: FavouriteItem[]; onLogged: () => void }) {
+export function Favourites({
+  items,
+  date,
+  onLogged,
+}: {
+  items: FavouriteItem[];
+  /** The day being logged to. */
+  date: string;
+  onLogged: () => void;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [pending, start] = useTransition();
@@ -49,7 +58,7 @@ export function Favourites({ items, onLogged }: { items: FavouriteItem[]; onLogg
   const log = (id: number) => {
     if (navigator.vibrate) navigator.vibrate(10);
     start(async () => {
-      await logFavourite(id);
+      await logFavourite(id, date);
       onLogged();
       router.refresh();
     });
