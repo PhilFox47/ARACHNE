@@ -17,6 +17,49 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.7.1 — 2026-08-05
+
+The hold timer got a voice, and a longer run-up.
+
+**Five seconds of lead-in, not three.** Three is enough to put a phone down. It
+is not enough to put a phone down and get into a wall handstand, which is the
+case that decides the number.
+
+**It beeps when the clock actually starts.** A rising pair of notes on zero, so
+you are not guessing whether the countdown has finished while you are already
+upside down. The five counting you in each get a small tick of their own.
+
+**It chimes when the target is up, so you know when to release.** Three notes
+rising, longer and louder than anything else it plays — the one sound that has
+to be heard through a shaking plank and a heartbeat in your ears. Nothing else
+in the app sounds like it. Past the target it keeps counting rather than
+stopping, because going past is how a hold progresses, and a short tick every
+thirty seconds tells you roughly where you are.
+
+Stopping plays a falling pair, so it can never be mistaken for the start.
+
+The tones are synthesised rather than shipped as audio files: three beeps as
+assets would be more bytes than the code that makes them, and one more thing to
+cache for an app expected to work with no network. They are triangle waves — a
+sine at 900 Hz disappears under breathing and room noise, and a square is
+unpleasant at the volume this needs.
+
+Two browser details worth knowing about:
+
+- The audio is unlocked by the tap that opens the timer, because that is the
+  only moment a browser will allow it. Resuming it any later leaves it silent on
+  iOS with no error to notice.
+- **iPhones route this through the ringer channel**, so a phone with the side
+  switch on silent will play none of it. Nothing on the web can override that.
+  The vibration is still there, and on Android it is there regardless.
+
+There is a speaker toggle in the timer's header if you would rather it were
+quiet. The choice is remembered.
+
+No schema change.
+
+---
+
 ## 1.7.0 — 2026-08-05
 
 A clock for the holds, so a plank does not need a second device.

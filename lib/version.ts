@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.7.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-05";
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.7.1",
+    date: "2026-08-05",
+    kind: "patch",
+    headline: "The hold timer got a voice, and a longer run-up",
+    changes: [
+      "Five seconds of lead-in rather than three — enough to put the phone down and actually get into the position.",
+      "It beeps when the clock starts, so you are not guessing whether the countdown has finished while you are already upside down.",
+      "On a movement with a time goal it chimes when that time is up, so you know when you may come out of it: three notes rising, longer and louder than anything else it plays. It keeps counting after that, because going past the target is how a hold progresses.",
+      "A tick every thirty seconds past the target, a falling pair when you stop, and a speaker toggle in the header if you would rather it were quiet.",
+      "iPhones play Web Audio through the ringer channel, so the side switch on silent will mute all of it — the vibration stays for that reason.",
+    ],
+  },
   {
     version: "1.7.0",
     date: "2026-08-05",

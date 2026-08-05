@@ -1,6 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  primeSound,
+  releaseSound,
+  setSoundEnabled,
+  soundEnabled,
+  soundLeadTick,
+  soundStart,
+  soundStop,
+  soundTarget,
+  soundTick,
+  wakeSound,
+} from "./holdSound";
 
 /**
  * The clock for a hold, so a plank does not need a second device.
@@ -13,9 +25,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *     countdown hides how far past you got. The target is drawn as a line the
  *     clock crosses instead.
  *
- *   It buzzes.  You will not be watching this. A lead-in so you can get set, a
- *     long double buzz the moment you clear the target, and a tick every thirty
- *     seconds after that so a max hold still has a shape to it.
+ *   It makes a noise.  You will not be watching this — that is the whole point,
+ *     and a silent timer would be a stopwatch you have to stare at. A five
+ *     second lead-in counts you in and a rising pair says the clock has
+ *     started; a three-note chime says the target is cleared and you may come
+ *     out of it; a tick every thirty seconds after that gives a max hold some
+ *     shape. Every one of them also buzzes, because a phone can be on silent
+ *     and iOS will not play Web Audio when it is.
  *
  *   Elapsed comes from the wall clock, never from counting intervals.  Phones
  *     throttle timers in a backgrounded tab and stop them on lock; a counter
@@ -26,8 +42,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *     shaking arms. A 44-pixel target is not a reasonable thing to ask for.
  */
 
-/** Seconds of lead-in, so you can get into position after tapping start. */
-const LEAD_IN = 3;
+/**
+ * Seconds of lead-in, so you can get into position after tapping start.
+ *
+ * Five, not three. Three is enough to put a phone down; it is not enough to put
+ * a phone down and get into a wall handstand, which is the case that decides
+ * this number.
+ */
+const LEAD_IN = 5;
 
 /** After the target is cleared, a short tick at this interval. */
 const TICK_EVERY = 30;
@@ -62,28 +84,42 @@ export function HoldTimer({
   const [phase, setPhase] = useState<"lead" | "running">("lead");
   const [elapsed, setElapsed] = useState(0);
   const [lead, setLead] = useState(LEAD_IN);
+  const [sound, setSound] = useState(true);
+
+  // Read after mount rather than during render: localStorage does not exist on
+  // the server, and guessing wrong would flip the icon on first paint.
+  useEffect(() => setSound(soundEnabled()), []);
 
   const startedAt = useRef<number | null>(null);
   const lastBuzzed = useRef(0);
   const clearedAt = useRef<number | null>(null);
 
   // ── Lead-in ──
+  // Driven off timestamps like the clock itself, and sounded only when the
+  // whole second actually changes — a 1000 ms interval drifts, and a drifting
+  // countdown either double-beeps on a number or skips one entirely.
   useEffect(() => {
     if (phase !== "lead") return;
-    buzz(15);
     const from = Date.now();
+    let spoken = LEAD_IN + 1;
+
     const id = window.setInterval(() => {
       const left = LEAD_IN - Math.floor((Date.now() - from) / 1000);
       if (left <= 0) {
         window.clearInterval(id);
         startedAt.current = Date.now();
         buzz([30, 60, 30]);
+        soundStart();
         setPhase("running");
         return;
       }
-      setLead(left);
-      buzz(15);
-    }, 1000);
+      if (left < spoken) {
+        spoken = left;
+        setLead(left);
+        buzz(15);
+        soundLeadTick();
+      }
+    }, 60);
     return () => window.clearInterval(id);
   }, [phase]);
 
@@ -101,12 +137,14 @@ export function HoldTimer({
       if (target !== null && secs >= target && clearedAt.current === null) {
         clearedAt.current = secs;
         lastBuzzed.current = secs;
-        // Long, doubled, unmistakable: that is the bar, everything after this
-        // is profit.
+        // The signal to come out of it. Long, doubled and three notes rising —
+        // everything after this point is profit rather than the requirement.
         buzz([120, 80, 120]);
+        soundTarget();
       } else if (secs >= lastBuzzed.current + TICK_EVERY && (target === null || clearedAt.current !== null)) {
         lastBuzzed.current = secs;
         buzz(25);
+        soundTick();
       }
     };
 
@@ -155,6 +193,21 @@ export function HoldTimer({
     };
   }, []);
 
+  // ── Sound ──
+  // The context was created and resumed by the tap that opened this, which is
+  // the only moment a browser will allow it. All that is left is to bring it
+  // back after the phone has been asleep, and to close it on the way out.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") wakeSound();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      releaseSound();
+    };
+  }, []);
+
   const stop = useCallback(() => {
     if (phase !== "running" || startedAt.current === null) {
       onCancel();
@@ -162,6 +215,7 @@ export function HoldTimer({
     }
     const secs = Math.max(1, Math.round((Date.now() - startedAt.current) / 1000));
     buzz([40, 40, 40]);
+    soundStop();
     onDone(secs);
   }, [phase, onDone, onCancel]);
 
@@ -179,14 +233,40 @@ export function HoldTimer({
             {perSide ? " · per side" : ""}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="tap label-xs shrink-0 underline"
-          aria-label="Cancel the timer without logging"
-        >
-          Cancel
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !sound;
+              setSound(next);
+              setSoundEnabled(next);
+              if (next) {
+                primeSound();
+                soundLeadTick();
+              }
+            }}
+            className="tap flex w-11 items-center justify-center text-muted active:text-crimson"
+            aria-label={sound ? "Turn the timer sounds off" : "Turn the timer sounds on"}
+            aria-pressed={sound}
+          >
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+              <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4Z" />
+              {sound ? (
+                <path d="M15.5 9.2a4 4 0 0 1 0 5.6M18 6.8a7.5 7.5 0 0 1 0 10.4" />
+              ) : (
+                <path d="M16 10l4.5 4.5M20.5 10L16 14.5" />
+              )}
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="tap label-xs underline"
+            aria-label="Cancel the timer without logging"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
 
       {/* The whole middle is the stop button. You are dropping out of a plank
@@ -233,10 +313,10 @@ export function HoldTimer({
       <div className="pad-safe-b px-4 pb-4">
         <p className="border-l-2 border-l-crimson pl-3 text-sm leading-relaxed text-muted">
           {phase === "lead"
-            ? "Starts on zero. Tap to cancel."
+            ? "Get set — it beeps and starts on zero. Tap to cancel."
             : target === null
               ? "Tap anywhere to stop — the time goes straight into the set. It ticks every thirty seconds, so you know roughly where you are without looking."
-              : "Tap anywhere to stop — the time goes straight into the set. It buzzes when you clear the target, so you don't have to look."}
+              : `It chimes at ${formatHold(target)}, so you know when you may come out of it — keep going if you have more. Tap anywhere to stop and the time goes straight into the set.`}
         </p>
       </div>
     </div>

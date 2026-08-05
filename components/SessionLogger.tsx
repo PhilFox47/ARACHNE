@@ -6,6 +6,7 @@ import type { Prescription, PrescribedExercise } from "@/lib/training";
 import { recordFeel, saveSet, setCompleted } from "@/app/patrol/actions";
 import { ImpactBurst } from "./ImpactBurst";
 import { HoldTimer } from "./HoldTimer";
+import { primeSound } from "./holdSound";
 import { WebLoader } from "./WebLoader";
 import { TensionLine } from "./TensionLine";
 
@@ -530,7 +531,13 @@ function SetRow({
       {metric === "time" ? (
         <button
           type="button"
-          onClick={() => setTiming(true)}
+          onClick={() => {
+            // Synchronously, inside the tap. An AudioContext resumed anywhere
+            // else stays suspended on iOS and every tone the timer plays is
+            // dropped without an error.
+            primeSound();
+            setTiming(true);
+          }}
           aria-label={`Time set ${index + 1}`}
           className="tap flex h-9 w-9 shrink-0 items-center justify-center border border-edge text-cobalt-lift active:border-cobalt"
         >
