@@ -17,5 +17,17 @@
     "paths": { "@/*": ["./*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  /*
+   * `scripts/` is deliberately out of the app's project.
+   *
+   * `next build` type-checks whatever this tsconfig includes, so anything in
+   * here can stop a production image from being built. The scripts are dev
+   * tooling — seeds, resets, backups, the check suites — run with tsx and never
+   * bundled into the app, and one of them taking the release down because it
+   * imports something the app does not is the wrong trade every time.
+   *
+   * They are still type-checked, in tsconfig.scripts.json, which `npm run
+   * typecheck` and `npm run check` both run.
+   */
+  "exclude": ["node_modules", "scripts"]
 }

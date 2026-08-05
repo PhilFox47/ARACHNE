@@ -1,18 +1,52 @@
 /**
  * Development only: fills SUIT CHECK with placeholder frames across three weeks
  * so the comparison wipe has something to show. Silhouette narrows week on week.
+ *
+ * `sharp` is resolved at run time rather than imported.
+ *
+ * It is not a dependency of this project and never has been — it arrives, if it
+ * arrives at all, as an optional dependency of Next, which the app does not use
+ * because there is no `next/image` anywhere in it. A static import made a
+ * dev-only seeding script into a hard build-time requirement for a package
+ * nothing declares, and it took the production Docker image down with it: the
+ * image install sets `build_from_source`, sharp's install script cannot satisfy
+ * that without libvips, and npm drops an optional package whose script fails
+ * without saying so. `next build` then type-checked this file and stopped the
+ * release over a seed script.
+ *
+ * So it is required here, at the only moment it is actually needed, with a
+ * sentence saying what to do about it.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import sharpDefault from "sharp";
 import { db } from "../lib/db";
 import { photos } from "../lib/db/schema";
 import { getSettings } from "../lib/settings";
 import { addDays, todayISO, weekIndex } from "../lib/dates";
 import { UPLOAD_DIR } from "../lib/photos";
 
-const sharp = sharpDefault ?? createRequire(import.meta.url)("sharp");
+interface SharpImage {
+  png(): SharpImage;
+  jpeg(opts?: { quality?: number }): SharpImage;
+  toFile(destination: string): Promise<unknown>;
+}
+type SharpLike = (input: Buffer) => SharpImage;
+
+function loadSharp(): SharpLike {
+  try {
+    const mod = createRequire(import.meta.url)("sharp");
+    return (mod.default ?? mod) as SharpLike;
+  } catch {
+    console.error(
+      "This script needs sharp, which the app itself does not.\n" +
+        "Install it just for this: npm i -D sharp",
+    );
+    process.exit(1);
+  }
+}
+
+const sharp = loadSharp();
 
 async function main() {
   const s = getSettings();

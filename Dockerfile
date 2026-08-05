@@ -55,6 +55,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # node-gyp, which does have timeouts and retries and so fails loudly rather than
 # hanging. It costs about two minutes of compiling, once, and the layer is then
 # cached until a dependency actually changes.
+# Note what this costs, because it is global and there is no scoped form: every
+# native package now builds from source, and an *optional* one whose source
+# build cannot succeed is dropped by npm without a word. sharp is the one that
+# does this here — it needs libvips, which this image does not carry, so it
+# disappears. That is fine and in fact wanted: sharp arrives only as an optional
+# dependency of Next, for image optimisation this app does not use, and the
+# image is 30 MB lighter without it. It is not fine if anything ever *imports*
+# it, which is why `npm run check` fails a static import of a package
+# package.json does not declare. Measured, three ways, on this lockfile:
+# unset installs 146 packages with sharp; `true` installs 144 without it; and
+# `better-sqlite3` — the scoped form prebuild-install documents — also installs
+# 144 without it, so scoping does not work.
 ENV npm_config_build_from_source=true
 
 # node-gyp builds single-threaded unless told otherwise.

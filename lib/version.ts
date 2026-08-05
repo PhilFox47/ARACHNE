@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.6.1";
+export const APP_VERSION = "1.6.2";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-05";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.6.2",
+    date: "2026-08-05",
+    kind: "patch",
+    headline: "The Docker build stopped failing on a seed script",
+    changes: [
+      "`next build` type-checks everything in the project, including the dev-only scripts — so a seeding script that imported `sharp`, a package this app does not depend on, was able to stop the production image from building.",
+      "It resolved on a laptop only because Next ships sharp as an optional dependency for image optimisation this app never uses. The image install builds native packages from source, sharp needs libvips to do that, and npm drops an optional package whose install script fails without saying so.",
+      "The dev scripts are now out of the app's type-check — they are still fully checked, just not by the thing that builds the image — and the seed script reaches for sharp only at the moment it needs it.",
+      "`npm run check` now fails any static import of a package that package.json does not declare, so nothing else can quietly lean on a transitive dependency again.",
+    ],
+  },
   {
     version: "1.6.1",
     date: "2026-08-05",

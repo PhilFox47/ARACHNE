@@ -17,6 +17,63 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.6.2 — 2026-08-05
+
+The Docker build stopped failing on a seed script.
+
+`docker compose up --build` died at `next build` with:
+
+```
+./scripts/seed-suit.ts:8:26
+Type error: Cannot find module 'sharp' or its corresponding type declarations.
+```
+
+Two separate mistakes lined up to produce it.
+
+**A dev script was importing a package nothing declares.** `scripts/seed-suit.ts`
+fills SUIT CHECK with placeholder frames so the comparison wipe has something to
+show. It imported `sharp` — which is not, and never has been, a dependency of
+this project. It resolved on a development machine only because Next pulls sharp
+in as an *optional* dependency for image optimisation, which this app does not
+use: there is no `next/image` anywhere in it.
+
+**The image install drops optional native packages silently.** Since 1.5.4 the
+deps stage sets `build_from_source`, which stopped better-sqlite3 fetching its
+binary from GitHub and hanging with no timeout. That switch is global — there is
+no per-package form that works — so sharp builds from source too, which needs
+libvips, which this image does not carry. npm drops an optional package whose
+install script fails and says nothing about it. Measured three ways on this
+lockfile: unset installs 146 packages with sharp, `true` installs 144 without,
+and the scoped `better-sqlite3` form prebuild-install documents also installs 144
+without.
+
+So the production image had no sharp, correctly, and `next build` type-checked a
+seeding script and stopped the release over it.
+
+Fixed at both ends, and a third place so it cannot come back:
+
+- `scripts/` is out of the app's tsconfig. `next build` type-checks whatever that
+  file includes, so anything in there can stop an image being built — and the
+  scripts are dev tooling run with tsx, never bundled. They are still fully
+  type-checked, in `tsconfig.scripts.json`, which `npm run typecheck` runs.
+- `seed-suit` resolves sharp at the moment it needs it rather than importing it,
+  and prints `npm i -D sharp` if it is not there.
+- `npm run check` now fails a static import of any package package.json does not
+  declare, across `app/`, `components/`, `lib/` and `scripts/`. A guarded
+  `createRequire` for something genuinely optional is the honest way to reach for
+  it, and is deliberately still allowed.
+
+The image keeps `build_from_source` — the hang it fixed was real — with the cost
+written down next to it. It is 30 MB lighter without sharp, which it has no use
+for.
+
+Verified by removing sharp from `node_modules` entirely and running the
+production build: compiles clean.
+
+No schema change.
+
+---
+
 ## 1.6.1 — 2026-08-05
 
 Looking at next month's session no longer decides it.

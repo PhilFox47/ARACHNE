@@ -1,0 +1,18 @@
+{
+  /*
+   * The dev tooling: seeds, resets, backups and the check suites.
+   *
+   * Split out of tsconfig.json so that `next build` does not type-check them —
+   * a seed script must never be able to fail a production image — while
+   * `npm run typecheck` still does.
+   */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node"]
+  },
+  "include": ["scripts/**/*.ts", "lib/**/*.ts", "drizzle.config.ts"],
+  "exclude": ["node_modules"]
+}

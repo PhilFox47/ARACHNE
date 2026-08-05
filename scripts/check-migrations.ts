@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { builtinModules } from "node:module";
 import Database from "better-sqlite3";
 import { MIGRATIONS, SCHEMA_VERSION, openAt } from "../lib/db";
 import { BASELINE_PATROLS, PHASES, sessionFor, type DayKey } from "../lib/plan";
@@ -494,6 +495,75 @@ for (const m of MOVEMENTS) {
     ok(`"${m.name}" gate on ${req.family} explains itself`, (req.why ?? "").length > 20);
   }
 }
+
+// ── Nothing is imported that package.json does not declare ──
+// The rule this exists for: `scripts/seed-suit.ts` statically imported `sharp`,
+// which is not a dependency of this project and never was. It resolved only
+// because Next pulls sharp in as an *optional* dependency for image
+// optimisation the app does not use — and the production image install sets
+// `build_from_source`, sharp's install script cannot satisfy that without
+// libvips, and npm drops an optional package whose script fails without a word.
+// `next build` type-checked the seed script and stopped the release.
+//
+// A static import is a promise that the package is there. Only package.json can
+// make that promise. A guarded `createRequire` at the point of use is the
+// honest way to reach for something optional, and is deliberately not caught
+// here — seed-suit does exactly that now.
+console.log("\nimports");
+
+const pkg = JSON.parse(fs.readFileSync("package.json", "utf8")) as {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+const declared = new Set([
+  ...Object.keys(pkg.dependencies ?? {}),
+  ...Object.keys(pkg.devDependencies ?? {}),
+  ...builtinModules,
+]);
+
+const sources: string[] = [];
+const collect = (dir: string) => {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) collect(full);
+    else if (/\.tsx?$/.test(entry.name)) sources.push(full);
+  }
+};
+for (const dir of ["app", "components", "lib", "scripts"]) collect(dir);
+
+// `from "x"` and `import "x"` only. Relative paths, the `@/` alias and the
+// `node:` scheme are all resolved without package.json's help.
+const IMPORT = /\bfrom\s+["']([^"']+)["']|^\s*import\s+["']([^"']+)["']/gm;
+// Comments first, or a doc comment that quotes an import — this file has one —
+// reads as an import of a package called "x".
+const stripComments = (text: string) =>
+  text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+const undeclared = new Map<string, string>();
+for (const file of sources) {
+  const text = stripComments(fs.readFileSync(file, "utf8"));
+  for (const m of text.matchAll(IMPORT)) {
+    const spec = m[1] ?? m[2];
+    if (!spec || spec.startsWith(".") || spec.startsWith("@/") || spec.startsWith("node:")) continue;
+    const name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
+    if (!declared.has(name) && !undeclared.has(name)) undeclared.set(name, file);
+  }
+}
+ok(
+  "every imported package is declared in package.json",
+  undeclared.size === 0,
+  [...undeclared].map(([name, file]) => `${name} (${file})`).join(", "),
+);
+
+// The app's own type-check must not reach into the dev tooling. `next build`
+// runs it, so anything in `scripts/` could stop a production image being built.
+const appTsconfig = fs.readFileSync("tsconfig.json", "utf8");
+ok(
+  "the app's tsconfig excludes the dev scripts",
+  /"exclude"\s*:\s*\[[^\]]*"scripts"/.test(appTsconfig),
+);
+ok("but a tsconfig that covers them exists", fs.existsSync("tsconfig.scripts.json"));
 
 // ── The Docker dependency layer ──
 // Two things kept this stage honest, and both are invisible until you are
