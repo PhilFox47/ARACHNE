@@ -17,6 +17,29 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.5.8 — 2026-08-04
+
+The note sheet moved off the keyboard.
+
+Logging a meal opens a sheet asking what the photo missed — size, how much you ate, what it was
+cooked in. It was a bottom sheet, which is the right shape for something you tap and the wrong one
+for something you type into: on a phone the on-screen keyboard takes the lower half of the screen
+and the field was behind it.
+
+It now hangs from the top, with the dismiss area below it. Measured at 393×400 — roughly what is
+left of a 393×852 phone once the keyboard is up — the text field, the chips and the Analyse button
+are all still on screen.
+
+Sized from `visualViewport` rather than `dvh`, because `dvh` only solves half of this: Chrome on
+Android shrinks the dynamic viewport when the keyboard opens and iOS Safari does not, so anything
+measured in dvh sits calmly underneath the keyboard on an iPhone. The viewport is read rather than
+assumed, since keyboard height varies by device, by language, and by whether a suggestion strip is
+showing.
+
+Tapping the backdrop now analyses without a note instead of doing nothing — the entry and its photos
+are already saved by that point, so the only thing on the sheet is optional context and dismissing
+it should still get you numbers.
+
 ## 1.5.7 — 2026-08-04
 
 A stalled download gives up in a minute, not fifteen. And a correction.

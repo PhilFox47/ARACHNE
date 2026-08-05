@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addPhoto, createEntry, quickLog } from "@/app/fuel/actions";
 import { MAX_PHOTOS, PHOTO_KIND_LABEL, PHOTO_KIND_SHORT, type PhotoKind } from "@/lib/meal";
+import { useVisualViewport } from "./useVisualViewport";
 import { ANALYSING_PLACEHOLDER } from "@/lib/plan";
 import { Favourites, type FavouriteItem } from "./Favourites";
 import { WebLoader } from "./WebLoader";
@@ -261,6 +262,7 @@ function NoteSheet({
   const ref = useRef<HTMLInputElement>(null);
   const addRef = useRef<HTMLInputElement>(null);
   const [addKind, setAddKind] = useState<PhotoKind>("label");
+  const vp = useVisualViewport();
 
   useEffect(() => {
     // Focus without yanking the keyboard up on a phone the moment it appears —
@@ -287,8 +289,24 @@ function NoteSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-base/80 backdrop-blur-sm">
-      <div className="pad-safe-b panel mx-auto flex w-full max-w-lg flex-col gap-3 border-t-2 border-t-crimson p-4">
+    /*
+     * Anchored to the top, not the bottom.
+     *
+     * A bottom sheet is the right shape for something you only tap, and the
+     * wrong one for something you type into: the on-screen keyboard takes the
+     * lower half of a phone and this sheet was underneath it. The panel now
+     * hangs from the top and the dismiss area sits below it, so the field you
+     * are typing in stays above the keyboard rather than behind it.
+     *
+     * Sized from the visual viewport rather than dvh, because iOS Safari does
+     * not shrink the dynamic viewport when the keyboard opens — see
+     * useVisualViewport. Until real numbers arrive, CSS is left to it.
+     */
+    <div
+      className="fixed inset-x-0 top-0 z-40 flex h-dvh flex-col bg-base/80 backdrop-blur-sm"
+      style={vp.ready ? { top: vp.offsetTop, height: vp.height } : undefined}
+    >
+      <div className="pad-safe-t panel mx-auto flex w-full max-w-lg flex-col gap-3 overflow-y-auto border-b-2 border-b-crimson p-4">
         <div className="flex flex-col gap-1">
           <p className="display text-base text-ink">Anything the photo misses?</p>
           <p className="text-xs leading-relaxed text-muted">
@@ -383,6 +401,16 @@ function NoteSheet({
           {hint.trim() ? "Analyse with this" : "Analyse"}
         </button>
       </div>
+
+      {/* Tapping away analyses without a note rather than discarding: the entry
+          and its photos are already saved, so the only thing on this sheet is
+          optional context, and cancelling out of it should still get numbers. */}
+      <button
+        type="button"
+        onClick={() => onAnalyse(hint)}
+        aria-label="Analyse without adding anything"
+        className="flex-1"
+      />
     </div>
   );
 }

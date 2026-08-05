@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.5.7";
+export const APP_VERSION = "1.5.8";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-04";
@@ -32,6 +32,17 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.5.8",
+    date: "2026-08-04",
+    kind: "patch",
+    headline: "The meal note sheet moved off the keyboard",
+    changes: [
+      "The sheet that asks what the photo missed was anchored to the bottom, which is where a phone puts its keyboard — so the field you were typing into sat behind it. It hangs from the top now, with the dismiss area below.",
+      "Sized from the visual viewport rather than dvh: Chrome on Android shrinks the dynamic viewport when the keyboard opens and iOS Safari does not, so dvh alone leaves an iPhone with the sheet under the keyboard.",
+      "Tapping the backdrop analyses without a note rather than doing nothing — the photos are already saved, so dismissing should still get you numbers.",
+    ],
+  },
   {
     version: "1.5.7",
     date: "2026-08-04",
