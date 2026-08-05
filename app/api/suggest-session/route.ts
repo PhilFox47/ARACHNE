@@ -7,6 +7,7 @@ import { phaseForDay } from "@/lib/course";
 import {
   baselinePrescription,
   generatePrescription,
+  isPreview,
   storePrescription,
   storedPrescription,
 } from "@/lib/training";
@@ -52,6 +53,16 @@ export async function POST(req: Request) {
   const base = baselinePrescription(phase.id, dk, wk, date);
   if (base.exercises.length === 0) {
     return NextResponse.json({ ok: true, cached: false, prescription: base });
+  }
+
+  // A day that has not arrived is a preview: the plan's own numbers against
+  // where you stand today, worked out again every time you look. No model call
+  // — there is nothing to adapt to yet that will still be true on the day — and
+  // nothing written down. `storePrescription` refuses future dates anyway; the
+  // early return is here so browsing next month does not spend an API call per
+  // session either.
+  if (isPreview(date)) {
+    return NextResponse.json({ ok: true, cached: false, preview: true, prescription: base });
   }
 
   const prescription = await generatePrescription(base, isLowProfileWeek(wk));

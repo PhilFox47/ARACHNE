@@ -17,6 +17,50 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.6.1 — 2026-08-05
+
+Looking at next month's session no longer decides it.
+
+Opening a session issues its numbers and writes them down, so they cannot move
+under you halfway through a set. That is right for the day you are training. It
+was quietly destructive for the day you were only looking at.
+
+Browsing ahead to a Monday three weeks out opened that session, which fired the
+prescription, which stored it — movements and numbers both — at whatever level
+you happened to be on the evening you scrolled past it. A stored plan wins over
+a fresh calculation everywhere it is read, so three weeks later you would train
+that session at the level you were on the night you glanced at it. The skill
+tree had moved on. That day had not, and nothing said so.
+
+It also burned an AI call per session browsed, and would have let you log sets
+against a date that had not happened.
+
+Now: a day that has not arrived is a **preview**. It is worked out fresh from
+where you stand today, every time you look, and none of it is saved. No model
+call, nothing written down, and the session is read-only — it shows the
+movements, the doses and anything the tree is currently holding back, and says
+so on the page. The real prescription is issued on the morning of, from
+everything you have logged by then.
+
+Sessions already frozen by an earlier build are swept the next time any session
+is opened, so a day you browsed to last week will still be worked out properly
+when it arrives.
+
+Two smaller things the same investigation turned up:
+
+- A preview more than three weeks out used to read as though you had been away,
+  because the tree was being asked where you stood *on that future date* and
+  the intervening weeks contain no training yet. It now reads the tree as of
+  today whenever you look forward, and as of the day itself when you fill one
+  in late.
+- `npm run check` proves all of it: a future session is not stored, a row frozen
+  by an older build is deleted rather than ignored, and today and yesterday
+  still store normally.
+
+No schema change.
+
+---
+
 ## 1.6.0 — 2026-08-05
 
 Mastery takes months, not a good fortnight — and the tree now lasts the year.

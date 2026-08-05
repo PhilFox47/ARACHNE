@@ -17,7 +17,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs, foodEntries, sessionPlans, sessions } from "./db/schema";
-import { addDays } from "./dates";
+import { addDays, todayISO } from "./dates";
 import { getHqStats } from "./stats";
 import { apiKey, baseUrl } from "./nanogpt";
 import { activeVisionModel, getSettings } from "./settings";
@@ -47,6 +47,22 @@ import {
 import { stripFences } from "./vision";
 
 export type Metric = "reps" | "time";
+
+/**
+ * The date the tree should be read as of, for a session on `date`.
+ *
+ * Never later than today. A past session is judged by what you knew then; a
+ * future one by what you know now, because nothing else is known yet.
+ */
+function asOf(date: string): string {
+  const today = todayISO();
+  return date < today ? date : today;
+}
+
+/** Whether this date has not arrived — a session you can look at but not log. */
+export function isPreview(date: string): boolean {
+  return date > todayISO();
+}
 
 export interface PrescribedExercise {
   key: string;
@@ -195,10 +211,14 @@ export function baselinePrescription(
   const rounds = roundsForWeek(weekIdx);
   const source: Exercise[] = session ? [...session.main, ...(session.extras ?? [])] : [];
 
-  // Where the ladders currently put you, as of this session's date rather than
-  // the wall clock. Computed once for the whole session — it's one grouped
-  // query, and it must not change between two exercises.
-  const st = standings(date);
+  // Where the ladders put you. Read as of the session's own date when you are
+  // filling in a day you have already trained, and as of today when you are
+  // looking ahead — a preview of next month must not decide you have been away
+  // for three weeks just because those three weeks have not happened yet.
+  //
+  // Computed once for the whole session: it's one grouped query, and it must not
+  // change between two exercises.
+  const st = standings(asOf(date));
   const everLogged = loggedKeys();
 
   const exercises: PrescribedExercise[] = [];
@@ -372,7 +392,7 @@ function sweepPrescription(
   const exercises: PrescribedExercise[] = [];
   const seen = new Set<string>();
   const usedTiers = new Map<MovementFamily, Set<number>>();
-  const st = standings(date);
+  const st = standings(asOf(date));
   const everLogged = loggedKeys();
 
   for (const probe of slot.patrol.probes) {
@@ -917,7 +937,29 @@ export function lockedFor(phase: PhaseId, dayKey: DayKey, date?: string): Locked
   return out;
 }
 
+/**
+ * A prescription is a cache, not a record — and it must never be a cache of a
+ * day that has not happened.
+ *
+ * Opening a session issues its numbers and stores them, so they cannot move
+ * under you mid-session. That is right for the day you are training. It was
+ * catastrophic for the day you were merely looking at: browsing ahead to a
+ * Monday three weeks out wrote that Monday's movements and numbers into the
+ * database at whatever level you were on the evening you happened to scroll,
+ * and three weeks later you would train it at that level. The tree had moved;
+ * the session had not, because a stored row wins over a fresh calculation
+ * everywhere it is read.
+ *
+ * So nothing is ever stored ahead of time, and anything already stored ahead of
+ * time is swept. The training record is `exercise_logs`; throwing away a
+ * prescription for a day nobody has trained loses nothing.
+ */
+function dropFuturePlans(): void {
+  db.delete(sessionPlans).where(sql`${sessionPlans.date} > ${todayISO()}`).run();
+}
+
 export function storedPrescription(date: string): Prescription | null {
+  dropFuturePlans();
   const row = db.select().from(sessionPlans).where(eq(sessionPlans.date, date)).get();
   if (!row) return null;
   try {
@@ -936,6 +978,11 @@ export function storedPrescription(date: string): Prescription | null {
 }
 
 export function storePrescription(p: Prescription): void {
+  // A day that has not arrived gets no stored numbers. What you see when you
+  // browse ahead is a preview of what today would give you, recomputed every
+  // time you look, and settled for real on the morning of.
+  if (p.date > todayISO()) return;
+
   db.insert(sessionPlans)
     .values({
       date: p.date,

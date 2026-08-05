@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.6.0";
+export const APP_VERSION = "1.6.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-05";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.6.1",
+    date: "2026-08-05",
+    kind: "patch",
+    headline: "Looking at next month's session no longer decides it",
+    changes: [
+      "Opening a session writes its numbers down so they can't move mid-set. That was also happening when you merely browsed ahead — so a Monday three weeks out got frozen at whatever level you were on the evening you scrolled past it, and you would train it at that level when it arrived.",
+      "A day that hasn't arrived is a preview now: worked out fresh from where you stand today, every time you look, saved nowhere, and read-only. The real session is issued on the morning of, from everything you have logged by then.",
+      "Sessions already frozen by an earlier build are cleared the next time you open any session, so days you browsed to last week are worked out properly when they come round.",
+      "A preview more than three weeks out used to show you a level lower, because the tree was asked where you stood on that future date and the weeks in between contain no training yet.",
+    ],
+  },
   {
     version: "1.6.0",
     date: "2026-08-05",

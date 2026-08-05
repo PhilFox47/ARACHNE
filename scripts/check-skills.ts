@@ -7,6 +7,9 @@
  *      hurt. The week count is the part that cannot be crammed.
  *   2. A reset draws a line and deletes nothing. Sets before it stop counting
  *      towards the tree; every row is still there afterwards.
+ *   3. A day that has not arrived is never written down. Browsing ahead used to
+ *      issue and store that day's prescription, freezing its movements and its
+ *      numbers at whatever level you were on the evening you scrolled past it.
  *
  * Both are easy to break by accident from a long way away — a change to how logs
  * are aggregated, or one to the catalogue's `masterAt` — and both are invisible
@@ -33,7 +36,8 @@ async function main() {
   // Dynamic, because `lib/db` opens the file the moment it is imported and the
   // path above has to be in place first.
   const { db } = await import("../lib/db");
-  const { exerciseLogs, movementFeedback, sessions, skillResets } = await import("../lib/db/schema");
+  const { exerciseLogs, movementFeedback, sessionPlans, sessions, skillResets } =
+    await import("../lib/db/schema");
   const { cutoffs, movementRecords } = await import("../lib/skills");
   const { placeOnLadder, standings, sweepMovement } = await import("../lib/baseline");
   const { findMovement, ladder, masteryLabel, masterySessions, masterySets, masteryWeeks, movementKey } =
@@ -264,6 +268,64 @@ async function main() {
     "and tumbling opens at the bottom",
     placeOnLadder("Cartwheel", "5", null, crouched).blocked === null,
   );
+
+  // ── Looking ahead must not decide anything ──
+  console.log("\nlooking at a future session decides nothing about it");
+
+  const { storePrescription, storedPrescription } = await import("../lib/training");
+  const { todayISO, addDays } = await import("../lib/dates");
+
+  const ahead = addDays(todayISO(), 21);
+  const plan = (date: string) => ({
+    date,
+    dayKey: "mon" as const,
+    phase: 1 as const,
+    source: "plan" as const,
+    model: null,
+    exercises: [
+      {
+        key: "wall pushup",
+        name: "Wall push-up",
+        sets: 3,
+        metric: "reps" as const,
+        repRange: "8–12",
+        targetReps: 12,
+        targetSeconds: null,
+        targetWeightKg: null,
+        note: null,
+        perSide: false,
+        loaded: false,
+        substitutedFrom: null,
+      },
+    ],
+    locked: [],
+  });
+
+  storePrescription(plan(ahead));
+  ok("a session three weeks out is not stored", storedPrescription(ahead) === null);
+
+  // Anyone who browsed ahead on an older build has rows already frozen. They are
+  // swept on the next read rather than left to fire on the day they name.
+  db.insert(sessionPlans)
+    .values({
+      date: ahead,
+      dayKey: "mon",
+      phase: 1,
+      source: "plan",
+      payload: JSON.stringify(plan(ahead).exercises),
+      createdAt: ++clock,
+    })
+    .run();
+  ok("a row frozen by an older build is swept", storedPrescription(ahead) === null);
+  ok(
+    "and it is gone from the table, not just ignored",
+    db.select().from(sessionPlans).all().every((r) => r.date <= todayISO()),
+  );
+
+  storePrescription(plan(todayISO()));
+  ok("today's session is still stored", storedPrescription(todayISO()) !== null);
+  storePrescription(plan(addDays(todayISO(), -3)));
+  ok("and so is a day you are filling in late", storedPrescription(addDays(todayISO(), -3)) !== null);
 
   console.log("\na whole-tree reset covers every strand");
   log("2026-08-07", "Bodyweight squats", 20);

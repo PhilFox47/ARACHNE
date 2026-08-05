@@ -21,6 +21,7 @@ export function SessionLogger({
   initialRpe,
   initialNote,
   isDeload,
+  preview = false,
 }: {
   date: string;
   initialPrescription: Prescription;
@@ -30,6 +31,8 @@ export function SessionLogger({
   initialRpe: number | null;
   initialNote: string | null;
   isDeload: boolean;
+  /** The day has not arrived. Nothing is issued, stored, or logged. */
+  preview?: boolean;
 }) {
   const router = useRouter();
   const [rx, setRx] = useState(initialPrescription);
@@ -65,6 +68,10 @@ export function SessionLogger({
   );
 
   useEffect(() => {
+    // Never for a day that has not arrived. Issuing a prescription writes it
+    // down, and a session written down weeks early is a session frozen at the
+    // level you were on the evening you happened to scroll ahead.
+    if (preview) return;
     if (initialPrescription.source === "plan" && !completed) void fetchRx(false);
     // Only on mount — re-running would move the numbers mid-session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,6 +115,47 @@ export function SessionLogger({
       router.refresh();
     });
   };
+
+  // A day that has not arrived is read-only. There is nothing to log against
+  // it, and a set saved under a future date would put a reading on the ladder
+  // from a session nobody has done.
+  if (preview) {
+    return (
+      <div className="flex flex-col gap-4">
+        <ul className="flex flex-col gap-2">
+          {rx.exercises.map((ex) => (
+            <li key={ex.key} className="panel flex items-start justify-between gap-3 p-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="display text-base text-ink">{ex.name}</span>
+                {ex.note ? <span className="text-xs leading-relaxed text-muted-dim">{ex.note}</span> : null}
+              </div>
+              <span className="label-xs shrink-0 tabular">
+                {ex.sets} × {ex.metric === "time" ? `${ex.targetSeconds ?? "—"} s` : (ex.repRange ?? ex.targetReps ?? "—")}
+                {ex.perSide ? " /side" : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {rx.locked.length > 0 ? (
+          <div className="panel flex flex-col gap-2 border-l-2 border-l-cobalt p-4">
+            <p className="label-xs text-cobalt-lift">Not yet — {rx.locked.length} held back</p>
+            <ul className="flex flex-col gap-2">
+              {rx.locked.map((l) => (
+                <li key={l.name} className="flex flex-col gap-0.5">
+                  <span className="text-sm text-ink">{l.name}</span>
+                  <span className="text-xs leading-relaxed text-muted">{l.why}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs leading-relaxed text-muted-dim">
+              Earn these between now and then and they are in this session when it arrives.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

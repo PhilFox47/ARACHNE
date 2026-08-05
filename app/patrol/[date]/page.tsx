@@ -23,6 +23,7 @@ import {
   hasVrHeadset,
   loggedSets,
   personalBest,
+  isPreview,
   storedPrescription,
 } from "@/lib/training";
 import { SessionLogger } from "@/components/SessionLogger";
@@ -56,6 +57,10 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
   const pbs = Object.fromEntries(rx.exercises.map((e) => [e.key, personalBest(e.key)]));
 
   const isToday = date === todayISO();
+  // A day that has not arrived. The session is worked out fresh every time it is
+  // opened and nothing about it is written down — see `isPreview` in
+  // lib/training.
+  const preview = isPreview(date);
 
   return (
     <main className="relative z-10 mx-auto flex max-w-lg flex-col gap-5 px-4 pb-28 pt-3">
@@ -84,6 +89,21 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
         </section>
       ) : (
         <>
+          {preview ? (
+            <section className="panel flex flex-col gap-2 border-l-2 border-l-cobalt p-4">
+              <p className="label-xs text-cobalt-lift">Preview</p>
+              <p className="text-sm leading-relaxed text-ink">
+                This day hasn&apos;t happened yet, so these are the movements and numbers your
+                logs would earn you <em>today</em> — not a decision the app has made about it.
+              </p>
+              <p className="text-xs leading-relaxed text-muted">
+                Nothing here is saved. It is worked out again every time you look, and settled for
+                real on the morning of, from everything you have logged by then. Train well between
+                now and then and this session gets harder on its own.
+              </p>
+            </section>
+          ) : null}
+
           {slot ? (
             <section className="panel-hot flex flex-col gap-2 p-4">
               <div className="flex items-baseline justify-between gap-3">
@@ -143,6 +163,7 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
             initialRpe={row?.rpe ?? null}
             initialNote={row?.note ?? null}
             isDeload={isLowProfileWeek(wk)}
+            preview={preview}
           />
 
           {planSession.cooldown ? (

@@ -192,6 +192,15 @@ on a given day and that should survive a change of mind about how to interpret i
 destroyed and undo is a row delete. Pain reports deliberately survive a reset: a number can be
 re-taken, "this shape hurts me" cannot.
 
+A prescription is **issued on the day and never before**. Opening a session
+computes its numbers, runs them past the model and stores them, so they cannot
+move mid-set. A date in the future is a **preview** instead: computed live from
+where you stand today, read-only, and stored nowhere. Storing it was the bug —
+browsing ahead froze that day's movements and numbers at the level you were on
+the evening you scrolled past it, and a stored plan wins over a fresh
+calculation everywhere it is read. `storePrescription` refuses a future date and
+`storedPrescription` sweeps any that an older build left behind.
+
 The **model** never picks movements. It receives the resolved list and your recent history, and may
 adjust sets (±1, clamped), reps, seconds and load. Anything it invents is dropped; anything it omits
 keeps the plan's numbers. Every failure path falls back to the plan.
