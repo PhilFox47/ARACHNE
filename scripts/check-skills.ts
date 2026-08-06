@@ -40,7 +40,7 @@ async function main() {
     await import("../lib/db/schema");
   const { cutoffs, movementRecords } = await import("../lib/skills");
   const { placeOnLadder, standings, sweepMovement } = await import("../lib/baseline");
-  const { findMovement, ladder, masteryLabel, masterySessions, masterySets, masteryWeeks, movementKey } =
+  const { findMovement, ladder, masteryLabel, masterySessions, masterySets, masteryWeeks, movementKey, setClears } =
     await import("../lib/movements");
   const { dayKeyOf } = await import("../lib/dates");
 
@@ -61,7 +61,13 @@ async function main() {
       .get().id;
   };
 
-  const log = (date: string, name: string, reps: number | null, seconds: number | null = null) => {
+  const log = (
+    date: string,
+    name: string,
+    reps: number | null,
+    seconds: number | null = null,
+    weightKg: number | null = null,
+  ) => {
     db.insert(exerciseLogs)
       .values({
         sessionId: sessionFor(date),
@@ -71,6 +77,7 @@ async function main() {
         setIndex: 1,
         reps,
         seconds,
+        weightKg,
         createdAt: ++clock,
       })
       .run();
@@ -128,6 +135,55 @@ async function main() {
   ok("three weeks covered", rec(WAIST)?.cleanWeeks === 3);
   ok("mastered", rec(WAIST)?.mastered === true);
   ok("progress is full", rec(WAIST)?.progress === 1);
+
+  // ── Short of the bar is not a clean set ──
+  // The report that produced this: "I can do the incline inverted row, but only
+  // two reps — that is far from mastering." It is, and it always was, but the
+  // rule had never been demonstrated anywhere that a change could break it.
+  console.log("\na set short of the bar counts for nothing");
+
+  const ROW = "Incline inverted row";
+  for (const date of ["2026-08-03", "2026-08-10", "2026-08-17"]) {
+    for (let i = 0; i < 3; i++) log(date, ROW, 2);
+  }
+  ok("nine sets of two is not one clean session", rec(ROW)?.cleanSessions === 0);
+  ok("and the strand has not moved", (standings("2026-08-18").get("row")?.tier ?? -1) === 0);
+  ok("but the sets are still recorded", rec(ROW)?.sets === 9);
+  ok("and the best is remembered", rec(ROW)?.bestReps === 2);
+
+  // ── A loaded rung's bar is reps *and* kilograms ──
+  // Fifteen goblet squats with a 2 kg dumbbell and fifteen with the plan's own
+  // pair are the same number and not the same movement. Without the load in the
+  // rule, the light one unlocked the split squat, the Bulgarian split squat and
+  // the road to a pistol.
+  console.log("\na loaded rung wants the weight too");
+
+  const GOBLET = "Goblet squat";
+  const bar = findMovement(GOBLET)!.masterAt;
+  ok("the goblet squat states a load", bar.kg === 16, `${bar.reps} reps at ${bar.kg} kg`);
+
+  for (const date of ["2026-08-03", "2026-08-10", "2026-08-17", "2026-08-24"]) {
+    for (let i = 0; i < 3; i++) log(date, GOBLET, 15, null, 2);
+  }
+  ok("fifteen reps with 2 kg banks nothing", rec(GOBLET)?.cleanSessions === 0);
+
+  for (const date of ["2026-09-01", "2026-09-08", "2026-09-15", "2026-09-22"]) {
+    for (let i = 0; i < 3; i++) log(date, GOBLET, 15, null, 16);
+  }
+  ok(
+    "the same reps at 16 kg do",
+    rec(GOBLET)?.cleanSessions === 4,
+    `${rec(GOBLET)?.cleanSessions} clean`,
+  );
+  ok("and the heaviest set is remembered", rec(GOBLET)?.bestWeightKg === 16);
+  ok(
+    "a heavier set still counts — the load is a floor, not a target",
+    setClears(findMovement(GOBLET)!, 15, null, 24),
+  );
+  ok(
+    "the reps still have to be there",
+    !setClears(findMovement(GOBLET)!, 4, null, 40),
+  );
 
   // ── The feel check ──
   console.log("\na session you said hurt does not count");

@@ -31,12 +31,16 @@ import {
   masterySets,
   masteryWeeks,
   movementKey,
+  setClears,
 } from "../lib/movements";
 import { roundsForWeek } from "../lib/plan";
 
 const CURRENT = MIGRATIONS.length;
 
 const LEVELS = Object.values(MASTERY);
+
+/** Equipment keys that mean "this movement is done holding something". */
+const LOAD_KEYS = new Set(["dumbbells", "heavy_dumbbells", "kettlebell", "bands", "weight_vest"]);
 
 /**
  * How many sets a dose actually offers.
@@ -254,6 +258,23 @@ for (const m of MOVEMENTS) {
     masterySets(m) <= setsInDose(m.dose),
     `bar ${masterySets(m)}×, dose "${m.dose}" gives ${setsInDose(m.dose)}`,
   );
+  // A rung that needs weights must say how many. Reps alone are meaningless on
+  // a loaded movement: fifteen goblet squats with a 2 kg dumbbell and fifteen
+  // with the plan's own pair are the same number and not the same movement, and
+  // the light one used to unlock the entire road to a pistol squat.
+  const needsLoad =
+    m.loaded === true || (m.needs ?? []).some((k) => LOAD_KEYS.has(k));
+  if (m.track !== "groundwork") {
+    ok(
+      `"${m.name}" states a load if it is done with weights`,
+      !needsLoad || m.masterAt.kg !== undefined,
+      needsLoad ? `loaded, bar is ${masteryLabel(m)}` : "bodyweight",
+    );
+    ok(
+      `"${m.name}" does not state a load it is not done with`,
+      needsLoad || m.masterAt.kg === undefined,
+    );
+  }
   // Weeks cannot outnumber sessions — one clean session lands in one week — and
   // a bar met inside a single week is a good week rather than a movement owned.
   ok(
@@ -494,6 +515,54 @@ for (const m of MOVEMENTS) {
     );
     ok(`"${m.name}" gate on ${req.family} explains itself`, (req.why ?? "").length > 20);
   }
+}
+
+// ── One rule for what counts as a clean set ──
+// `setClears` lives in lib/movements and decides mastery. The set row draws the
+// same conclusion on the client, from the bar carried on the prescription,
+// because the catalogue is a server module it cannot import. Two copies of a
+// rule is two chances to be wrong, so they are compared here on every case that
+// distinguishes them.
+console.log("\nthe clean-set rule");
+
+/** The client's copy, lifted verbatim from components/SessionLogger.tsx. */
+function clientCounts(
+  bar: { reps?: number; seconds?: number; kg?: number } | undefined,
+  s: { reps: number | null; seconds: number | null; weightKg: number | null } | null,
+): boolean {
+  if (!bar || !s) return false;
+  if (bar.kg !== undefined && (s.weightKg ?? 0) < bar.kg) return false;
+  if (bar.reps !== undefined) return (s.reps ?? 0) >= bar.reps;
+  if (bar.seconds !== undefined) return (s.seconds ?? 0) >= bar.seconds;
+  return false;
+}
+
+let disagreements = 0;
+for (const m of MOVEMENTS) {
+  if (m.track === "groundwork") continue;
+  const bar = { reps: m.masterAt.reps, seconds: m.masterAt.seconds, kg: m.masterAt.kg };
+  for (const reps of [null, 0, 1, 2, 7, 11, 12, 15, 30, 60]) {
+    for (const seconds of [null, 0, 10, 20, 30, 45, 60, 90]) {
+      for (const weightKg of [null, 0, 2, 4, 8, 16, 24]) {
+        const server = setClears(m, reps, seconds, weightKg);
+        const client = clientCounts(bar, { reps, seconds, weightKg });
+        if (server !== client) disagreements++;
+      }
+    }
+  }
+}
+ok("the set row and the catalogue agree on every case", disagreements === 0, `${disagreements} differ`);
+
+// The bar has to be reachable from the dose. A rung whose prescription never
+// puts enough weight in your hands to clear its own load is a rung nobody
+// leaves — the same failure the set count invariant catches, in kilograms.
+for (const m of MOVEMENTS) {
+  if (m.masterAt.kg === undefined) continue;
+  ok(
+    `"${m.name}" asks for a load the plan actually puts in your hands`,
+    m.masterAt.kg <= 24,
+    `${m.masterAt.kg} kg — the equipment list assumes a pair around 8 kg`,
+  );
 }
 
 // ── Nothing is imported that package.json does not declare ──

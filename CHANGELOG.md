@@ -17,6 +17,70 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.8.0 — 2026-08-06
+
+Weight counts towards mastery, and the session says what a set has to be.
+
+Two halves to this, and the first one was already true.
+
+### Reps were always the bar
+
+"I can do the incline inverted row, but only 2 reps — that is far from
+mastering." It is, and it already counted for nothing. Every rung has carried a
+rep or second bar since THE WEB shipped, and a set short of it has never banked
+anything:
+
+```
+Incline inverted row → 2×12 reps, 3 times across 2 weeks
+   a set of  2 reps counts: false
+   a set of 11 reps counts: false
+   a set of 12 reps counts: true
+```
+
+What was missing was any sign of that **on the screen where you do the work**.
+THE WEB said "12 reps"; the session said nothing, so logging two looked exactly
+like logging twelve. Each movement now carries a line under its sets — *0/2 sets
+at 12 reps · that is what banks a session* — and a set that came up short is
+marked with a dot rather than a tick.
+
+### Weight was not the bar, and should have been
+
+Three rungs are done holding something, and their bars counted only the reps.
+Fifteen goblet squats with a 2 kg dumbbell and fifteen with the plan's own pair
+are the same number and not the same movement — and the light one unlocked the
+split squat, the Bulgarian split squat and the whole road to a pistol.
+
+The mastery bar takes kilograms now, as a floor the set must carry as well as
+the reps:
+
+| Rung | Bar | Where the number comes from |
+|---|---|---|
+| Goblet squat | 3×15 at **16 kg** | EXTRAPOLATED — the plan's own starting pair is "around 8 kg", held at the chest, and both of them is 16 |
+| Romanian deadlift | 3×12 at **16 kg** | EXTRAPOLATED — the same pair. Deliberately not heavier: the rung above is the *single-leg* version, a balance problem rather than a load one |
+| Jefferson curl | 3×8 at **4 kg** | The document names it outright, and here more is explicitly wrong |
+
+Always the **total** you are holding: two 8 kg dumbbells is 16, not 8. Each of
+those movements says so in its own instructions, because a bar in an undefined
+unit is worse than no bar. Heavier still counts — the load is a floor, not a
+target. The reps still have to be there: a heavy set of four is not a clean set
+of fifteen.
+
+**This is retroactive.** Goblet squats, Romanian deadlifts and Jefferson curls
+logged without a weight, or with a light one, stop counting towards mastering
+those three movements — the tree is derived from the logs on every read, so a
+strand may step back a rung. Nothing is deleted and no other movement is
+affected; log the weight from here and it climbs again.
+
+Three new invariants in `npm run check`: a rung done with weights must state how
+much and one done without must not; the load must be one the plan's own
+equipment can actually produce; and the set row's copy of the rule is compared
+against the catalogue's across every combination of reps, seconds and
+kilograms, because two copies of a rule is two chances to be wrong.
+
+No schema change.
+
+---
+
 ## 1.7.2 — 2026-08-05
 
 FUEL opens any day, so an entry you want gone can actually be reached.

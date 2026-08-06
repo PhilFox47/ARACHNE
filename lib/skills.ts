@@ -43,6 +43,8 @@ export interface MovementRecord {
   /** Best single set, whichever metric the movement uses. */
   bestReps: number | null;
   bestSeconds: number | null;
+  /** Heaviest set still counting, for the rungs whose bar names a load. */
+  bestWeightKg: number | null;
   /** Sets that counted — after any reset, and excluding nothing else. */
   sets: number;
   sessions: number;
@@ -66,6 +68,8 @@ interface LogRow {
   date: string;
   reps: number | null;
   seconds: number | null;
+  /** Read because a loaded rung's bar is reps *and* kilograms. */
+  weightKg: number | null;
   createdAt: number;
 }
 
@@ -150,6 +154,7 @@ export function movementRecords(): Map<string, MovementRecord> {
       date: exerciseLogs.date,
       reps: exerciseLogs.reps,
       seconds: exerciseLogs.seconds,
+      weightKg: exerciseLogs.weightKg,
       createdAt: exerciseLogs.createdAt,
     })
     .from(exerciseLogs)
@@ -184,6 +189,7 @@ export function movementRecords(): Map<string, MovementRecord> {
 
     let bestReps: number | null = null;
     let bestSeconds: number | null = null;
+    let bestWeightKg: number | null = null;
     let sets = 0;
     let bestCleanSets = 0;
     let cleanSessions = 0;
@@ -200,7 +206,8 @@ export function movementRecords(): Map<string, MovementRecord> {
       for (const s of daySets) {
         if (s.reps !== null) bestReps = Math.max(bestReps ?? 0, s.reps);
         if (s.seconds !== null) bestSeconds = Math.max(bestSeconds ?? 0, s.seconds);
-        if (setClears(movement, s.reps, s.seconds)) clean++;
+        if (s.weightKg !== null) bestWeightKg = Math.max(bestWeightKg ?? 0, s.weightKg);
+        if (setClears(movement, s.reps, s.seconds, s.weightKg)) clean++;
       }
 
       // A day you said it hurt is not a day it was under control, whatever the
@@ -232,6 +239,7 @@ export function movementRecords(): Map<string, MovementRecord> {
       movement,
       bestReps,
       bestSeconds,
+      bestWeightKg,
       sets,
       sessions: days.size,
       lastDate,

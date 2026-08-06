@@ -122,6 +122,20 @@ export interface Prerequisite {
 export interface MasteryBar {
   reps?: number;
   seconds?: number;
+  /**
+   * Kilograms the set must carry, on a movement where reps alone say nothing.
+   *
+   * Fifteen goblet squats with a 2 kg dumbbell and fifteen with the plan's own
+   * pair are the same number and not the same movement, and without this the
+   * first of them unlocked the split squat, the Bulgarian split squat and the
+   * road to a pistol. Only the loaded rungs carry one — `npm run check` fails a
+   * rung that needs weights and does not state how much.
+   *
+   * Always the TOTAL being held: two 8 kg dumbbells at the chest is 16, not 8.
+   * The movement says so in its own setup lines, because a bar in an undefined
+   * unit is worse than no bar.
+   */
+  kg?: number;
   /** Sets in one session that must clear the bar. */
   sets?: number;
   /** Separate sessions that must do that. */
@@ -1301,12 +1315,17 @@ export const MOVEMENTS: Movement[] = [
       "Drive up without letting the weight pull you forward.",
     ],
     watch:
-      "Chest tall and elbows in. Letting the weight drift away from the body turns a leg exercise into a lower-back one.",
+      "Chest tall and elbows in. Letting the weight drift away from the body turns a leg exercise into a lower-back one. Log the total you are holding — both dumbbells, not one of them.",
     cues: ["Weight at the chest", "Elbows inside the knees", "Chest tall"],
     trains: ["quads", "glutes", "upper back posture", "squat depth"],
     needs: LOAD,
     loaded: true,
-    masterAt: { ...MASTERY.working, reps: 15 },
+    // 16 kg is EXTRAPOLATED, and it is the plan's own starting pair: the
+    // equipment list assumes "a pair around 8 kg", the document says both
+    // dumbbells at the chest, and both of them is 16. Fifteen reps with a 2 kg
+    // weight is fifteen reps of something else, and it used to open the whole
+    // single-leg road to a pistol squat.
+    masterAt: { ...MASTERY.working, reps: 15, kg: 16 },
   },
   {
     name: "Split squat",
@@ -1467,12 +1486,16 @@ export const MOVEMENTS: Movement[] = [
       "Drive the hips forward to stand.",
     ],
     watch:
-      "Stop the moment the lower back rounds. That is the number, whatever it is — this is the movement where ego costs the most.",
+      "Stop the moment the lower back rounds. That is the number, whatever it is — this is the movement where ego costs the most. Log the total in both hands.",
     cues: ["Hips back, not down", "Long back", "Weights close to the legs"],
     trains: ["hamstrings", "glutes", "spinal position under load"],
     needs: LOAD,
     loaded: true,
-    masterAt: { ...MASTERY.working, reps: 12 },
+    // 16 kg, EXTRAPOLATED, the same starting pair. Deliberately not heavier:
+    // the rung above this is the single-leg version, which is a balance problem
+    // rather than a load problem, so a bar that demanded a real deadlift number
+    // would gate the wrong thing.
+    masterAt: { ...MASTERY.working, reps: 12, kg: 16 },
   },
   {
     name: "Single-leg Romanian deadlift",
@@ -2643,7 +2666,10 @@ export const MOVEMENTS: Movement[] = [
     trains: ["spinal flexion under control", "hamstrings", "posterior chain range"],
     needs: LOAD,
     loaded: true,
-    masterAt: { ...MASTERY.foundation, reps: 8 },
+    // The document names this one outright: 4 kg. The only weight in the plan
+    // that is a specification rather than a floor — the watch line above is
+    // about not exceeding it, and it means that.
+    masterAt: { ...MASTERY.foundation, reps: 8, kg: 4 },
   },
   {
     name: "Reverse plank",
@@ -3493,7 +3519,15 @@ export function tierOf(family: MovementFamily, name: string): number | null {
 }
 
 /** Whether one set clears the bar. Not mastery on its own — see lib/skills.ts. */
-export function setClears(m: Movement, reps: number | null, seconds: number | null): boolean {
+export function setClears(
+  m: Movement,
+  reps: number | null,
+  seconds: number | null,
+  weightKg: number | null = null,
+): boolean {
+  // The load is a floor the set has to carry as well as the reps, not an
+  // alternative to them. A heavy set of four is not a clean set of fifteen.
+  if (m.masterAt.kg !== undefined && (weightKg ?? 0) < m.masterAt.kg) return false;
   if (m.masterAt.reps !== undefined) return (reps ?? 0) >= m.masterAt.reps;
   if (m.masterAt.seconds !== undefined) return (seconds ?? 0) >= m.masterAt.seconds;
   return false;
@@ -3501,8 +3535,9 @@ export function setClears(m: Movement, reps: number | null, seconds: number | nu
 
 /** The bar for one set, as a phrase. */
 export function setBarLabel(m: Movement): string {
-  if (m.masterAt.reps !== undefined) return `${m.masterAt.reps} reps`;
-  if (m.masterAt.seconds !== undefined) return `${m.masterAt.seconds} s`;
+  const load = m.masterAt.kg !== undefined ? ` at ${m.masterAt.kg} kg` : "";
+  if (m.masterAt.reps !== undefined) return `${m.masterAt.reps} reps${load}`;
+  if (m.masterAt.seconds !== undefined) return `${m.masterAt.seconds} s${load}`;
   return "—";
 }
 

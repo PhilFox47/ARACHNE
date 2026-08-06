@@ -30,7 +30,15 @@ import {
   type Exercise,
   type PhaseId,
 } from "./plan";
-import { findMovement, ladder, masteryLabel, type Movement, type MovementFamily } from "./movements";
+import {
+  findMovement,
+  ladder,
+  masteryLabel,
+  masterySets,
+  setBarLabel,
+  type Movement,
+  type MovementFamily,
+} from "./movements";
 import {
   baselineEndDate,
   baselineSlotFor,
@@ -86,6 +94,18 @@ export interface PrescribedExercise {
    * question asked every session is a question that stops being answered.
    */
   firstTime?: boolean;
+  /**
+   * What a set of this has to be to count towards mastering the movement, and
+   * how many such sets the session needs.
+   *
+   * On the prescription rather than looked up in the row, because the row is a
+   * client component and the catalogue is a 3,000-line server module. Absent on
+   * groundwork, which is never mastered, and on anything the catalogue does not
+   * know.
+   *
+   * Optional so that a session stored before this shipped still parses.
+   */
+  bar?: { reps?: number; seconds?: number; kg?: number; sets: number; label: string };
 }
 
 /**
@@ -278,6 +298,7 @@ export function baselinePrescription(
 
     const p = parseDose(use.dose, rounds, false, findMovement(use.name)?.metric);
     exercises.push({
+      ...barFor(use.name),
       key,
       name: use.name,
       sets: p.sets,
@@ -443,6 +464,7 @@ function sweepPrescription(
     seen.add(key);
 
     exercises.push({
+      ...barFor(name),
       key,
       name,
       sets: probe.sets,
@@ -484,6 +506,28 @@ function sweepUp(
     return strand[tier];
   }
   return null;
+}
+
+/**
+ * The mastery bar for a movement, in the shape the set row needs.
+ *
+ * "You can do two of these" and "two of these counts" are different sentences,
+ * and until now only THE WEB said the second one. Logging two reps of a rung
+ * that wants twelve looked exactly like progress on the screen where you were
+ * actually doing the work.
+ */
+function barFor(name: string): { bar?: PrescribedExercise["bar"] } {
+  const m = findMovement(name);
+  if (!m || m.track === "groundwork") return {};
+  return {
+    bar: {
+      reps: m.masterAt.reps,
+      seconds: m.masterAt.seconds,
+      kg: m.masterAt.kg,
+      sets: masterySets(m),
+      label: setBarLabel(m),
+    },
+  };
 }
 
 /** Every movement with at least one logged set, for the first-time check. */
@@ -976,7 +1020,15 @@ export function storedPrescription(date: string): Prescription | null {
       phase: row.phase as PhaseId,
       source: row.source,
       model: row.model,
-      exercises: JSON.parse(row.payload) as PrescribedExercise[],
+      // The numbers are frozen on purpose — they must not move mid-session —
+      // but the mastery bar is not a number the session decided. It comes from
+      // the catalogue, so it is re-attached on read for the same reason the
+      // locked list is recomputed: change the bar and every screen should say
+      // the new one, including a session stored before the bar existed.
+      exercises: (JSON.parse(row.payload) as PrescribedExercise[]).map((e) => ({
+        ...e,
+        ...barFor(e.name),
+      })),
       locked: lockedFor(row.phase as PhaseId, row.dayKey as DayKey, row.date),
     };
   } catch {

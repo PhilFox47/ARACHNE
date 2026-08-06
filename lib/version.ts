@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.7.2";
+export const APP_VERSION = "1.8.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-05";
+export const RELEASED = "2026-08-06";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.8.0",
+    date: "2026-08-06",
+    kind: "minor",
+    headline: "Weight counts towards mastery, and the session shows the bar",
+    changes: [
+      "Reps were always the bar — two reps of a movement that wants twelve has never banked anything. What was missing was any sign of that on the screen where you do the work. Every movement now shows \u201c0/2 sets at 12 reps \u00b7 that is what banks a session\u201d, and a set that came up short is marked with a dot rather than a tick.",
+      "The three rungs you do holding something now count the weight as well as the reps: goblet squat 3\u00d715 at 16 kg, Romanian deadlift 3\u00d712 at 16 kg, Jefferson curl 3\u00d78 at 4 kg — the last of those is the document's own number.",
+      "Always the total you are holding: two 8 kg dumbbells is 16, not 8. Heavier still counts; the load is a floor, not a target. The reps still have to be there.",
+      "This is retroactive. Those three movements logged with no weight, or a light one, stop counting towards mastering them, so a leg strand may step back a rung. Nothing is deleted — log the weight and it climbs again.",
+      "Fifteen goblet squats with a 2 kg dumbbell used to unlock the split squat, the Bulgarian split squat and the road to a pistol.",
+    ],
+  },
   {
     version: "1.7.2",
     date: "2026-08-05",

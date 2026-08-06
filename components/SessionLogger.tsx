@@ -311,6 +311,21 @@ export function SessionLogger({
   );
 }
 
+/**
+ * Whether one logged set counts towards mastering the movement.
+ *
+ * The same rule as `setClears` in lib/movements, which is the server's copy and
+ * the authority — `npm run check` compares the two so they cannot drift apart
+ * without the build saying so.
+ */
+function setCounts(bar: PrescribedExercise["bar"], s: LoggedSet | null): boolean {
+  if (!bar || !s) return false;
+  if (bar.kg !== undefined && (s.weightKg ?? 0) < bar.kg) return false;
+  if (bar.reps !== undefined) return (s.reps ?? 0) >= bar.reps;
+  if (bar.seconds !== undefined) return (s.seconds ?? 0) >= bar.seconds;
+  return false;
+}
+
 function ExerciseCard({
   ex,
   date,
@@ -326,6 +341,7 @@ function ExerciseCard({
 }) {
   const byIndex = new Map(sets.map((s) => [s.setIndex, s]));
   const allDone = sets.length >= ex.sets;
+  const counting = sets.filter((s) => setCounts(ex.bar, s)).length;
 
   return (
     <div className={`panel flex flex-col gap-3 p-3 ${allDone ? "border-crimson-dim" : ""}`}>
@@ -363,12 +379,31 @@ function ExerciseCard({
               targetSeconds={ex.targetSeconds}
               targetWeight={ex.targetWeightKg}
               perSide={ex.perSide}
-              showWeight={ex.loaded || byIndex.get(i)?.weightKg != null}
+              showWeight={ex.loaded || ex.bar?.kg !== undefined || byIndex.get(i)?.weightKg != null}
+              counts={setCounts(ex.bar, byIndex.get(i) ?? null)}
               onSave={(v) => onSave(i, v)}
             />
           </li>
         ))}
       </ul>
+
+      {/* ── What a set has to be to count ──
+          THE WEB has always said this; the screen you are actually working on
+          never did. Logging two reps of something that wants twelve looked
+          exactly like progress. */}
+      {ex.bar ? (
+        <p className="label-xs">
+          {counting >= ex.bar.sets ? (
+            <span className="text-crimson">
+              {counting}/{ex.bar.sets} sets counted — this session banks towards mastery
+            </span>
+          ) : (
+            <>
+              {counting}/{ex.bar.sets} sets at {ex.bar.label} · that is what banks a session
+            </>
+          )}
+        </p>
+      ) : null}
 
       {/* Asked once, after the work is in, and only on a movement new to you.
           Any earlier and it is a question about something that hasn't happened. */}
@@ -445,6 +480,7 @@ function SetRow({
   targetWeight,
   perSide,
   showWeight,
+  counts,
   onSave,
 }: {
   index: number;
@@ -456,6 +492,8 @@ function SetRow({
   targetWeight: number | null;
   perSide: boolean;
   showWeight: boolean;
+  /** This set cleared the movement's mastery bar. */
+  counts: boolean;
   onSave: (v: { reps?: number | null; weightKg?: number | null; seconds?: number | null }) => void;
 }) {
   const [primary, setPrimary] = useState(
@@ -506,12 +544,21 @@ function SetRow({
       <button
         type="button"
         onClick={filled ? () => { setPrimary(""); setWeight(""); commit("", ""); } : fillTarget}
-        aria-label={filled ? `Clear set ${index + 1}` : `Fill set ${index + 1} with target`}
+        aria-label={
+          filled
+            ? `Clear set ${index + 1}${counts ? " — counted towards mastery" : " — short of the mastery bar"}`
+            : `Fill set ${index + 1} with target`
+        }
+        title={filled && !counts ? "Logged, but short of the bar for mastering this movement" : undefined}
         className={`flex h-9 w-9 shrink-0 items-center justify-center border text-xs ${
-          filled ? "border-crimson bg-crimson/15 text-crimson" : "border-edge text-muted-dim"
+          filled
+            ? counts
+              ? "border-crimson bg-crimson/15 text-crimson"
+              : "border-edge bg-panel-2 text-muted"
+            : "border-edge text-muted-dim"
         }`}
       >
-        {filled ? "✓" : index + 1}
+        {filled ? (counts ? "✓" : "·") : index + 1}
       </button>
 
       <input
