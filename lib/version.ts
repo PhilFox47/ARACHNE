@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.8.0";
+export const APP_VERSION = "1.9.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-06";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.9.0",
+    date: "2026-08-06",
+    kind: "minor",
+    headline: "Every movement in a session explains itself",
+    changes: [
+      "An \u24d8 next to each movement's name opens the full write-up — setting up, the rep, what goes wrong, the cues, what it trains. The same words THE WEB has always shown, from the same catalogue entry, on the screen where you are actually doing the work.",
+      "Both sheets now show where the rung sits: what it is built on, what it becomes, and what mastering it opens somewhere else in the tree.",
+      "That last part was never visible anywhere. The wall handstand opens the feet-elevated pike push-up and the cartwheel; the shoulder roll from a crouch opens both the cartwheel and the safety vault; the plank opens nine things. It is the best reason to do a boring rung properly.",
+      "Warm-ups and the dumbbell work get the button too — they are explained just as fully, they simply have nothing to master.",
+    ],
+  },
   {
     version: "1.8.0",
     date: "2026-08-06",

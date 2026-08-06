@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { NodeState, WebNode, WebStrand, WebSummary } from "@/lib/web";
 import { FAMILY_LABELS, masteryLabel, setBarLabel, type MovementFamily } from "@/lib/movements";
+import { MovementBriefBody } from "./MovementBrief";
 import { resetSkills, undoReset } from "@/app/web/actions";
 import { TensionLine } from "./TensionLine";
 
@@ -493,8 +494,6 @@ function Sheet({ node, onClose }: { node: WebNode; onClose: () => void }) {
           </button>
         </div>
 
-        <p className="text-sm leading-relaxed text-muted">{m.summary}</p>
-
         {node.sets > 0 ? (
           <div className="grid grid-cols-3 border border-edge">
             <Cell
@@ -566,63 +565,11 @@ function Sheet({ node, onClose }: { node: WebNode; onClose: () => void }) {
           </div>
         ) : null}
 
-        <Block title="Setting up" items={m.setup} />
-        <Block title="The rep" items={m.execution} />
-
-        <div className="flex flex-col gap-1.5">
-          <p className="label-xs text-crimson">What goes wrong</p>
-          <p className="border-l-2 border-l-crimson pl-3 text-sm leading-relaxed text-muted">{m.watch}</p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <p className="label-xs">Cues</p>
-          <div className="flex flex-wrap gap-2">
-            {m.cues.map((c) => (
-              <span key={c} className="border border-edge px-2.5 py-1 text-xs text-ink">
-                {c}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <p className="label-xs">Trains</p>
-          <div className="flex flex-wrap gap-2">
-            {m.trains.map((t) => (
-              <span key={t} className="border border-cobalt/40 px-2.5 py-1 text-xs text-cobalt-lift">
-                {t}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {m.requires && m.requires.length > 0 ? (
-          <div className="flex flex-col gap-1.5">
-            <p className="label-xs">Needs from elsewhere</p>
-            {m.requires.map((r) => (
-              <p key={r.family} className="text-xs leading-relaxed text-muted-dim">
-                {r.why}
-              </p>
-            ))}
-          </div>
-        ) : null}
+        {/* The explanation itself is shared with the session screen — see
+            components/MovementBrief. Everything above this line is state THE
+            WEB knows and a set row does not. */}
+        <MovementBriefBody m={m} tree={node.tree} />
       </div>
-    </div>
-  );
-}
-
-function Block({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="label-xs">{title}</p>
-      <ol className="flex flex-col gap-1.5">
-        {items.map((s, i) => (
-          <li key={s} className="flex gap-2.5">
-            <span className="numeral shrink-0 text-xs text-crimson tabular">{i + 1}</span>
-            <span className="text-sm leading-relaxed text-muted">{s}</span>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }

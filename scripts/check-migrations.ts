@@ -31,6 +31,7 @@ import {
   masterySets,
   masteryWeeks,
   movementKey,
+  opensElsewhere,
   setClears,
 } from "../lib/movements";
 import { roundsForWeek } from "../lib/plan";
@@ -455,6 +456,49 @@ for (const m of MOVEMENTS) {
         `tier ${req.tier} of ${strand.length}`,
       );
     }
+  }
+}
+
+// A numeric gate is satisfied by the best number ever logged on the gating
+// strand, so asking for more than any rung's mastery bar is legitimate and
+// deliberate — the wall handstand push-up wants 60 s upside down off a rung
+// whose bar is 30, which means "keep holding it longer", not "master something
+// else". What is not legitimate is a number so far past every bar that no
+// amount of working the strand produces it. Three times the strand's best bar
+// is the line: generous enough for the document's own checkpoints, tight enough
+// that a stray zero fails the build.
+const GATE_HEADROOM = 3;
+for (const m of MOVEMENTS) {
+  if (m.track === "groundwork") continue;
+  for (const req of m.requires ?? []) {
+    const strand = ladder(req.family);
+    for (const [unit, want] of [
+      ["reps", req.reps],
+      ["seconds", req.seconds],
+    ] as const) {
+      if (want === undefined) continue;
+      const best = Math.max(0, ...strand.map((r) => r.masterAt[unit] ?? 0));
+      ok(
+        `the ${req.family} gate on "${m.name}" is within reach`,
+        want <= best * GATE_HEADROOM,
+        `wants ${want} ${unit}, the strand's best bar is ${best}`,
+      );
+    }
+  }
+}
+
+// The reverse lookup the brief renders must credit exactly one rung per gate —
+// the lowest that satisfies it. Crediting several would tell you the archer
+// push-up unlocks the burpee, which the plain push-up opened months earlier.
+for (const family of LADDER_FAMILIES) {
+  for (const m of MOVEMENTS) {
+    if (m.track === "groundwork") continue;
+    const openers = ladder(family).filter((r) => opensElsewhere(r).some((o) => o.name === m.name));
+    ok(
+      `at most one ${family} rung claims to open "${m.name}"`,
+      openers.length <= 1,
+      openers.map((o) => o.name).join(", "),
+    );
   }
 }
 

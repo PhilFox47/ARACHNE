@@ -3508,6 +3508,43 @@ export const GROUNDWORK_FAMILIES: MovementFamily[] = FAMILY_ORDER.filter(
   (f) => groundwork(f).length > 0,
 );
 
+/**
+ * What mastering this rung opens somewhere else in the tree.
+ *
+ * The reverse of `requires`, and the half of the tree that was never visible:
+ * a strand's own next rung is obvious from the list, but nothing said that the
+ * shoulder roll from a crouch is what the cartwheel and the safety vault are
+ * both waiting on. That is the answer to "why am I doing this", and it is the
+ * best reason to do the boring rung properly.
+ *
+ * A numeric gate is credited to the *lowest* rung whose bar satisfies it, not
+ * to every rung above it — otherwise the archer push-up would claim to unlock
+ * the burpee, which the plain push-up opened months earlier.
+ */
+export function opensElsewhere(m: Movement): Movement[] {
+  if (isGroundwork(m)) return [];
+  const strand = ladder(m.family);
+  const out: Movement[] = [];
+
+  for (const other of MOVEMENTS) {
+    if (isGroundwork(other) || other.family === m.family) continue;
+    for (const req of other.requires ?? []) {
+      if (req.family !== m.family) continue;
+
+      // The lowest rung that satisfies every part of the gate is the one that
+      // opens it. Anything above is already past the question.
+      const satisfies = (r: Movement) =>
+        (req.tier === undefined || r.tier >= req.tier) &&
+        (req.reps === undefined || (r.masterAt.reps ?? 0) >= req.reps) &&
+        (req.seconds === undefined || (r.masterAt.seconds ?? 0) >= req.seconds);
+
+      const lowest = strand.find(satisfies);
+      if (lowest && lowest.name === m.name) out.push(other);
+    }
+  }
+  return out;
+}
+
 export function familyOf(name: string): MovementFamily | null {
   return findMovement(name)?.family ?? null;
 }

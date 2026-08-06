@@ -27,6 +27,9 @@ import {
   storedPrescription,
 } from "@/lib/training";
 import { SessionLogger } from "@/components/SessionLogger";
+import { findMovement, type Movement } from "@/lib/movements";
+import { treeContext } from "@/lib/web";
+import type { TreeContext } from "@/components/MovementBrief";
 import { BottomNav } from "@/components/BottomNav";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +55,21 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
 
   const row = db.select().from(sessions).where(eq(sessions.date, date)).get();
   const rx = storedPrescription(date) ?? baselinePrescription(phase.id, dk, wk, date);
+
+  /**
+   * The catalogue entry behind every movement in the session, so the ⓘ on each
+   * card can explain it without a round-trip.
+   *
+   * Sent alongside the prescription rather than stored on it: the explanation
+   * belongs to the movement, not to the day, and freezing a copy of it into
+   * every saved session would mean an improved warning never reached the
+   * sessions that were already written.
+   */
+  const briefs: Record<string, { m: Movement; tree: TreeContext }> = {};
+  for (const e of rx.exercises) {
+    const m = findMovement(e.name);
+    if (m) briefs[e.key] = { m, tree: treeContext(m) };
+  }
 
   const logged = row ? loggedSets(row.id) : {};
   const pbs = Object.fromEntries(rx.exercises.map((e) => [e.key, personalBest(e.key)]));
@@ -164,6 +182,7 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
             initialNote={row?.note ?? null}
             isDeload={isLowProfileWeek(wk)}
             preview={preview}
+            briefs={briefs}
           />
 
           {planSession.cooldown ? (

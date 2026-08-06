@@ -20,11 +20,13 @@ import {
   masterySets,
   masteryWeeks,
   masteryLabel,
+  opensElsewhere,
   type Movement,
   type MovementFamily,
   type Prerequisite,
 } from "./movements";
 import { lockedBy, standings, type Standing } from "./baseline";
+import type { TreeContext } from "@/components/MovementBrief";
 import { movementRecords, resetSummary, type MovementRecord, type ResetSummary } from "./skills";
 
 export type NodeState =
@@ -38,6 +40,25 @@ export type NodeState =
   | "locked"
   /** You own none of the kit it needs. */
   | "unequipped";
+
+/**
+ * Where a rung sits in the tree, in the shape the shared brief renders.
+ *
+ * Built on the server because it needs the whole catalogue — the reverse gate
+ * lookup walks every movement — and shipped as plain strings so the session
+ * screen can show the same thing without importing 3,000 lines of it.
+ */
+export function treeContext(m: Movement): TreeContext {
+  const strand = ladder(m.family);
+  return {
+    tier: m.tier,
+    rungs: strand.length,
+    below: m.tier > 0 ? (strand[m.tier - 1]?.name ?? null) : null,
+    above: strand[m.tier + 1]?.name ?? null,
+    opens: opensElsewhere(m).map((o) => o.name),
+    mastery: masteryLabel(m),
+  };
+}
 
 export interface WebNode {
   movement: Movement;
@@ -62,6 +83,8 @@ export interface WebNode {
   gate: Prerequisite | null;
   /** What clears the tier below, shown on the node above it. */
   unlockedBy: string | null;
+  /** Where this rung sits: what it is built on, what it becomes, what it opens. */
+  tree: TreeContext | null;
 }
 
 export interface WebStrand {
@@ -156,6 +179,7 @@ export function buildWeb(): WebSummary {
         gate,
         unlockedBy:
           i > 0 ? `${masteryLabel(movements[i - 1])} of ${movements[i - 1].name.toLowerCase()}` : null,
+        tree: treeContext(m),
       };
 
       if (state === "available" && !rec && m.tier > 0) nextUp.push(node);
@@ -199,6 +223,7 @@ export function buildWeb(): WebSummary {
         progress: 0,
         gate: null,
         unlockedBy: null,
+        tree: null,
       } satisfies WebNode;
     }),
   })).filter((g) => g.nodes.length > 0);

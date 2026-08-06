@@ -17,6 +17,56 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.9.0 — 2026-08-06
+
+The explanation moved to where the work happens.
+
+THE WEB has carried a proper write-up of every movement since v1.2.0 — how to
+set up, how to do the rep, what goes wrong on it, the cues, what it trains. It
+lived on a screen you had to leave the session to reach, which is to say it was
+three taps away at exactly the moment it was worth reading. Standing over a mat
+trying to remember which shoulder the roll goes over is not when anyone
+navigates to a reference page.
+
+Every movement in a session now has an **ⓘ** next to its name. It opens the same
+write-up, from the same catalogue entry, rendered by the same component — THE
+WEB and the session share it, so there is no second copy of the words to drift.
+Warm-ups and the dumbbell accessories have one too; they are explained just as
+fully and simply have nothing to master.
+
+### And where the movement sits
+
+Both sheets gained a section that neither had: **where this rung is in the
+tree.**
+
+- What it is **built on** — the rung underneath it.
+- What it **becomes** — the rung above.
+- What **mastering it opens somewhere else**.
+
+That last one is the half of the tree that was never visible. A strand's own
+next rung is obvious from the list; that the shoulder roll from a crouch is what
+*both* the cartwheel and the safety vault are waiting on is not, and it is the
+best possible reason to do a boring rung properly. The wall handstand opens the
+feet-elevated pike push-up and the cartwheel. The plank opens nine things.
+
+A gate is credited to the *lowest* rung that satisfies it, never to every rung
+above — otherwise the archer push-up would claim to unlock the burpee, which
+the plain push-up opened months earlier.
+
+Two new invariants, one of which corrected itself while being written:
+
+- At most one rung of a strand may claim to open any given movement.
+- A numeric gate must be within reach — no more than three times the best bar in
+  the strand that answers it. The first version of this check demanded that some
+  rung's bar *satisfy* every gate, and it failed on the three 60-second handstand
+  gates. Those are correct: a gate reads the best number you have ever logged, so
+  "60 s off a rung whose bar is 30" means keep holding it longer, which is the
+  document's own way of writing a checkpoint. The check was wrong, not the tree.
+
+No schema change.
+
+---
+
 ## 1.8.0 — 2026-08-06
 
 Weight counts towards mastery, and the session says what a set has to be.

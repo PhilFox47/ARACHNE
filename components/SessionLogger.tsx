@@ -6,6 +6,8 @@ import type { Prescription, PrescribedExercise } from "@/lib/training";
 import { recordFeel, saveSet, setCompleted } from "@/app/patrol/actions";
 import { ImpactBurst } from "./ImpactBurst";
 import { HoldTimer } from "./HoldTimer";
+import { MovementBriefBody, type TreeContext } from "./MovementBrief";
+import type { Movement } from "@/lib/movements";
 import { primeSound } from "./holdSound";
 import { WebLoader } from "./WebLoader";
 import { TensionLine } from "./TensionLine";
@@ -24,6 +26,7 @@ export function SessionLogger({
   initialNote,
   isDeload,
   preview = false,
+  briefs = {},
 }: {
   date: string;
   initialPrescription: Prescription;
@@ -35,6 +38,8 @@ export function SessionLogger({
   isDeload: boolean;
   /** The day has not arrived. Nothing is issued, stored, or logged. */
   preview?: boolean;
+  /** The catalogue entry behind each movement, keyed by exercise key. */
+  briefs?: Record<string, MovementBrief>;
 }) {
   const router = useRouter();
   const [rx, setRx] = useState(initialPrescription);
@@ -44,6 +49,8 @@ export function SessionLogger({
   const [note, setNote] = useState(initialNote ?? "");
   const [burst, setBurst] = useState<{ x: number; y: number } | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  /** Which movement's explanation is open, by exercise key. */
+  const [showing, setShowing] = useState<string | null>(null);
   const [, start] = useTransition();
 
   const isBaseline = initialPrescription.phase === 0;
@@ -118,17 +125,23 @@ export function SessionLogger({
     });
   };
 
+  const brief = briefs[showing ?? ""] ?? null;
+
   // A day that has not arrived is read-only. There is nothing to log against
   // it, and a set saved under a future date would put a reading on the ladder
   // from a session nobody has done.
   if (preview) {
     return (
       <div className="flex flex-col gap-4">
+        {brief ? <BriefSheet brief={brief} onClose={() => setShowing(null)} /> : null}
         <ul className="flex flex-col gap-2">
           {rx.exercises.map((ex) => (
             <li key={ex.key} className="panel flex items-start justify-between gap-3 p-3">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="display text-base text-ink">{ex.name}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="display text-base text-ink">{ex.name}</span>
+                  {briefs[ex.key] ? <InfoButton onClick={() => setShowing(ex.key)} name={ex.name} /> : null}
+                </span>
                 {ex.note ? <span className="text-xs leading-relaxed text-muted-dim">{ex.note}</span> : null}
               </div>
               <span className="label-xs shrink-0 tabular">
@@ -162,6 +175,7 @@ export function SessionLogger({
   return (
     <div className="flex flex-col gap-4">
       <ImpactBurst at={burst} onDone={() => setBurst(null)} />
+      {brief ? <BriefSheet brief={brief} onClose={() => setShowing(null)} /> : null}
 
       {/* ── Prescription source ── */}
       {/* Phase 0 has no prescription to argue with: the model is not consulted
@@ -226,6 +240,8 @@ export function SessionLogger({
               date={date}
               sets={setsFor(ex)}
               pb={personalBests[ex.key] ?? null}
+              hasBrief={briefs[ex.key] !== undefined}
+              onExplain={() => setShowing(ex.key)}
               onSave={(i, v) => onSaveSet(ex, i, v)}
             />
           </li>
@@ -326,17 +342,66 @@ function setCounts(bar: PrescribedExercise["bar"], s: LoggedSet | null): boolean
   return false;
 }
 
+/** The catalogue entry behind one movement, as the page hands it over. */
+export interface MovementBrief {
+  m: Movement;
+  tree: TreeContext;
+}
+
+/**
+ * The explanation, one tap from the set you are about to do.
+ *
+ * It has always existed — THE WEB has carried setup, execution, what goes
+ * wrong, cues and what it trains since v1.2.0 — on a screen you would have to
+ * leave the session to reach. Standing over a mat trying to remember which
+ * shoulder the roll goes over is precisely when that page is worth reading and
+ * precisely when you will not go and find it.
+ */
+function BriefSheet({ brief, onClose }: { brief: MovementBrief; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-base/85 backdrop-blur-sm">
+      <button type="button" onClick={onClose} aria-label="Close" className="flex-1" />
+      <div className="pad-safe-b panel mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col gap-4 overflow-y-auto border-t-2 border-t-crimson p-4">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="display min-w-0 text-xl leading-tight text-ink">{brief.m.name}</h2>
+          <button type="button" onClick={onClose} className="label-xs shrink-0 underline">
+            Close
+          </button>
+        </div>
+        <MovementBriefBody m={brief.m} tree={brief.tree} />
+      </div>
+    </div>
+  );
+}
+
+function InfoButton({ onClick, name }: { onClick: () => void; name: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`How to do ${name.toLowerCase()}`}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-edge text-[0.65rem] text-cobalt-lift active:border-cobalt"
+    >
+      i
+    </button>
+  );
+}
+
 function ExerciseCard({
   ex,
   date,
   sets,
   pb,
+  hasBrief,
+  onExplain,
   onSave,
 }: {
   ex: PrescribedExercise;
   date: string;
   sets: LoggedSet[];
   pb: { reps: number | null; weightKg: number | null; seconds: number | null } | null;
+  hasBrief: boolean;
+  onExplain: () => void;
   onSave: (setIndex: number, v: { reps?: number | null; weightKg?: number | null; seconds?: number | null }) => void;
 }) {
   const byIndex = new Map(sets.map((s) => [s.setIndex, s]));
@@ -347,7 +412,10 @@ function ExerciseCard({
     <div className={`panel flex flex-col gap-3 p-3 ${allDone ? "border-crimson-dim" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="display text-base text-ink">{ex.name}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="display text-base text-ink">{ex.name}</span>
+            {hasBrief ? <InfoButton onClick={onExplain} name={ex.name} /> : null}
+          </span>
           <span className="label-xs">
             {ex.sets} × {ex.metric === "time" ? `${ex.targetSeconds ?? "—"} s` : (ex.repRange ?? ex.targetReps ?? "—")}
             {ex.targetWeightKg ? ` · ${ex.targetWeightKg} kg` : ""}
