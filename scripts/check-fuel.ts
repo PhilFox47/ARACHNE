@@ -41,7 +41,7 @@ async function main() {
   const { db } = await import("../lib/db");
   const { foodEntries, mealPhotos } = await import("../lib/db/schema");
   const { parseIngredients, readIngredients, serialiseIngredients } = await import("../lib/meal");
-  const { buildUserText, parseVisionJson } = await import("../lib/vision");
+  const { SYSTEM_PROMPT, analyseMeal, buildUserText, parseVisionJson } = await import("../lib/vision");
   const { UPLOAD_DIR, resolveStored, saveDataUrl } = await import("../lib/photos");
   const { eq, sql } = await import("drizzle-orm");
 
@@ -106,6 +106,7 @@ async function main() {
         portion: "1 of 4 servings",
         ingredients: list,
         ingredientsConfirmed: true,
+        hadNumbers: true,
       },
     },
   );
@@ -128,6 +129,21 @@ async function main() {
   // A first analysis has no correction block at all.
   const first = buildUserText([{ dataUrl: PIXEL, kind: "dish" }], { hint: "large bowl" });
   ok("a first pass carries no correction", !first.includes("estimated before"));
+
+  // The same button reads "Analyse this photo" before there are numbers and
+  // "Re-analyse" after, and sends the same request either way. Telling a model
+  // its estimate was wrong when it has never made one is a small lie.
+  const never = buildUserText([{ dataUrl: PIXEL, kind: "dish" }], {
+    correction: {
+      description: "Chicken and rice",
+      portion: null,
+      ingredients: [],
+      ingredientsConfirmed: false,
+      hadNumbers: false,
+    },
+  });
+  ok("an entry that never had numbers is not told it was wrong", !never.includes("estimated before"));
+  ok("but its corrected name still reaches the model", never.includes("Chicken and rice"));
   ok("but does carry the user's note", first.includes("large bowl"));
 
   // ── Parsing what the model sends back ──
@@ -175,6 +191,61 @@ async function main() {
   ok("the cover moved on", cover === paths[1], String(cover));
   ok("and points at a file that exists", cover !== null && resolveStored(cover) !== null);
   ok("the deleted file is gone", resolveStored(paths[0]) === null);
+
+  // ── A meal with no photo is estimated from the words ──
+  // The text field always existed and always produced a row with no numbers.
+  // The model can estimate from a description; it was simply never asked. What
+  // matters is that it is asked *differently* — half the photo prompt is
+  // instructions about reading a plate, and a model told to weigh packaging
+  // against what is visible, then given nothing visible, hedges.
+  console.log("\na meal with no photo is estimated from the words");
+
+  const { TEXT_SYSTEM_PROMPT } = await import("../lib/vision");
+
+  const textOnly = buildUserText([], { hint: "two slices of Vollkornbrot with butter and cheese" });
+  ok("the user turn says there is no photograph", /no photograph/i.test(textOnly));
+  ok("and carries what was eaten", /Vollkornbrot/.test(textOnly));
+  ok(
+    "and asks for the ordinary portion where none is given",
+    /ordinary portion/i.test(textOnly),
+    textOnly.slice(0, 60),
+  );
+
+  ok(
+    "the text prompt does not ask the model to read a plate",
+    !/plate wins|visible in the photo|menu photo/i.test(TEXT_SYSTEM_PROMPT),
+  );
+  ok(
+    "the photo prompt still does",
+    /plate wins/i.test(SYSTEM_PROMPT) && /visible in the photo/i.test(SYSTEM_PROMPT),
+  );
+  ok(
+    "both keep the German grocery context",
+    /Magerquark/.test(TEXT_SYSTEM_PROMPT) && /Magerquark/.test(SYSTEM_PROMPT),
+  );
+  ok(
+    "both keep the portion rules — a Nährwerttabelle is per 100 g either way",
+    /per 100 g/i.test(TEXT_SYSTEM_PROMPT) && /per 100 g/i.test(SYSTEM_PROMPT),
+  );
+  ok("and both ask for the same JSON", /"saturated_fat_g"/.test(TEXT_SYSTEM_PROMPT));
+  ok(
+    "the text prompt tells it not to refuse for want of an image",
+    /do not refuse/i.test(TEXT_SYSTEM_PROMPT),
+  );
+
+  // No image and no words is the one case with nothing in it.
+  const nothing = await analyseMeal([], {});
+  ok(
+    "nothing at all is refused rather than guessed",
+    nothing.error !== undefined && /no photo and no description|not set|No vision model/i.test(nothing.error),
+    nothing.error,
+  );
+
+  // A photo entry's re-analysis must not gain the text-only framing.
+  const withShot = buildUserText([{ dataUrl: "data:image/jpeg;base64,x", kind: "dish" }], {
+    hint: "half of it",
+  });
+  ok("a photo entry is still told to use the images", !/no photograph/i.test(withShot));
 
   // ── Nothing counts an entry that is gone ──
   console.log("\nthe review counts rows, not history");

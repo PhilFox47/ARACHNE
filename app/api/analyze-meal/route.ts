@@ -92,14 +92,30 @@ export async function POST(req: Request) {
   if (!entry) return NextResponse.json({ ok: false, error: "No such entry." }, { status: 404 });
 
   const photos = photosFor(entryId, entry.photoPath);
-  if (photos.length === 0) {
-    return NextResponse.json({ ok: true, analysed: false, error: "Entry has no readable photo." });
-  }
 
   // Only ever pass something the user actually wrote. Falling back to
   // `description` fed the placeholder straight into the prompt — the model was
   // being told the meal was called "Analysing…".
   const note = (hint ?? entry.userNote ?? "").trim();
+
+  /**
+   * A meal you forgot to photograph is estimated from what you typed.
+   *
+   * The typed description is the evidence in that case, so it becomes the hint
+   * — the same slot a photo entry uses for "what the photo misses", because it
+   * plays the same role: the words the model is to treat as given. The
+   * placeholder is never passed; "Analysing…" is a status, not a food.
+   */
+  const typed = entry.description === ANALYSING_PLACEHOLDER ? "" : entry.description.trim();
+  const evidence = photos.length === 0 ? [note, typed].filter(Boolean).join(" — ") : note;
+
+  if (photos.length === 0 && evidence.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      analysed: false,
+      error: "Nothing to go on — no photo and no description.",
+    });
+  }
 
   // Persist the note before calling out. The entry was created the instant the
   // photo was taken, which is before this text existed — and if the model then
@@ -109,7 +125,7 @@ export async function POST(req: Request) {
   }
 
   const result = await analyseMeal(photos, {
-    hint: note.length > 0 ? note : undefined,
+    hint: evidence.length > 0 ? evidence : undefined,
     correction: reanalyse
       ? {
           description:
@@ -117,6 +133,7 @@ export async function POST(req: Request) {
           portion: entry.portion,
           ingredients: readIngredients(entry.ingredients),
           ingredientsConfirmed: entry.ingredientsSource === "user",
+          hadNumbers: entry.kcal !== null,
         }
       : undefined,
   });

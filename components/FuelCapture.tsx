@@ -51,7 +51,9 @@ export function FuelCapture({
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState<null | "saving" | "reading">(null);
+  // "reading" is a plate; "describing" is words. Same call, and the loader must
+  // not claim to be looking at a photograph that does not exist.
+  const [busy, setBusy] = useState<null | "saving" | "reading" | "describing">(null);
   const [awaitingNote, setPending2] = useState<{ id: number; shots: Shot[] } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -112,9 +114,9 @@ export function FuelCapture({
    * cooked in — and portion inference is where these estimates go wrong. One
    * line of context is worth more than any amount of model tuning.
    */
-  const analyse = async (entryId: number, hint: string) => {
+  const analyse = async (entryId: number, hint: string, fromText = false) => {
     setPending2(null);
-    setBusy("reading");
+    setBusy(fromText ? "describing" : "reading");
     try {
       const res = await fetch("/api/analyze-meal", {
         method: "POST",
@@ -133,12 +135,30 @@ export function FuelCapture({
     }
   };
 
+  /**
+   * A meal you forgot to photograph.
+   *
+   * This field has always existed and always produced a row with no numbers in
+   * it — a name on the list and nothing counted, which is most of the way to
+   * not logging it. The description is evidence too, and the model can estimate
+   * from it; it just was never asked to.
+   *
+   * The entry is saved before the model runs, exactly as the photo path does,
+   * so a slow or failed estimate can never cost you the log. The difference is
+   * that here the description is already yours, so there is no placeholder —
+   * the row reads correctly from the moment you press Add.
+   */
   const onText = () => {
-    if (text.trim().length === 0) return;
+    const described = text.trim();
+    if (described.length === 0) return;
     start(async () => {
-      const res = await createEntry({ description: text.trim(), date });
+      const res = await createEntry({ description: described, date });
       setText("");
-      finish(res.ok ? "Logged." : "Couldn't save that.");
+      if (!res.ok) {
+        finish("Couldn't save that.");
+        return;
+      }
+      await analyse(res.id, "", true);
     });
   };
 
@@ -166,7 +186,16 @@ export function FuelCapture({
         className="tap panel-hot flex min-h-[104px] w-full flex-col items-center justify-center gap-2 active:opacity-80 disabled:opacity-60"
       >
         {busy ? (
-          <WebLoader size={38} label={busy === "saving" ? "Saving" : "Reading the plate"} />
+          <WebLoader
+            size={38}
+            label={
+              busy === "saving"
+                ? "Saving"
+                : busy === "describing"
+                  ? "Working it out from your description"
+                  : "Reading the plate"
+            }
+          />
         ) : (
           <>
             <svg viewBox="0 0 100 100" width="34" height="34" fill="none" stroke="#D42A3F" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -186,6 +215,10 @@ export function FuelCapture({
         </p>
       ) : null}
 
+      <p className="label-xs">
+        No photo? Describe it — it gets the same estimate
+      </p>
+
       <div className="flex gap-2">
         <input
           value={text}
@@ -193,7 +226,7 @@ export function FuelCapture({
           onKeyDown={(e) => {
             if (e.key === "Enter") onText();
           }}
-          placeholder="…or just type it"
+          placeholder="…or describe it instead"
           aria-label="Describe what you ate"
           className="tap min-w-0 flex-1 border border-edge bg-panel-2 px-3 text-sm text-ink outline-none placeholder:text-muted-dim focus:border-cobalt"
         />

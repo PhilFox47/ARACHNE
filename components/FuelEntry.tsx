@@ -525,7 +525,11 @@ export function FuelEntryRow({
               answer adjusts it rather than working the problem again. It gets
               the name, the portion, the ingredients and the photos; the figures
               come back derived from those. */}
-          {shots.length > 0 ? (
+          {/* An entry with no photo is estimated from its description, so it
+              gets this button too. Without that, a meal typed on an evening the
+              model was unreachable would sit at "no numbers" forever with no
+              way to ask again — which is most of the way to not logging it. */}
+          {shots.length > 0 || entry.description.trim().length > 0 ? (
             <div className="flex flex-col gap-1.5 border-t border-edge pt-3">
               <button
                 type="button"
@@ -536,12 +540,16 @@ export function FuelEntryRow({
                 {reading
                   ? "Reading"
                   : entry.kcal === null
-                    ? `Analyse ${shots.length > 1 ? `${shots.length} photos` : "this photo"}`
+                    ? shots.length > 0
+                      ? `Analyse ${shots.length > 1 ? `${shots.length} photos` : "this photo"}`
+                      : "Estimate from the description"
                     : "Re-analyse"}
               </button>
               <p className="text-xs leading-relaxed text-muted-dim">
                 {entry.kcal === null
-                  ? "Reads every photo attached above."
+                  ? shots.length > 0
+                    ? "Reads every photo attached above."
+                    : "No photo on this one, so it works from the name, the portion and the ingredients. Say more in the name and it gets better."
                   : dirty || itemsDirty
                     ? "Saves your changes first, then works the numbers out again from the name, portion and ingredients — never from the current figures."
                     : "Works the numbers out again from the name, portion and ingredients — never from the current figures, so a bad estimate can't anchor the next one."}

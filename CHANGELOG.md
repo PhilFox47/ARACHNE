@@ -17,6 +17,56 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.10.0 — 2026-08-06
+
+A meal you forgot to photograph gets estimated too.
+
+The text field under LOG FUEL has been there since the first release, and all it
+ever did was write the name down. No calories, no macros — a row on the list and
+"no numbers" beside it, which is most of the way to not having logged it at all.
+The description is evidence as much as a photograph is; the model was simply
+never asked to read it.
+
+Type it and press Add, and it is estimated exactly like a photo: saved first, so
+a slow or failed call can never cost you the entry, then worked out. The only
+difference is that the description is already yours, so there is no "Analysing…"
+placeholder — the row reads correctly the moment you press the button.
+
+### It is asked differently, on purpose
+
+Half the photo prompt is instructions about reading a plate: weigh the packaging
+against what is visible, a half-eaten pack is a half portion, read the German
+label. A model given those rules and then given nothing to look at hedges, and a
+hedged estimate is the one that comes back as a confident 400 kcal for anything.
+
+So there are two prompts over one shared brief. The German grocery context, the
+portion rules and the fields are identical — a Nährwerttabelle is per 100 g
+whether you photographed it or typed it out. What differs is the framing: the
+text prompt says outright that there is no photograph, that the words are all
+there is, that it must not refuse for want of an image, and that where no size
+is given it should assume the ordinary German portion, say which one it assumed,
+and set its confidence low rather than pretending.
+
+`npm run check` holds the two apart: the text prompt must not mention plates,
+menus or what is visible; the photo prompt must still do all three; both must
+keep the German context, the portion rules and the same JSON.
+
+### Two things found while building it
+
+- **A failed text entry had no way back.** The Analyse button was shown only on
+  entries with photos, so a meal typed on an evening the model was unreachable
+  would have sat at "no numbers" permanently. It appears on anything with a
+  description now, and says what it will work from.
+- **A first analysis was told its estimate had been wrong.** The same button
+  reads "Analyse this photo" before there are numbers and "Re-analyse" after,
+  and sends the same request — so an entry that had never been estimated was
+  handed a prompt opening "This meal has been estimated before and the estimate
+  was wrong." A small lie, and free to stop telling.
+
+No schema change.
+
+---
+
 ## 1.9.0 — 2026-08-06
 
 The explanation moved to where the work happens.

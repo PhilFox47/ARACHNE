@@ -76,9 +76,16 @@ export interface PhotoInput {
  * a 500 ml German can as a 12 fl oz one — a 40% error before it has even
  * thought about the contents.
  */
-export const SYSTEM_PROMPT = `You estimate nutrition from meal photographs.
-
-CONTEXT: The user lives in Germany. Assume German and wider EU groceries,
+/**
+ * Everything that is true whether or not there is a photograph: the German
+ * grocery context, the portion rules, the fields, and the JSON shape.
+ *
+ * Split out so the text-only prompt is the same brief with a different opening
+ * rather than a second prompt that drifts. The portion rules in particular are
+ * not about photographs at all — "a Nährwerttabelle is per 100 g" is just as
+ * wrong to ignore when you typed the label out as when you photographed it.
+ */
+const PROMPT_CONTEXT = `CONTEXT: The user lives in Germany. Assume German and wider EU groceries,
 packaging, brands and portion conventions:
 - Metric everywhere. Drinks come in 330 ml / 500 ml cans and 0.5 l / 1 l bottles,
   never fluid ounces.
@@ -89,12 +96,6 @@ packaging, brands and portion conventions:
   Vollkornbrot, Müsli, Spätzle, Currywurst, Döner, Schnitzel, Bratkartoffeln.
 - Restaurant and Lieferdienst portions follow German norms, which are typically
   smaller than American ones.
-- Read any German packaging text visible in the photo and use it directly.
-
-SEVERAL IMAGES may be attached. They are all of the SAME single meal — a
-different angle, the packaging, the label, the recipe. Never add them together
-as if they were separate foods. Each is labelled with what it shows; use them
-together to arrive at one estimate.
 
 PORTIONS ARE THE WHOLE JOB. This is where these estimates go wrong, and every
 rule below exists because copying a printed number directly is almost always
@@ -111,11 +112,6 @@ the wrong answer:
 - A recipe states totals for the WHOLE dish and usually says how many servings
   it makes. Divide by the servings, then adjust for how much of one serving was
   actually eaten. Never report a whole tray of lasagne as one portion.
-- A menu photo tells you what the dish is, not how much of it arrived. Use it
-  for the ingredients and use the plate for the size.
-- When the packaging and the plate disagree about how much is there, the plate
-  wins — a half-eaten pack is a half portion.
-
 State in "portion" what you actually scaled to, e.g. "whole 500 g pot",
 "1 of 4 servings", "approx. two thirds of a 30 cm pizza". This is the number
 everything else is derived from, so it must be explicit.
@@ -124,8 +120,8 @@ Estimate the EU mandatory nutrition declaration for the WHOLE portion eaten,
 not per 100 g. These are the exact fields on German packaging, so estimate them
 the way a Nährwerttabelle states them.
 
-Account for what a photo hides: cooking oil, butter, cream, sugar in sauces,
-dressing. These are the usual reason a photo estimate comes in low.
+Account for what goes unmentioned: cooking oil, butter, cream, sugar in sauces,
+dressing. These are the usual reason an estimate comes in low.
 
 Return ONLY a JSON object. No markdown, no code fences, no commentary.
 
@@ -148,13 +144,62 @@ Return ONLY a JSON object. No markdown, no code fences, no commentary.
 INGREDIENTS: list what you believe went into it, biggest contributor first, at
 most 12. Amounts in ordinary words for the portion eaten — "2 eggs", "approx.
 150 g", "a splash" — not grams to a decimal place you do not have. Include the
-things a photo hides and a person forgets: the oil it was fried in, the butter
-on the bread, the dressing. Return an empty array for a snack or a single
+things that go unmentioned and a person forgets: the oil it was fried in, the
+butter on the bread, the dressing. Return an empty array for a snack or a single
 packaged item, where a breakdown says nothing the description does not.
 
 Every numeric field is grams except kcal. Use null for anything you genuinely
 cannot estimate — a null is better than a fabricated number. Set confidence to
-"low" when the portion is ambiguous or the food is largely hidden.`;
+"low" when the portion is ambiguous or you cannot tell what is in it.`;
+
+export const SYSTEM_PROMPT = `You estimate nutrition from meal photographs.
+
+SEVERAL IMAGES may be attached. They are all of the SAME single meal — a
+different angle, the packaging, the label, the recipe. Never add them together
+as if they were separate foods. Each is labelled with what it shows; use them
+together to arrive at one estimate.
+
+Read any German packaging text visible in the photo and use it directly.
+Read the Nährwerttabelle off the label rather than guessing at the dish.
+A menu photo tells you what the dish is, not how much of it arrived: use it for
+the ingredients and use the plate for the size. When the packaging and the
+plate disagree about how much is there, the plate wins — a half-eaten pack is a
+half portion.
+
+${PROMPT_CONTEXT}`;
+
+/**
+ * The same brief with no photograph in it.
+ *
+ * Written rather than reusing the photo prompt with the images left off,
+ * because half of that prompt is instructions about reading a plate. A model
+ * told to weigh the packaging against what is visible, and then given nothing
+ * visible, hedges — and a hedged estimate is the one that comes back as a
+ * confident 400 kcal for anything.
+ *
+ * The honest framing is the opposite: there is no photograph, the words are all
+ * there is, and where they do not state a size you are to assume the ordinary
+ * German portion and say so in "portion" and in a low confidence.
+ */
+export const TEXT_SYSTEM_PROMPT = `You estimate nutrition from a written description of a meal.
+
+THERE IS NO PHOTOGRAPH. The description is everything you have, and it was
+typed from memory — most likely some time after the meal. Do not ask for an
+image and do not refuse: an estimate from words is the whole task.
+
+Take the description literally where it is specific. Where it is not:
+- If no quantity is given, assume one ordinary German portion of that food and
+  say which portion you assumed in "portion".
+- If a preparation is not stated, assume the usual one — bread has butter on it,
+  vegetables are cooked in some oil, a coffee with milk has a dash.
+- Do not inflate for uncertainty and do not round to a comfortable number.
+  Estimate what that description most likely was.
+
+Set "confidence" honestly, and it will usually be "low" or "medium" here. A
+description with no size in it cannot produce a high-confidence figure, and
+saying so is more useful than pretending otherwise.
+
+${PROMPT_CONTEXT}`;
 
 /** Models wrap JSON in fences despite instructions. Strip defensively. */
 export function stripFences(raw: string): string {
@@ -238,6 +283,15 @@ export interface AnalyseOptions {
     portion: string | null;
     ingredients: Ingredient[];
     ingredientsConfirmed: boolean;
+    /**
+     * There was a previous estimate to be wrong.
+     *
+     * The same button reads "Analyse this photo" on an entry that has never had
+     * numbers and "Re-analyse" on one that has, and both send the same request.
+     * Telling a model its estimate was wrong when it has never made one is a
+     * small lie that costs nothing to avoid.
+     */
+    hadNumbers: boolean;
   };
 }
 
@@ -246,31 +300,40 @@ export function buildUserText(photos: PhotoInput[], opts: AnalyseOptions): strin
   const parts: string[] = [];
 
   parts.push(
-    photos.length > 1
-      ? `Estimate this meal. ${photos.length} images are attached, all of the same meal:\n` +
-          photos.map((p, i) => `  Image ${i + 1}: ${KIND_BRIEF[p.kind]}`).join("\n")
-      : "Estimate this meal.",
+    photos.length === 0
+      ? "Estimate this meal from the description below. There is no photograph."
+      : photos.length > 1
+        ? `Estimate this meal. ${photos.length} images are attached, all of the same meal:\n` +
+            photos.map((p, i) => `  Image ${i + 1}: ${KIND_BRIEF[p.kind]}`).join("\n")
+        : "Estimate this meal.",
   );
 
   if (opts.hint?.trim()) {
     parts.push(
-      `The user has told you the following about it:\n"${opts.hint.trim()}"\n\n` +
-        `Treat that as ground truth. Where it states a size, quantity, portion eaten, ` +
-        `preparation or ingredient, use it exactly and do NOT substitute your own visual ` +
-        `estimate. Scale every number to the portion actually eaten, not the portion shown.`,
+      photos.length === 0
+        ? `What was eaten:\n"${opts.hint.trim()}"\n\n` +
+            `That is the whole of the evidence. Take every size, quantity and preparation ` +
+            `it states exactly; assume the ordinary portion for anything it leaves out, and ` +
+            `state that assumption in "portion".`
+        : `The user has told you the following about it:\n"${opts.hint.trim()}"\n\n` +
+            `Treat that as ground truth. Where it states a size, quantity, portion eaten, ` +
+            `preparation or ingredient, use it exactly and do NOT substitute your own visual ` +
+            `estimate. Scale every number to the portion actually eaten, not the portion shown.`,
     );
   }
 
   const c = opts.correction;
   if (c) {
-    const lines: string[] = [
-      "This meal has been estimated before and the estimate was wrong.",
-      "",
-      "You are being given the corrected description of the food and NOT the previous",
-      "numbers. Work the energy and macros out again from scratch, from what is below",
-      "and from the images. Do not try to stay near any figure you might expect.",
-      "",
-    ];
+    const lines: string[] = c.hadNumbers
+      ? [
+          "This meal has been estimated before and the estimate was wrong.",
+          "",
+          "You are being given the corrected description of the food and NOT the previous",
+          "numbers. Work the energy and macros out again from scratch, from what is below",
+          `and from ${photos.length > 0 ? "the images" : "the description"}. Do not try to stay near any figure you might expect.`,
+          "",
+        ]
+      : ["What is known about this meal:", ""];
     if (c.description) lines.push(`Food: ${c.description}`);
     if (c.portion) lines.push(`Portion actually eaten: ${c.portion}`);
     if (c.ingredients.length > 0) {
@@ -283,10 +346,12 @@ export function buildUserText(photos: PhotoInput[], opts: AnalyseOptions): strin
         lines.push(`  - ${i.name}${i.amount ? ` (${i.amount})` : ""}`);
       }
     }
-    lines.push(
-      "",
-      "Where the images and the text above disagree, the text wins — it is the user's own correction.",
-    );
+    if (photos.length > 0) {
+      lines.push(
+        "",
+        "Where the images and the text above disagree, the text wins — it is the user's own correction.",
+      );
+    }
     if (c.ingredientsConfirmed) {
       lines.push(
         "Return the same ingredient list back, unchanged in name, correcting only the amounts if the images clearly contradict them.",
@@ -312,7 +377,14 @@ export async function analyseMeal(
 
   if (!key) return { ...EMPTY, error: "NANOGPT_API_KEY is not set.", model };
   if (!model) return { ...EMPTY, error: "No vision model selected. Pick one in Settings.", model };
-  if (photos.length === 0) return { ...EMPTY, error: "No photos to read.", model };
+  // A meal with no photo is estimated from its description instead — that is a
+  // supported path, not a degraded one. What cannot be estimated is nothing at
+  // all: no image and no words is a request with no content in it.
+  const described =
+    (opts.hint ?? "").trim().length > 0 || (opts.correction?.description ?? "").trim().length > 0;
+  if (photos.length === 0 && !described) {
+    return { ...EMPTY, error: "Nothing to read — no photo and no description.", model };
+  }
 
   const userText = buildUserText(photos, opts);
 
@@ -329,16 +401,22 @@ export async function analyseMeal(
         temperature: 0.2,
         max_tokens: 1200,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: photos.length > 0 ? SYSTEM_PROMPT : TEXT_SYSTEM_PROMPT },
           {
             role: "user",
-            content: [
-              { type: "text", text: userText },
-              ...photos.map((p) => ({
-                type: "image_url" as const,
-                image_url: { url: p.dataUrl },
-              })),
-            ],
+            // A plain string when there is nothing to attach. Some models handle
+            // a one-element content array containing only text differently from
+            // a bare string, and there is no reason to find out which.
+            content:
+              photos.length > 0
+                ? [
+                    { type: "text", text: userText },
+                    ...photos.map((p) => ({
+                      type: "image_url" as const,
+                      image_url: { url: p.dataUrl },
+                    })),
+                  ]
+                : userText,
           },
         ],
       }),

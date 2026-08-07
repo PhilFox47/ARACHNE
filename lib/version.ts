@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.9.0";
+export const APP_VERSION = "1.10.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-06";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.10.0",
+    date: "2026-08-06",
+    kind: "minor",
+    headline: "Forgot the photo? Describe it and it still gets estimated",
+    changes: [
+      "The text field under LOG FUEL used to just write the name down — a row with no calories and no macros, which is most of the way to not logging it. It now gets the same estimate a photo does.",
+      "Saved first, then worked out, so a slow or failed model can never cost you the entry. No \u201cAnalysing\u2026\u201d placeholder either: the description is already yours, so the row reads correctly the moment you press Add.",
+      "It is asked differently on purpose. Half the photo prompt is about reading a plate, and a model given those rules with nothing to look at hedges. The text prompt says there is no photograph, that it must not refuse for want of one, and that where you gave no size it should assume the ordinary German portion, say which, and set its confidence low.",
+      "An entry with no numbers now offers an Estimate button whether or not it has a photo — a meal typed on an evening the model was unreachable used to be stuck that way forever.",
+    ],
+  },
   {
     version: "1.9.0",
     date: "2026-08-06",
