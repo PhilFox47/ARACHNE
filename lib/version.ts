@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.10.0";
+export const APP_VERSION = "1.10.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-06";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.10.1",
+    date: "2026-08-06",
+    kind: "patch",
+    headline: "Every photographed meal was filed under the same name",
+    changes: [
+      "A meal is saved the moment the shutter closes, as \u201cAnalysing\u2026\u201d, and renamed when the model answers. The rename never rewrote the key everything groups by — so every photo-logged meal ever carried the key \u201canalysing\u201d, and the review saw one enormous food. The FUEL page lists rows and looked right; the review groups them and did not.",
+      "Two more faults from the same cause: the \u201cAgain\u201d row would have repeated whatever you last photographed rather than the chip you tapped, and starring a second photographed food overwrote the first favourite through the unique index on that column.",
+      "Schema v14 repairs what is already stored — every entry's key recomputed from its description, favourites from their labels, and an entry still being analysed left alone. Your numbers do not change; the grouping does.",
+      "One definition of that normalisation now, imported by every writer, with checks that fail a description written without its key and a file that reinvents the rule.",
+    ],
+  },
   {
     version: "1.10.0",
     date: "2026-08-06",

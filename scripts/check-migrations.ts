@@ -191,6 +191,85 @@ for (let from = 1; from <= CURRENT; from++) {
   console.log("");
 }
 
+// ── The norm_key repair carries real data across ──
+// A photographed meal is created as "Analysing…" and renamed when the model
+// answers. The rename did not rewrite norm_key, so every photo entry ever
+// logged kept the key "analysing" and everything that groups by it — the
+// review's top snacks, the "Again" row, the favourites count — saw one
+// enormous food. Seeding the broken shape and migrating it is the only way to
+// know the repair actually runs on a database that already has the fault.
+console.log("norm_key follows the description again");
+{
+  const file = path.join(root, "normkey.db");
+  const raw = new Database(file);
+  raw.pragma("journal_mode = WAL");
+  for (let v = 0; v < 13; v++) MIGRATIONS[v](raw);
+  raw.pragma("user_version = 13");
+
+  const insert = raw.prepare(
+    "INSERT INTO food_entries (logged_at, date, description, norm_key, kcal, meal_type, source) VALUES (?, ?, ?, 'analysing', ?, 'snack', 'ai')",
+  );
+  const foods = ["Coffee with oat milk", "Handful of almonds", "Banana"];
+  foods.forEach((f, i) => insert.run(1_700_000_000 + i, "2026-06-04", f, 100));
+
+  // A fourth that was never analysed keeps the placeholder, and must be left
+  // alone — "Analysing…" is a status, and its key is honestly that.
+  insert.run(1_700_000_009, "2026-06-04", "Analysing…", 0);
+
+  // Two favourites that both inherited the broken key cannot coexist under the
+  // unique index, which is itself part of the bug — so one, plus a sound one.
+  raw
+    .prepare("INSERT INTO favourites (norm_key, label, meal_type) VALUES ('analysing', 'Coffee with oat milk', 'snack')")
+    .run();
+  raw
+    .prepare("INSERT INTO favourites (norm_key, label, meal_type) VALUES ('handful of almonds', 'Handful of almonds', 'snack')")
+    .run();
+  raw.close();
+
+  const fixed = openAt(file);
+  const rows = fixed
+    .prepare("SELECT description, norm_key FROM food_entries ORDER BY logged_at")
+    .all() as { description: string; norm_key: string }[];
+
+  const normOf = (t: string) =>
+    t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+
+  ok(
+    "every renamed entry got its own key back",
+    foods.every((f, i) => rows[i].norm_key === normOf(f)),
+    rows.map((r) => `${r.description}=${r.norm_key}`).join(", "),
+  );
+  ok(
+    "three foods are now three keys, not one",
+    new Set(rows.slice(0, 3).map((r) => r.norm_key)).size === 3,
+  );
+  ok(
+    "an entry still being analysed is left alone",
+    rows[3].norm_key === normOf("Analysing…"),
+    rows[3].norm_key,
+  );
+
+  const favs = fixed.prepare("SELECT label, norm_key FROM favourites ORDER BY id").all() as {
+    label: string;
+    norm_key: string;
+  }[];
+  ok(
+    "a favourite's key is recomputed from its label",
+    favs.every((f) => f.norm_key === normOf(f.label)),
+    favs.map((f) => `${f.label}=${f.norm_key}`).join(", "),
+  );
+  ok("and no favourite was lost to it", favs.length === 2, `${favs.length} left`);
+
+  const again = openAt(file);
+  ok(
+    "running it twice changes nothing",
+    (again.prepare("SELECT COUNT(*) AS n FROM favourites").get() as { n: number }).n === 2,
+  );
+  again.close();
+  fixed.close();
+  console.log("");
+}
+
 // A fresh volume must land in exactly the same shape as an upgraded one.
 console.log("fresh install vs upgraded from v1");
 const freshFile = path.join(root, "fresh.db");

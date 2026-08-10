@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { normKeyOf } from "@/lib/meal";
 import { foodEntries, mealPhotos } from "@/lib/db/schema";
 import { isAuthed } from "@/lib/auth";
 import {
@@ -144,8 +145,9 @@ export async function POST(req: Request) {
     // best name available; without one, anything honest beats the placeholder —
     // the row still carries its photo and its retry button.
     if (entry.description === ANALYSING_PLACEHOLDER) {
+      const fallback = note.length > 0 ? note : "Unnamed meal";
       db.update(foodEntries)
-        .set({ description: note.length > 0 ? note : "Unnamed meal" })
+        .set({ description: fallback, normKey: normKeyOf(fallback) })
         .where(eq(foodEntries.id, entryId))
         .run();
       refresh();
@@ -177,9 +179,13 @@ export async function POST(req: Request) {
         ? entry.ingredients
         : serialiseIngredients(result.ingredients);
 
+  const named = result.description?.trim() || entry.userNote || entry.description;
+
   db.update(foodEntries)
     .set({
-      description: result.description?.trim() || entry.userNote || entry.description,
+      description: named,
+      // Never one without the other.
+      normKey: normKeyOf(named),
       portion: result.portion,
       kcal: scale(result.kcal),
       proteinG: scale(result.proteinG),

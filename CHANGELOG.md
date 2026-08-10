@@ -17,6 +17,63 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.10.1 — 2026-08-06
+
+Every photographed meal was filed under the same name.
+
+Reported as: the review says "Coffee with oat milk" for everything, while the
+FUEL page itself is correct on every day. That is exactly the shape of the
+fault, and it is one line.
+
+A food entry carries `norm_key` — the description, lowercased and stripped —
+and it is what everything groups by. A photographed meal is saved the instant
+the shutter closes, before anything is known about it, so it is created as
+"Analysing…" with the key `analysing`. When the model answers, the row is
+renamed.
+
+**The rename never rewrote the key.** So every meal ever logged from a photo
+kept the key `analysing`, and anything that groups by it saw one enormous food.
+The FUEL page lists rows one by one and looked perfect; the review groups them
+and reported four different snacks as four of whichever one it happened to
+label the group with. Reproduced exactly:
+
+```
+description="Coffee with oat milk"           norm_key="analysing"
+description="Handful of almonds"             norm_key="analysing"
+description="Two squares of dark chocolate"  norm_key="analysing"
+description="Banana"                         norm_key="analysing"
+
+what the stats screen shows:   Banana ×4  430 kcal
+```
+
+Two more things were wrong for the same reason and had not been noticed yet:
+
+- **The "Again" row would repeat the wrong meal.** It groups by the same key and
+  logs the most recent entry carrying it, so tapping a chip labelled "Coffee
+  with oat milk" would have logged whatever you last photographed.
+- **Starring a second photographed food overwrote the first favourite.**
+  `norm_key` is uniquely indexed on that table, so the second star collided with
+  the first and took its numbers.
+
+### The fix, and the repair
+
+The analysis route writes the key alongside the description now, in the same
+statement, on both the success and the failure path.
+
+**Schema v14 repairs what is already stored.** Every entry's key is recomputed
+from its description; an entry still reading "Analysing…" is left alone, because
+that key is honestly what it is. Favourites are recomputed from their labels,
+and if two would collide the older one — the one with the longer history —
+survives. Your existing numbers do not change; the grouping does, which is the
+point.
+
+There is now one definition of that normalisation, in `lib/meal`, imported by
+every writer. `npm run check` fails a `.set()` that writes a description without
+a key, fails a file that reinvents the regex, and migrates a database seeded
+with the broken shape to prove the repair actually runs.
+
+---
+
 ## 1.10.0 — 2026-08-06
 
 A meal you forgot to photograph gets estimated too.

@@ -327,6 +327,65 @@ export const MIGRATIONS: ((db: Database.Database) => void)[] = [
       sqlite.exec("ALTER TABLE food_entries ADD COLUMN ingredients_source TEXT");
     }
   },
+
+  // ── v14: repair norm_key, which stopped following the description ──
+  //
+  // A photographed meal is saved as "Analysing…" and renamed when the model
+  // answers. The rename never rewrote `norm_key`, so every photo entry ever
+  // logged kept the key "analysing" — and everything that groups by it saw a
+  // single enormous food. The review reported four different snacks as four of
+  // whichever one it happened to label the group with, the "Again" row would
+  // repeat the wrong meal, and starring a second photographed food overwrote
+  // the first favourite through the unique index on that column.
+  //
+  // The key is derived, so it can simply be recomputed. Normalisation is
+  // written out here rather than imported: a migration must keep working
+  // against the schema it shipped with, and importing from lib/ ties it to
+  // whatever that code becomes later.
+  (sqlite) => {
+    const norm = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]/gu, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const entries = sqlite
+      .prepare("SELECT id, description, norm_key FROM food_entries")
+      .all() as { id: number; description: string; norm_key: string }[];
+
+    const fixEntry = sqlite.prepare("UPDATE food_entries SET norm_key = ? WHERE id = ?");
+    for (const r of entries) {
+      const want = norm(r.description);
+      if (want.length > 0 && want !== r.norm_key) fixEntry.run(want, r.id);
+    }
+
+    // Favourites carry a copy of the key, taken from the entry that was
+    // starred, so they inherited the same fault. `norm_key` is uniquely
+    // indexed there: recompute into a temporary column first, drop anything
+    // that would collide — keeping the oldest, which is the one whose history
+    // is longest — and only then write the column back.
+    const favs = sqlite
+      .prepare("SELECT id, label, norm_key FROM favourites ORDER BY id")
+      .all() as { id: number; label: string; norm_key: string }[];
+
+    const seen = new Set<string>();
+    const fixFav = sqlite.prepare("UPDATE favourites SET norm_key = ? WHERE id = ?");
+    const dropFav = sqlite.prepare("DELETE FROM favourites WHERE id = ?");
+    for (const f of favs) {
+      const want = norm(f.label);
+      if (want.length === 0) {
+        seen.add(f.norm_key);
+        continue;
+      }
+      if (seen.has(want)) {
+        dropFav.run(f.id);
+        continue;
+      }
+      seen.add(want);
+      if (want !== f.norm_key) fixFav.run(want, f.id);
+    }
+  },
 ];
 
 /**

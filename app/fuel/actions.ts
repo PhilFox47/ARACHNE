@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { normKeyOf } from "@/lib/meal";
 import { favourites, foodEntries, mealPhotos } from "@/lib/db/schema";
 import { isAuthed } from "@/lib/auth";
 import { todayISO } from "@/lib/dates";
@@ -19,22 +20,20 @@ async function guard() {
   if (!(await isAuthed())) throw new Error("Not authorised.");
 }
 
-/** Lowercased, punctuation-stripped. Groups repeats for quick-log. */
+/**
+ * The grouping key, for a caller that only has a server action to hand.
+ *
+ * Nothing in the app calls it any more — it is `normKeyOf` in lib/meal, one
+ * definition that every writer imports. Kept exported because a server action
+ * is a URL and removing one is a break, and delegating so there is no second
+ * implementation to fall out of step.
+ */
 export async function normalise(s: string): Promise<string> {
-  return s
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normKeyOf(s);
 }
 
-function normSync(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+/** @see normKeyOf — one definition, imported rather than repeated. */
+const normSync = normKeyOf;
 
 /**
  * Saves immediately and returns the id. Analysis happens afterwards against

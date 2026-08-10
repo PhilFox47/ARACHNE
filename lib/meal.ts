@@ -97,3 +97,26 @@ export function readIngredients(json: string | null): Ingredient[] {
     return [];
   }
 }
+
+/**
+ * The grouping key for a food entry, derived from its description.
+ *
+ * One copy, because there used to be two and they were not the problem — the
+ * problem was a third place that wrote a description and forgot the key
+ * entirely. A photographed meal is saved as "Analysing…" and renamed when the
+ * model answers; the rename did not touch `norm_key`, so every photo entry ever
+ * logged carried the key "analysing". Everything that groups by it — the
+ * review's top snacks, the "Again" row, the favourites count — saw one
+ * enormous food.
+ *
+ * It lives here, in the module with no imports, so every writer can reach it:
+ * the server actions, the analysis route, and the client if it ever needs to.
+ * Anything that sets `description` sets this from it, in the same statement.
+ */
+export function normKeyOf(description: string): string {
+  return description
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}

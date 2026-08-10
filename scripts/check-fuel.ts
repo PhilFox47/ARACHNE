@@ -247,6 +247,39 @@ async function main() {
   });
   ok("a photo entry is still told to use the images", !/no photograph/i.test(withShot));
 
+  // ── The grouping key follows the description ──
+  // The fault this exists for: the analysis route renamed a photographed meal
+  // from "Analysing…" to its real name and left `norm_key` alone, so every
+  // photo entry ever logged shared one key. The FUEL page lists rows and looked
+  // right; the review groups them and reported every snack as four of whichever
+  // one it labelled the group with.
+  console.log("\nthe grouping key follows the description");
+
+  const { normKeyOf } = await import("../lib/meal");
+  const srcDir = path.join(process.cwd());
+
+  ok('"Coffee with oat milk" keys as itself', normKeyOf("Coffee with oat milk") === "coffee with oat milk");
+  ok("punctuation and case are stripped", normKeyOf("  Café,  LATTE! ") === "café latte");
+  ok("two foods are two keys", normKeyOf("Banana") !== normKeyOf("Handful of almonds"));
+
+  // Any statement that writes `description` must write `normKey` beside it.
+  // Grepping is crude and it is exactly the check that would have caught this:
+  // the route had one and not the other, and nothing anywhere said so.
+  const writers = ["app/fuel/actions.ts", "app/api/analyze-meal/route.ts"];
+  for (const rel of writers) {
+    const text = fs.readFileSync(path.join(srcDir, rel), "utf8");
+    const sets = [...text.matchAll(/\.set\(\{([\s\S]*?)\}\)/g)].map((m) => m[1]);
+    const bad = sets.filter((body) => /(^|\s)description:/.test(body) && !/normKey:/.test(body));
+    ok(`${rel} never sets a description without its key`, bad.length === 0, `${bad.length} such update(s)`);
+
+    // And nobody redefines the normalisation locally.
+    ok(
+      `${rel} uses the shared normaliser`,
+      !/replace\(\/\[\^\\p\{L\}/.test(text),
+      "found a local copy of the norm regex",
+    );
+  }
+
   // ── Nothing counts an entry that is gone ──
   console.log("\nthe review counts rows, not history");
 
