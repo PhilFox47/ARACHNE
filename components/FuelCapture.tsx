@@ -8,6 +8,7 @@ import { useVisualViewport } from "./useVisualViewport";
 import { ANALYSING_PLACEHOLDER } from "@/lib/plan";
 import { Favourites, type FavouriteItem } from "./Favourites";
 import { WebLoader } from "./WebLoader";
+import { SourceToggle, usePhotoSource, useRememberedSource } from "./PhotoSource";
 
 interface Shot {
   dataUrl: string;
@@ -50,7 +51,7 @@ export function FuelCapture({
   favourites: FavouriteItem[];
 }) {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const picker = usePhotoSource({ multiple: true, onFiles: (files) => void onPhoto(files) });
   // "reading" is a plate; "describing" is words. Same call, and the loader must
   // not claim to be looking at a photograph that does not exist.
   const [busy, setBusy] = useState<null | "saving" | "reading" | "describing">(null);
@@ -164,25 +165,17 @@ export function FuelCapture({
 
   return (
     <div className="flex flex-col gap-3">
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          e.target.value = "";
-          if (files.length > 0) void onPhoto(files);
-        }}
-      />
+      {picker.inputs}
 
       {/* The single biggest thing on the screen, and the first one your thumb
-          reaches. If logging feels like work it stops happening. */}
+          reaches. If logging feels like work it stops happening.
+          It opens the camera: a meal you have to save to your camera roll first
+          is a meal that fills a gallery app with pictures of dinner. The photo
+          you already took is one button lower. */}
       <button
         type="button"
         disabled={busy !== null}
-        onClick={() => fileRef.current?.click()}
+        onClick={picker.openCamera}
         className="tap panel-hot flex min-h-[104px] w-full flex-col items-center justify-center gap-2 active:opacity-80 disabled:opacity-60"
       >
         {busy ? (
@@ -203,11 +196,26 @@ export function FuelCapture({
               <circle cx="50" cy="55" r="9" opacity="0.5" />
               <path d="M30 30 H70" />
             </svg>
-            <span className="display text-lg tracking-widest text-ink">Log fuel</span>
-            <span className="label-xs">Photos · saves instantly</span>
+            <span className="display text-lg tracking-widest text-ink">Take a photo</span>
+            <span className="label-xs">Saves instantly</span>
           </>
         )}
       </button>
+
+      {busy === null ? (
+        <button
+          type="button"
+          onClick={picker.openLibrary}
+          className="tap flex w-full items-center justify-center gap-2 border border-edge text-xs text-muted active:border-cobalt active:text-cobalt-lift"
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+            <rect x="3" y="5" width="18" height="14" />
+            <path d="M3 16l5-5 4 4 3-3 6 6" strokeLinejoin="round" />
+            <circle cx="8.5" cy="9.5" r="1.4" />
+          </svg>
+          Choose from gallery
+        </button>
+      ) : null}
 
       {note ? (
         <p role="status" className="border border-edge bg-panel-2 px-3 py-2 text-center text-xs text-muted">
@@ -297,8 +305,9 @@ function NoteSheet({
 }) {
   const [hint, setHint] = useState("");
   const ref = useRef<HTMLInputElement>(null);
-  const addRef = useRef<HTMLInputElement>(null);
   const [addKind, setAddKind] = useState<PhotoKind>("label");
+  const [source, setSource] = useRememberedSource();
+  const add = usePhotoSource({ onFiles: (files) => onAdd(files[0], addKind) });
   const vp = useVisualViewport();
 
   useEffect(() => {
@@ -354,17 +363,7 @@ function NoteSheet({
         {/* The shots so far, plus a way to add the one that actually carries the
             numbers. A photo of the Nährwerttabelle beats any amount of guessing
             at a plate, and the model is told which image is which. */}
-        <input
-          ref={addRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f) onAdd(f, addKind);
-          }}
-        />
+        {add.inputs}
 
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
           {shots.map((s, i) => (
@@ -377,7 +376,7 @@ function NoteSheet({
           {shots.length < MAX_PHOTOS ? (
             <button
               type="button"
-              onClick={() => addRef.current?.click()}
+              onClick={() => add.open(source)}
               className="tap flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-0.5 border border-dashed border-edge text-muted-dim active:border-cobalt"
             >
               <span className="text-lg leading-none">+</span>
@@ -387,20 +386,23 @@ function NoteSheet({
         </div>
 
         {shots.length < MAX_PHOTOS ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2">
+            <SourceToggle value={source} onChange={setSource} />
+            <div className="flex flex-wrap gap-2">
             {(["label", "recipe", "dish"] as const).map((k) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => {
                   setAddKind(k);
-                  addRef.current?.click();
+                  add.open(source);
                 }}
                 className="tap border border-edge px-2.5 py-1 text-xs text-muted active:border-cobalt active:text-cobalt-lift"
               >
                 + {PHOTO_KIND_LABEL[k].toLowerCase()}
               </button>
             ))}
+            </div>
           </div>
         ) : null}
 

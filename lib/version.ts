@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.10.1";
+export const APP_VERSION = "1.11.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-06";
+export const RELEASED = "2026-08-14";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.11.0",
+    date: "2026-08-14",
+    kind: "minor",
+    headline: "Photograph a meal without keeping it",
+    changes: [
+      "LOG FUEL now leads with Take a photo, which opens the camera. Choose from gallery sits under it for a meal you have already photographed. Every other place that asks for a picture — the nutrition label, the recipe, a second angle on an entry you have already saved — follows one remembered setting rather than asking again.",
+      "It was never a choice before. A file input with nothing else on it lets the browser decide, and a phone decides on the photo library — so logging dinner meant saving dinner to your camera roll first, and a gallery slowly filling with pictures of food.",
+      "Both, rather than swapping one for the other: `capture` is an attribute of the element and not of the click, so a single input either opens the camera and hides the library or the reverse. There are two, and the choice picks between them.",
+      "SUIT CHECK is unchanged — it has always opened the camera. If you would rather it also took an existing photo, say so.",
+    ],
+  },
   {
     version: "1.10.1",
     date: "2026-08-06",

@@ -17,6 +17,83 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.11.0 — 2026-08-14
+
+Photograph a meal without keeping it.
+
+Reported as: *"I can only upload photos from my gallery when tracking food.
+Otherwise my entire gallery app will be full of food."*
+
+That was never a decision anybody made. A file input written as
+
+```html
+<input type="file" accept="image/*" />
+```
+
+leaves the choice to the browser, and on a phone the browser chooses the photo
+library. So the only way to log a meal was to photograph it in the camera app,
+keep it, and then pick it — and a year of that is a gallery full of dinner.
+
+The obvious fix is the attribute that opens the camera:
+
+```html
+<input type="file" accept="image/*" capture="environment" />
+```
+
+and it breaks the other half. `capture` is an attribute of the **element**, not
+of the click. An input that carries it opens the camera and offers no way to
+reach a photo you already have; an input without it does the reverse. One
+element cannot be both, and the platform gives no way to ask at the moment of
+tapping.
+
+So there are two inputs, and the choice picks between them. `components/PhotoSource.tsx`
+owns the pair and nothing else in FUEL owns a file input at all:
+
+- **The hero is now `Take a photo`**, opening the camera, saving the instant the
+  shutter closes exactly as before.
+- **`Choose from gallery`** sits directly under it, unchanged behaviour for a
+  meal already photographed.
+- **Everywhere else that asks for a picture** — `+ nutrition label`,
+  `+ recipe or menu`, `+ the food`, and the same three on an entry already
+  saved — reads one remembered setting instead of asking six times. The toggle
+  sits above those chips, and the choice is stored in `localStorage` under
+  `arachne.photoSource`.
+
+One consequence worth stating: `capture` also suppresses `multiple`. The camera
+takes one photo at a time and the library still takes as many as you like, which
+is the right way round — a batch is something you assemble from a roll, not
+something you shoot.
+
+Verified in a phone-sized browser, both sheets: the pair of inputs exists with
+the right attributes, the hero routes to the camera and the gallery button to
+the library, the toggle routes the label chips to whichever is selected, and the
+setting survives a reload.
+
+```
+file inputs on /fuel: [{"capture":"environment","multiple":false},
+                       {"capture":null,"multiple":true}]
+hero → camera        ·  gallery button → library
+'+ label' default    → camera
+'+ label' after flip → library      stored: library
+after reload         → Gallery pressed, '+ label' → library
+entry sheet          → same toggle, same routing
+```
+
+No schema change — the setting is a client preference, not data.
+
+`npm run check` gains a section that fails a FUEL surface owning its own file
+input, a camera input that claims `multiple`, or a photo entry point that offers
+no choice. That is the shape of the regression: a new place to add a picture,
+written the obvious way, silently gallery-only again.
+
+**SUIT CHECK is deliberately untouched.** It has always used
+`capture="environment"`, so it never had the reported problem — it takes a photo
+and does not fill anything. It also cannot use an existing one, which is the
+mirror-image limitation; left alone because the request was about food, and it
+is a one-line change if it turns out to matter.
+
+---
+
 ## 1.10.1 — 2026-08-06
 
 Every photographed meal was filed under the same name.

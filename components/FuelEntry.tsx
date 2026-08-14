@@ -21,6 +21,7 @@ import {
   type PhotoKind,
 } from "@/lib/meal";
 import { FavouriteToggle } from "./Favourites";
+import { SourceToggle, usePhotoSource, useRememberedSource } from "./PhotoSource";
 
 interface Entry {
   id: number;
@@ -110,7 +111,6 @@ export function FuelEntryRow({
   const [pending, start] = useTransition();
   const [reading, setReading] = useState(false);
   const [starred, setStarred] = useState(isFavourite);
-  const addRef = useRef<HTMLInputElement>(null);
   const addKind = useRef<PhotoKind>("label");
 
   // An entry from before multi-photo entries has a cover and no rows.
@@ -242,6 +242,12 @@ export function FuelEntryRow({
       router.refresh();
     });
 
+  // Declared after `attach` so the handler it closes over is already defined —
+  // valid either way, but a hook reaching backwards past its own dependency is
+  // the kind of thing that reads as a bug on the next pass through this file.
+  const [source, setSource] = useRememberedSource();
+  const add = usePhotoSource({ onFiles: (files) => attach(files[0], addKind.current) });
+
   return (
     <div className={`panel ${isSnack ? "border-l-2 border-l-crimson" : ""}`}>
       <button
@@ -299,17 +305,7 @@ export function FuelEntryRow({
               the fact and re-reading is usually a bigger correction than any
               amount of typing into the fields below. */}
           <div className="flex flex-col gap-2">
-            <input
-              ref={addRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) attach(f, addKind.current);
-              }}
-            />
+            {add.inputs}
             <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
               {shots.map((p) => (
                 <span key={p.id} className="relative flex shrink-0 flex-col gap-1">
@@ -342,7 +338,9 @@ export function FuelEntryRow({
             </div>
 
             {shots.length < MAX_PHOTOS ? (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
+                <SourceToggle value={source} onChange={setSource} />
+                <div className="flex flex-wrap gap-2">
                 {(["label", "recipe", "dish"] as const).map((k) => (
                   <button
                     key={k}
@@ -350,13 +348,14 @@ export function FuelEntryRow({
                     disabled={busy}
                     onClick={() => {
                       addKind.current = k;
-                      addRef.current?.click();
+                      add.open(source);
                     }}
                     className="tap border border-edge px-2.5 py-1 text-xs text-muted disabled:opacity-40"
                   >
                     + {PHOTO_KIND_LABEL[k].toLowerCase()}
                   </button>
                 ))}
+                </div>
               </div>
             ) : null}
           </div>

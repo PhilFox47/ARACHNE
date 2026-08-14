@@ -280,6 +280,35 @@ async function main() {
     );
   }
 
+  // ── Both ways to get a photo stay reachable ──
+  // `capture` is an attribute of the element, not of the click, so one input
+  // cannot offer both — a single input either opens the camera and hides the
+  // library, or opens the library and hides the camera. That is the whole
+  // reason PhotoSource exists, and the reason a new photo entry point must not
+  // hand-roll its own input: it would silently pick one and drop the other.
+  console.log("\ncamera and gallery are both reachable");
+
+  const photoSrc = fs.readFileSync(path.join(srcDir, "components/PhotoSource.tsx"), "utf8");
+  const inputs = [...photoSrc.matchAll(/<input[\s\S]*?\/>/g)].map((m) => m[0]);
+  ok("PhotoSource offers two inputs", inputs.length === 2, `${inputs.length} found`);
+  ok("one of them opens the camera", inputs.filter((i) => /capture="environment"/.test(i)).length === 1);
+  ok("the other leaves the choice to the browser", inputs.filter((i) => !/capture=/.test(i)).length === 1);
+
+  // `capture` suppresses `multiple`. Writing both would promise a batch the
+  // browser will not deliver.
+  const cam = inputs.find((i) => /capture=/.test(i)) ?? "";
+  ok("the camera input never claims `multiple`", !/multiple/.test(cam));
+
+  // Every FUEL surface goes through the hook rather than its own input.
+  for (const rel of ["components/FuelCapture.tsx", "components/FuelEntry.tsx"]) {
+    const text = fs.readFileSync(path.join(srcDir, rel), "utf8");
+    ok(`${rel} owns no file input of its own`, !/type="file"/.test(text));
+    ok(`${rel} goes through PhotoSource`, /usePhotoSource/.test(text));
+    // The choice is only worth making if it is remembered — otherwise it is a
+    // tap you pay on every single meal.
+    ok(`${rel} offers the choice`, /SourceToggle/.test(text) && /useRememberedSource/.test(text));
+  }
+
   // ── Nothing counts an entry that is gone ──
   console.log("\nthe review counts rows, not history");
 
