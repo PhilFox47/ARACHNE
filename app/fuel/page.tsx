@@ -8,7 +8,7 @@ import { foodEntries, mealPhotos } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { addDays, daysBetween, formatShort, todayISO } from "@/lib/dates";
-import { kcalTargetForDay, proteinTargetForDay } from "@/lib/course";
+import { intakeForDay, proteinTargetForDay } from "@/lib/course";
 import { listFavourites, quickLogCandidates } from "./actions";
 import { waterForDate } from "./water";
 import { FuelCapture } from "@/components/FuelCapture";
@@ -94,7 +94,8 @@ export default async function Fuel({
   // Phase 1 against Phase 3's number would be quietly wrong every time you
   // stepped back to check one.
   const dayIndex = Math.max(0, daysBetween(settings.startDate, date));
-  const target = kcalTargetForDay(dayIndex).kcal;
+  const intake = intakeForDay(dayIndex);
+  const target = intake.kcal;
   // The phase's own figure — 160 g through Phase 1, not three meals' worth.
   const proteinTarget = proteinTargetForDay(dayIndex);
   const pct = target > 0 ? Math.min(100, Math.round((kcal / target) * 100)) : 0;
@@ -155,6 +156,30 @@ export default async function Fuel({
             No deficit yet. Track everything honestly and find out how close the estimates really are — that
             calibration is the whole job of these two weeks. {target.toLocaleString("en-GB")} kcal is
             maintenance, not a limit.
+          </p>
+        </div>
+      ) : null}
+
+      {intake.refuel ? (
+        <div className="panel border-l-2 border-l-cobalt p-3.5">
+          <p className="label-xs text-cobalt-lift">Refuel week</p>
+          <p className="mt-1 text-sm text-ink">
+            Maintenance all week — {target.toLocaleString("en-GB")} kcal, not a limit to stay under.
+            Scheduled, every eighth training week. A year-long unbroken deficit costs more muscle and
+            gets abandoned more often than one with breaks built in. The scale will drift up a kilo on
+            food and water; it is not fat.
+          </p>
+        </div>
+      ) : null}
+
+      {intake.adjustment !== 0 ? (
+        <div className="panel border-l-2 border-l-crimson p-3.5">
+          <p className="label-xs text-crimson">Adjusted</p>
+          <p className="mt-1 text-sm text-ink">
+            {intake.adjustment > 0
+              ? `The plan says ${intake.planned.toLocaleString("en-GB")}, but your average has been running below the corridor — losing faster than intended costs muscle, so today's target is ${intake.adjustment} kcal higher.`
+              : `The plan says ${intake.planned.toLocaleString("en-GB")}, and your average has been running above the corridor, so today's target is ${Math.abs(intake.adjustment)} kcal lower.`}
+            {intake.atFloor ? " Held at the floor — never below 2,000." : ""}
           </p>
         </div>
       ) : null}

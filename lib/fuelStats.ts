@@ -3,7 +3,7 @@ import { db } from "./db";
 import { foodEntries, waterLogs } from "./db/schema";
 import { addDays, daysBetween, todayISO } from "./dates";
 import { getSettings } from "./settings";
-import { kcalTargetForDay, phaseForDay, proteinTargetForDay } from "./course";
+import { intakeForDay, phaseForDay, proteinTargetForDay, weightsByDay } from "./course";
 
 export interface DayNutrition {
   date: string;
@@ -99,6 +99,7 @@ export function buildFuelStats(periodDays: number): FuelStats {
     .where(and(gte(waterLogs.date, from), lte(waterLogs.date, today)))
     .groupBy(waterLogs.date)
     .all();
+  const weightDays = weightsByDay();
   const waterByDate = new Map(water.map((w) => [w.date, w.ml]));
 
   // ── Per-day ──
@@ -122,7 +123,7 @@ export function buildFuelStats(periodDays: number): FuelStats {
       snackKcal: 0,
       entries: 0,
       waterMl: waterByDate.get(date) ?? 0,
-      kcalTarget: kcalTargetForDay(day).kcal,
+      kcalTarget: intakeForDay(day, weightDays).kcal,
       logged: false,
     });
   }

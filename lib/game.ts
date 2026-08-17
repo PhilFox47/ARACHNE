@@ -19,7 +19,7 @@ import {
   isLowProfileWeek,
   type DayKey,
 } from "./plan";
-import { corridorTarget, kcalTargetForDay, proteinTargetForDay } from "./course";
+import { corridorTarget, intakeForDay, proteinTargetForDay } from "./course";
 
 // ─────────────────────────────────────────────────────────────
 // XP table — tune freely, nothing else depends on the values
@@ -373,6 +373,11 @@ function patrolDaysIn(from: string, to: string, startDate: string): string[] {
   return daysIn(from, to, startDate).filter((d) => TRAINING_DAYS.includes(dayKeyOf(d) as DayKey));
 }
 
+/** Weight readings as days-since-start, which is what the intake maths wants. */
+function weightDaysOf(input: GameInput) {
+  return input.weights.map((w) => ({ day: daysBetween(input.startDate, w.date), kg: w.weightKg }));
+}
+
 function inRange(date: string, from: string, to: string): boolean {
   return date >= from && date <= to;
 }
@@ -557,11 +562,12 @@ const TEMPLATES: ChallengeTemplate[] = [
     build: (c) => {
       if (c.food.length === 0) return null;
       const target = c.scope === "weekly" ? fit(5, c.days.length) : 20;
+      const weightDays = weightDaysOf(c.input);
       let current = 0;
       for (const [date, tot] of c.daily) {
         if (!inRange(date, c.from, c.to)) continue;
         const day = daysBetween(c.input.startDate, date);
-        const { kcal } = kcalTargetForDay(day);
+        const { kcal } = intakeForDay(day, weightDays);
         if (tot.kcal > 0 && tot.kcal <= kcal * 1.05) current++;
       }
       return {
@@ -1008,9 +1014,10 @@ export function computeGameState(input: GameInput): GameState {
 
   let kcalDays = 0;
   let proteinDays = 0;
+  const weightDays = weightDaysOf(input);
   for (const [date, tot] of daily) {
     const day = daysBetween(startDate, date);
-    const { kcal } = kcalTargetForDay(day);
+    const { kcal } = intakeForDay(day, weightDays);
     if (tot.kcal > 0 && tot.kcal <= kcal * 1.05) kcalDays++;
     if (tot.protein >= proteinTargetForDay(day)) proteinDays++;
   }

@@ -17,6 +17,133 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.13.0 — 2026-08-17
+
+The sports-science pass. The previous release checked that the app implements
+the plan faithfully; this one asks whether the plan itself is good exercise
+science, and closes the four gaps where it was not.
+
+### REFUEL WEEK — the diet gets planned breaks
+
+The plan ran a continuous deficit for roughly fifty weeks with only a *reactive*
+rule in Phase 4 ("if weight stalls three weeks, take one week at maintenance").
+That was its one real physiological gap. Byrne's MATADOR trial ran intermittent
+maintenance blocks against a continuous cut: the intermittent arm lost **more**
+fat and showed less suppression of resting metabolic rate. Adherence over twelve
+months is the other half — a break you can see coming is the difference between
+a diet you finish and one you abandon in month seven.
+
+Every eighth training week is now a week at maintenance, pinned to every second
+`LOW PROFILE WEEK`:
+
+```
+low profile: 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49
+refuel     : 9, 17, 25, 33, 41, 49        (6 in the year)
+```
+
+Pinned rather than given a cadence of its own, because a week of reduced
+training and a week of restored calories are the same idea said twice — the
+point of both is arriving at the next block recovered. One concept, once every
+eight weeks.
+
+Maintenance is not a constant. A 100 kg man and an 80 kg man do not maintain on
+the same intake, and the document quietly says so: Phase 0 holds at 2,700 while
+the closing fortnight calls 2,400 maintenance. `maintenanceForDayIn` reads it off
+the corridor between them, so a refuel week drifts 2,700 → 2,500 → 2,400 across
+the year.
+
+### The calorie target now answers to the scale
+
+`kcalTargetForDayIn` was a function of the day index and nothing else, which
+makes it a prediction rather than a plan. It lands on 80 kg only if maintenance
+really is what the document assumed. Modelled against Mifflin-St Jeor at three
+plausible activity levels, the open-loop schedule finished:
+
+```
+AF 1.35 → 82.5 kg      AF 1.45 → 76.0 kg      AF 1.55 → 69.8 kg
+```
+
+Ten kilos under target is not a happy accident — it is muscle, and nine months of
+eating less than you needed to. `kcalAdjustmentIn` now trims the ladder against a
+fortnight of rolling averages:
+
+- only once the average is outside the corridor's own tolerance band
+- 100 kcal per kilogram past that band, rounded to 50
+- capped at ±300 kcal
+- never during Phase 0, a refuel week or the closing taper
+- never below `KCAL_FLOOR`, whatever the arithmetic wants
+- at least four readings in the window, so one bad morning moves nothing
+
+Deliberately a trim, not a controller. A diet that chases the scale week to week
+is how people arrive at 1,400 kcal in month eight. Re-run with feedback:
+
+```
+AF 1.35  82.5 → 82.4 kg
+AF 1.45  76.0 → 78.0 kg
+AF 1.55  69.8 → 75.8 kg     spread 12.7 kg → 6.6 kg
+```
+
+It is pure and takes only readings on or before the day asked about, so a past
+day recomputes to what it was worth at the time rather than to what today knows
+— the derived-on-read rule holds.
+
+### Three volume holes
+
+Counted as hard sets per muscle per week, Phase 1 had:
+
+```
+side delt    3    hamstrings   3    calves   0
+```
+
+Calves had nothing in the entire year. Side delts had three sets, all of them
+one exercise, in a plan whose Phase 4 names the V-silhouette as the whole point
+of the last quarter. And legs were trained once a week against pushing and
+pulling twice — Schoenfeld's 2016 meta-analysis found two exposures beat one at
+matched volume.
+
+- **Calf raises** on Wednesday, Phases 1 and 2 (3 and 4 inherit).
+- **A second lateral raise exposure**, also Wednesday.
+- **A glute bridge on Monday**, giving the hip hinge two exposures a week.
+
+```
+side delt    6    hamstrings   6    calves   3
+```
+
+Not a restructure of the split — that would mean upper/lower, which is a bigger
+change than is sensible the night before Phase 1 starts.
+
+### Creatine, vitamin D, and a blood panel
+
+Added to the Phase 1 brief, which had nothing on any of them:
+
+- **Creatine monohydrate, 3–5 g/day.** No loading, no cycling. The most
+  evidenced supplement there is, and it does more in a deficit than out of one
+  because it holds onto strength while calories are low.
+- **Vitamin D testing.** At ~51°N cutaneous synthesis is effectively zero from
+  October to March. It moves muscle function and mood, and mood is a performance
+  variable across twelve months.
+- **Blood pressure, lipids, HbA1c.** Partly to catch anything that changes how
+  training should go, partly because repeating them at month twelve gives a
+  result the mirror cannot show.
+
+### Making it visible
+
+A scheduled break nobody can see is a bug. SENSE gains a refuel insight at the
+top of the FUEL ranking while one is running, and a one-week warning before it
+starts. FUEL shows a banner on a refuel day, and a second banner whenever the
+adjustment is non-zero, naming the ladder's own figure and why today's differs.
+
+### Checking
+
+`npm run check` gains sixteen assertions: that every refuel week is also a
+deload and lands every eighth training week, that none falls in the baseline
+fortnight, that a refuel day eats above the phase figure, that maintenance falls
+as the corridor does, and that the adjustment is inert without readings, inert
+inside the band, correctly signed outside it, capped both ways, and unable to
+push any day of the year below the floor.
+
+---
+
 ## 1.12.0 — 2026-08-17
 
 A full audit of the plan before Phase 1 begins. Four defects, all of them

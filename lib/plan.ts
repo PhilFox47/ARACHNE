@@ -112,6 +112,10 @@ export const PHASES: Phase[] = [
       "Pressing and pulling both happen twice a week here. Once a week is enough to learn a pattern and not enough to build one, and these are the twelve weeks where the patterns are actually laid down.",
       "40 g of protein per meal, non-negotiable. Weigh daily, judge weekly.",
       "The deficit starts in week 3, at 2,300 kcal.",
+      "Every eighth training week is a REFUEL WEEK: two rounds instead of three, and calories back at maintenance for the whole week. Planned, not a reward and not a failure — a year-long unbroken deficit loses more muscle and gets abandoned more often than one with breaks built into it.",
+      "Start creatine monohydrate, 3–5 g a day, any time of day, no loading and no cycling. It is the most evidenced supplement there is and it does more in a deficit than out of one, because it is holding onto strength while calories are low.",
+      "Get vitamin D tested. At this latitude your skin makes essentially none of it between October and March, and it moves both muscle function and mood — and mood is a performance variable across twelve months.",
+      "Book the bloods now: blood pressure, lipids, HbA1c. Partly to catch anything that changes how you should train, partly because repeating them at month twelve gives you a result the mirror cannot show you.",
     ],
   },
   {
@@ -334,19 +338,167 @@ export function taperFor(config: CourseConfig): { days: number; kcal: number } {
   return { days: TAPER.days, kcal: round50(TAPER.kcal * kcalScale(config)) };
 }
 
-/** Calorie target for a day, accounting for the closing taper. */
+/**
+ * Maintenance on a given day, which is not a constant.
+ *
+ * A 100 kg man and an 80 kg man do not maintain on the same intake, and the
+ * document quietly says so — Phase 0 holds at 2,700 while the closing fortnight
+ * calls 2,400 maintenance. Those are the same statement at two body weights, so
+ * maintenance is read off the corridor between them.
+ */
+export function maintenanceForDayIn(config: CourseConfig, day: number): number {
+  const c = normaliseCourse(config);
+  const phases = phasesFor(c);
+  const from = phases[0].kcal;
+  const to = taperFor(c).kcal;
+  const span = c.startWeightKg - c.targetWeightKg;
+  if (span <= 0) return round50(from);
+  const lost = c.startWeightKg - corridorTargetIn(c, day);
+  return round50(from + (to - from) * clamp(lost / span, 0, 1));
+}
+
+/**
+ * A planned week at maintenance, every second LOW PROFILE WEEK.
+ *
+ * A twelve-month unbroken deficit is the plan's one real physiological gap.
+ * Byrne's MATADOR trial ran intermittent maintenance blocks against a
+ * continuous cut and the intermittent arm lost *more* fat while showing less
+ * suppression of resting metabolic rate — and, over a year, a break you can see
+ * coming is the difference between a diet you finish and one you abandon in
+ * month seven.
+ *
+ * Pinned to every second deload rather than given a cadence of its own, because
+ * a week of reduced training and a week of maintenance calories are the same
+ * idea said twice: the point of both is that you arrive at the next block
+ * recovered. One concept, once every eight training weeks.
+ */
+export function isRefuelWeek(weekIndex: number): boolean {
+  if (!isLowProfileWeek(weekIndex)) return false;
+  const trainingWeek = weekIndex - FIRST_TRAINING_WEEK;
+  return ((trainingWeek + 1) / 4) % 2 === 0;
+}
+
+/** Calorie target for a day, accounting for refuel weeks and the closing taper. */
 export function kcalTargetForDayIn(
   config: CourseConfig,
   day: number,
-): { kcal: number; taper: boolean } {
+): { kcal: number; taper: boolean; refuel: boolean } {
   const c = normaliseCourse(config);
   const t = taperFor(c);
-  if (day > c.totalDays - t.days && day <= c.totalDays) return { kcal: t.kcal, taper: true };
-  return { kcal: phaseForDayIn(c, day).kcal, taper: false };
+  if (day > c.totalDays - t.days && day <= c.totalDays) {
+    return { kcal: t.kcal, taper: true, refuel: false };
+  }
+  const phase = phaseForDayIn(c, day);
+  // Never during the baseline fortnight — it is already at maintenance, and a
+  // "break" from a phase with no deficit in it is a contradiction.
+  if (phase.id !== 0 && isRefuelWeek(Math.floor(day / 7))) {
+    return { kcal: maintenanceForDayIn(c, day), taper: false, refuel: true };
+  }
+  return { kcal: phase.kcal, taper: false, refuel: false };
 }
 
 export function kcalFloorFor(config: CourseConfig): number {
   return round50(KCAL_FLOOR * kcalScale(config));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Adaptive intake — the ladder answers to the scale
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * The calorie ladder was a function of the date and nothing else, which makes
+ * it a prediction rather than a plan. It lands on the goal only if maintenance
+ * really is what the document assumed: modelled against Mifflin-St Jeor, the
+ * schedule implies ~2,755 kcal at 100 kg, and at a genuinely plausible activity
+ * level of 1.45 the same intake finishes four kilos under target, at 1.55 ten
+ * kilos under. Undershooting a cut is not harmless — it is muscle, and nine
+ * months of eating less than you needed to.
+ *
+ * So the target now reads the scale. The correction is deliberately slow and
+ * small: it acts on a fortnight of rolling averages rather than any single
+ * morning, only once the drift is outside the corridor's own tolerance, and it
+ * is capped. This is a trim, not a controller — a diet that chases the scale
+ * week to week is how people end up at 1,400 kcal in month eight.
+ */
+export const ADAPT_WINDOW_DAYS = 14;
+/** Readings needed inside the window before it will act at all. */
+export const ADAPT_MIN_READINGS = 4;
+/** Per kilogram outside the corridor band. */
+export const ADAPT_KCAL_PER_KG = 100;
+export const ADAPT_MAX_KCAL = 300;
+
+export interface DayWeight {
+  /** Days since the start date. */
+  day: number;
+  kg: number;
+}
+
+/**
+ * How far the intake should move from the ladder's figure, in kcal.
+ *
+ * Positive means eat more — you are below the corridor, i.e. ahead of schedule
+ * and losing faster than the plan wants. Negative means the reverse.
+ *
+ * Pure, and a function only of readings on or before `day`, so a past day
+ * recomputes to what it was worth at the time rather than to what today knows.
+ */
+export function kcalAdjustmentIn(config: CourseConfig, day: number, weights: DayWeight[]): number {
+  const c = normaliseCourse(config);
+  const phase = phaseForDayIn(c, day);
+  // Not during the baseline fortnight, a refuel week or the closing taper —
+  // all three are deliberately not tracking the corridor.
+  if (phase.id === 0) return 0;
+  const t = kcalTargetForDayIn(c, day);
+  if (t.taper || t.refuel) return 0;
+
+  const window = weights.filter((w) => w.day <= day && w.day > day - ADAPT_WINDOW_DAYS);
+  if (window.length < ADAPT_MIN_READINGS) return 0;
+
+  const avg = window.reduce((s, w) => s + w.kg, 0) / window.length;
+  const midpoint = day - ADAPT_WINDOW_DAYS / 2;
+  const drift = avg - corridorTargetIn(c, midpoint);
+
+  // Inside the band the plan is working. Only what is past it counts, so the
+  // correction eases in from zero rather than stepping.
+  const excess =
+    drift > CORRIDOR_TOLERANCE_KG
+      ? drift - CORRIDOR_TOLERANCE_KG
+      : drift < -CORRIDOR_TOLERANCE_KG
+        ? drift + CORRIDOR_TOLERANCE_KG
+        : 0;
+  if (excess === 0) return 0;
+
+  const raw = -excess * ADAPT_KCAL_PER_KG;
+  return clamp(Math.round(raw / 50) * 50, -ADAPT_MAX_KCAL, ADAPT_MAX_KCAL);
+}
+
+export interface DailyIntake {
+  kcal: number;
+  /** The ladder's own figure, before the scale had a say. */
+  planned: number;
+  adjustment: number;
+  taper: boolean;
+  refuel: boolean;
+  /** True when the floor, not the arithmetic, decided the number. */
+  atFloor: boolean;
+}
+
+/** The number to actually eat to: the ladder, corrected, never below the floor. */
+export function intakeForDayIn(config: CourseConfig, day: number, weights: DayWeight[]): DailyIntake {
+  const c = normaliseCourse(config);
+  const base = kcalTargetForDayIn(c, day);
+  const adjustment = kcalAdjustmentIn(c, day, weights);
+  const floor = kcalFloorFor(c);
+  const wanted = base.kcal + adjustment;
+  const kcal = Math.max(floor, wanted);
+  return {
+    kcal,
+    planned: base.kcal,
+    adjustment,
+    taper: base.taper,
+    refuel: base.refuel,
+    atFloor: wanted < floor,
+  };
 }
 
 /**
@@ -912,6 +1064,11 @@ const P1: Record<DayKey, Session | null> = {
         note: "Second pull of the week. Once a week is enough to learn a pattern and not enough to build one — and a pressing day with no pulling in it is how shoulders get sore.",
       },
       { name: "Lateral raises", dose: "12–15", note: "Light — 4–5 kg is plenty" },
+      {
+        name: "Glute bridge",
+        dose: "12–15",
+        note: "The week's second hip hinge. Wednesday is the only leg day, and a pattern trained once a week is trained at half the rate the evidence says it should be — two exposures beat one at the same total volume.",
+      },
       { name: "Dead bug", dose: "10 per side" },
       { name: "Plank", dose: "30–45 s" },
     ],
@@ -950,6 +1107,16 @@ const P1: Record<DayKey, Session | null> = {
         note: "Second press of the week. Months 1–3 are where the pressing pattern is actually learned, and a pattern trained once a week is a pattern you re-learn every Monday.",
       },
       { name: "Reverse lunges", dose: "10 per side" },
+      {
+        name: "Lateral raises",
+        dose: "12–15",
+        note: "Second exposure. Three sets a week was the only side-delt work in the plan, and the side delt is what makes the V — which Phase 4 names as the whole point of the last quarter.",
+      },
+      {
+        name: "Calf raises",
+        dose: "15–20",
+        note: "The one muscle the year had nothing for. Off a step if you have one, so the heel drops below the toes.",
+      },
       { name: "Wall sit", dose: "30–45 s" },
     ],
     extras: WED_EXTRA,
@@ -1004,6 +1171,8 @@ const P2: Record<DayKey, Session | null> = {
       { name: "Inverted rows", dose: "8–12" },
       { name: "Bulgarian split squats", dose: "10 per side", since: 2 },
       { name: "Nordic curl negatives", dose: "3× 5", note: "Feet under the sofa", since: 2 },
+      { name: "Lateral raises", dose: "12–15", note: "Light. The side delt is what builds the V." },
+      { name: "Calf raises", dose: "15–20", note: "Off a step, heel below the toes." },
       { name: "Wall sit", dose: "30–45 s" },
     ],
     rule:

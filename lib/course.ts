@@ -19,15 +19,24 @@ import {
   kcalFloorFor,
   kcalTargetForDayIn,
   normaliseCourse,
+  intakeForDayIn,
+  isRefuelWeek,
+  maintenanceForDayIn,
   phaseForDayIn,
   phasesFor,
   proteinTargetForDayIn,
   taperFor,
+  type DailyIntake,
+  type DayWeight,
   type Checkpoint,
   type CourseConfig,
   type Phase,
 } from "./plan";
 import { getSettings } from "./settings";
+import { asc } from "drizzle-orm";
+import { db } from "./db";
+import { weights } from "./db/schema";
+import { daysBetween } from "./dates";
 
 export function activeCourse(): CourseConfig {
   const s = getSettings();
@@ -90,3 +99,34 @@ export function courseKcalFloor(): number {
 export function activeRate(): { kgPerWeek: number; tooFast: boolean } {
   return courseRate(activeCourse());
 }
+
+/**
+ * Every weight reading, expressed as days since the start.
+ *
+ * Read whole rather than windowed: the table holds one row a day for a year at
+ * most, and the adjustment has to be computable for a past day as well as
+ * today — which means the caller cannot be handed only the recent tail.
+ */
+export function weightsByDay(): DayWeight[] {
+  const s = getSettings();
+  return db
+    .select({ date: weights.date, weightKg: weights.weightKg })
+    .from(weights)
+    .orderBy(asc(weights.date))
+    .all()
+    .map((w) => ({ day: daysBetween(s.startDate, w.date), kg: w.weightKg }));
+}
+
+/**
+ * What to eat on a day: the ladder, corrected by what the scale has actually
+ * been doing, never below the floor.
+ */
+export function intakeForDay(day: number, rows?: DayWeight[]): DailyIntake {
+  return intakeForDayIn(activeCourse(), day, rows ?? weightsByDay());
+}
+
+export function maintenanceForDay(day: number): number {
+  return maintenanceForDayIn(activeCourse(), day);
+}
+
+export { isRefuelWeek };

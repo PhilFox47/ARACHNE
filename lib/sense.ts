@@ -1,6 +1,6 @@
 import { addDays, daysBetween, todayISO } from "./dates";
 import { CORRIDOR_TOLERANCE_KG } from "./plan";
-import { corridorTarget } from "./course";
+import { corridorTarget, isRefuelWeek } from "./course";
 import {
   buildComposition,
   compositionSummary,
@@ -54,6 +54,33 @@ export function computeInsights(stats: HqStats, rows: WeightRow[]): Insight[] {
         priority: 95,
         text: `No reading for ${gap} days. The average needs feeding — a gap this long makes the line guesswork.`,
       });
+    }
+  }
+
+  // ── Refuel week ──
+  // Ranked highest of the FUEL insights while it is running. A maintenance week
+  // that arrives unannounced reads as the app breaking, and a maintenance week
+  // eaten at a deficit anyway is not a maintenance week.
+  if (stats.phase.id !== 0) {
+    const wk = Math.floor(stats.day / 7);
+    if (isRefuelWeek(wk)) {
+      out.push({
+        key: "refuel",
+        tone: "good",
+        priority: 97,
+        text: `REFUEL WEEK — eat at maintenance all week and take the two-round sessions. This is scheduled, not a slip. The scale will go up a kilo or so on food and water; it is not fat and it comes back off in days.`,
+      });
+    } else {
+      // One week of warning, so it can be planned around rather than discovered.
+      const next = [wk + 1, wk + 2].find(isRefuelWeek);
+      if (next === wk + 1) {
+        out.push({
+          key: "refuel-soon",
+          tone: "neutral",
+          priority: 60,
+          text: `REFUEL WEEK starts Monday — maintenance calories and two-round sessions for seven days, then back to the deficit.`,
+        });
+      }
     }
   }
 

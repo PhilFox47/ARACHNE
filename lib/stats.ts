@@ -3,7 +3,7 @@ import { db } from "./db";
 import { weights } from "./db/schema";
 import { addDays, daysBetween, todayISO } from "./dates";
 import { CORRIDOR_TOLERANCE_KG, type Phase } from "./plan";
-import { corridorTarget, courseTotalDays, kcalTargetForDay, phaseForDay } from "./course";
+import { corridorTarget, courseTotalDays, intakeForDay, phaseForDay } from "./course";
 import { getSettings } from "./settings";
 
 export interface WeightRow {
@@ -195,7 +195,7 @@ export function getHqStats(): HqStats {
   // body-fat feature one morning shouldn't blank the figure.
   const lastBf = [...rows].reverse().find((r) => r.bodyfatPct !== null) ?? null;
   const target = corridorTarget(day);
-  const { kcal, taper } = kcalTargetForDay(day);
+  const { kcal, taper } = intakeForDay(day);
 
   // Judge the corridor on the 7-day average, never on a single reading — the
   // document is explicit that daily weight swings up to 2 kg on water alone.

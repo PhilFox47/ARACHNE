@@ -19,16 +19,25 @@ import { builtinModules } from "node:module";
 import Database from "better-sqlite3";
 import { MIGRATIONS, SCHEMA_VERSION, openAt } from "../lib/db";
 import {
+  ADAPT_MAX_KCAL,
   BASELINE_PATROLS,
   DOCUMENT_COURSE,
   PHASES,
   PROTEIN_PER_MEAL_G,
+  corridorTargetIn,
+  intakeForDayIn,
   isLowProfileWeek,
+  isRefuelWeek,
+  kcalFloorFor,
+  kcalTargetForDayIn,
+  maintenanceForDayIn,
+  kcalAdjustmentIn,
   phasesFor,
   proteinTargetForDayIn,
   roundsForWeek,
   sessionFor,
   type DayKey,
+  type DayWeight,
 } from "../lib/plan";
 import {
   EQUIPMENT_CATALOGUE,
@@ -595,6 +604,73 @@ ok(
   lowProfileWeeks.slice(0, 4).join(", "),
 );
 ok("a low-profile week is two rounds, not three", roundsForWeek(5) === 2 && roundsForWeek(6) === 3);
+
+// ── Refuel weeks ──
+// A planned week at maintenance every second deload. Pinned to the deload so
+// that reduced training and restored calories are the same week rather than two
+// competing ideas.
+const refuelWeeks = Array.from({ length: 60 }, (_, w) => w).filter(isRefuelWeek);
+ok("every refuel week is also a low-profile week", refuelWeeks.every(isLowProfileWeek));
+ok("they land every eighth training week", refuelWeeks.slice(0, 5).every((w, i) => w === 9 + i * 8), refuelWeeks.slice(0, 5).join(", "));
+ok("none of them falls in the baseline fortnight", !refuelWeeks.some((w) => w < 2));
+ok(
+  "a refuel day eats at maintenance, not at the phase figure",
+  kcalTargetForDayIn(DOCUMENT_COURSE, 9 * 7).refuel &&
+    kcalTargetForDayIn(DOCUMENT_COURSE, 9 * 7).kcal > phasesFor(DOCUMENT_COURSE)[1].kcal,
+  `${kcalTargetForDayIn(DOCUMENT_COURSE, 9 * 7).kcal} kcal`,
+);
+ok(
+  "maintenance falls as the corridor does",
+  maintenanceForDayIn(DOCUMENT_COURSE, 20) > maintenanceForDayIn(DOCUMENT_COURSE, 350),
+  `${maintenanceForDayIn(DOCUMENT_COURSE, 20)} → ${maintenanceForDayIn(DOCUMENT_COURSE, 350)}`,
+);
+
+// ── The intake answers to the scale, within limits ──
+// A diet that chases the scale week to week ends at 1,400 kcal in month eight,
+// so the correction is bounded on both sides and floored absolutely.
+console.log("\nadaptive intake");
+
+const heavy = (day: number, over: number): DayWeight[] =>
+  Array.from({ length: 14 }, (_, i) => ({
+    day: day - i,
+    kg: corridorTargetIn(DOCUMENT_COURSE, day - i) + over,
+  }));
+
+ok("no readings, no adjustment", kcalAdjustmentIn(DOCUMENT_COURSE, 60, []) === 0);
+ok(
+  "one reading is not enough to move it",
+  kcalAdjustmentIn(DOCUMENT_COURSE, 60, [{ day: 60, kg: 110 }]) === 0,
+);
+ok("inside the corridor band nothing moves", kcalAdjustmentIn(DOCUMENT_COURSE, 60, heavy(60, 1)) === 0);
+ok(
+  "heavier than the corridor eats less",
+  kcalAdjustmentIn(DOCUMENT_COURSE, 60, heavy(60, 4)) < 0,
+  `${kcalAdjustmentIn(DOCUMENT_COURSE, 60, heavy(60, 4))} kcal`,
+);
+ok(
+  "lighter than the corridor eats more",
+  kcalAdjustmentIn(DOCUMENT_COURSE, 60, heavy(60, -4)) > 0,
+  `${kcalAdjustmentIn(DOCUMENT_COURSE, 60, heavy(60, -4))} kcal`,
+);
+ok(
+  "the correction is capped both ways",
+  Math.abs(kcalAdjustmentIn(DOCUMENT_COURSE, 60, heavy(60, 40))) <= ADAPT_MAX_KCAL &&
+    Math.abs(kcalAdjustmentIn(DOCUMENT_COURSE, 60, heavy(60, -40))) <= ADAPT_MAX_KCAL,
+);
+ok("the baseline fortnight is never adjusted", kcalAdjustmentIn(DOCUMENT_COURSE, 7, heavy(7, 5)) === 0);
+ok(
+  "a refuel week is never adjusted",
+  kcalAdjustmentIn(DOCUMENT_COURSE, 9 * 7 + 2, heavy(9 * 7 + 2, 5)) === 0,
+);
+
+// The floor is absolute — it is the document's own rule and the adjustment must
+// not be able to argue with it.
+const floor = kcalFloorFor(DOCUMENT_COURSE);
+let lowest = Infinity;
+for (let day = 0; day <= DOCUMENT_COURSE.totalDays; day++) {
+  lowest = Math.min(lowest, intakeForDayIn(DOCUMENT_COURSE, day, heavy(day, 40)).kcal);
+}
+ok("no day can be pushed below the floor", lowest >= floor, `lowest ${lowest}, floor ${floor}`);
 
 // ── Gates have to be passable ──
 // A whole strand may be shut at the bottom — tumbling waits on being able to

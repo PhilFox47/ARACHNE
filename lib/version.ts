@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.12.0";
+export const APP_VERSION = "1.13.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-17";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.13.0",
+    date: "2026-08-17",
+    kind: "minor",
+    headline: "The sports-science pass: breaks, feedback, and the muscles nobody trained",
+    changes: [
+      "REFUEL WEEK — every eighth training week is now a planned week at maintenance, pinned to every second LOW PROFILE WEEK so reduced training and restored calories are the same seven days. A twelve-month unbroken deficit was the plan's one real physiological gap: the MATADOR trial found intermittent maintenance blocks lost more fat and suppressed resting metabolism less, and a break you can see coming is the difference between a diet you finish and one you quit in month seven.",
+      "The calorie target now answers to the scale. It was a function of the date alone, which makes it a prediction rather than a plan — at a plausible activity level the same intake finished ten kilos under target, which is nine months of eating less than you needed. It now trims up to ±300 kcal against a fortnight of rolling averages, only once you are outside the corridor band, and never below the 2,000 floor. Simulated across the range of plausible metabolisms, the spread of finishing weights narrows from 12.7 kg to 6.6 kg.",
+      "Three volume holes filled. Calf raises — the one muscle the entire year had nothing for. A second set of lateral raises, because three a week was all the side-delt work there was and the side delt is what builds the V that Phase 4 names as the whole point. And a glute bridge on Monday, giving the hip hinge two exposures a week instead of one.",
+      "Creatine, vitamin D and a blood panel are now in the Phase 1 brief. Creatine monohydrate at 3–5 g/day is the most evidenced supplement there is and does more in a deficit than out of it; at this latitude you make no vitamin D between October and March; and bloods now give you a month-twelve result the mirror cannot show.",
+    ],
+  },
   {
     version: "1.12.0",
     date: "2026-08-17",
