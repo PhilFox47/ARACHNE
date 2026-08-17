@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.11.0";
+export const APP_VERSION = "1.11.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-14";
+export const RELEASED = "2026-08-17";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.11.1",
+    date: "2026-08-17",
+    kind: "patch",
+    headline: "Mondays counted towards nothing",
+    changes: [
+      "A week index counted calendar weeks from the Monday of the week you started in; the window it produced counted seven-day blocks from the start date itself. You started on a Tuesday, so the two ran a day apart — and on a Monday the index had already turned over to the new week while its window did not open until the Tuesday. The Monday fell between them. Everything logged on one counted towards no weekly challenge at all.",
+      "Every Monday, not only the first. And it was worse than a lost day: “Full Patrol” asks for five sessions and could only ever see four of them, so a perfect Monday-to-Friday week scored 4/5. That challenge was unclearable for the whole run so far.",
+      "Weeks now run Monday to Sunday everywhere, which is what the rest of the app already did. Nothing is stored — standings are recomputed from your logs every time they are read — so every Monday you have already trained is credited the moment this is running. Expect your XP to go up.",
+      "Anchoring on Monday makes the first week of a mid-week start a short one, so a challenge never asks for more days than the week actually holds: a Tuesday start's week 0 asks for four sessions, not five, and one that has no training days in it at all is not offered.",
+      "npm run check gains a suite that logs a single day's work on every day of a month, from all seven possible start days, and fails if any one of them counts towards nothing.",
+    ],
+  },
   {
     version: "1.11.0",
     date: "2026-08-14",

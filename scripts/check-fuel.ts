@@ -237,8 +237,9 @@ async function main() {
   const nothing = await analyseMeal([], {});
   ok(
     "nothing at all is refused rather than guessed",
-    nothing.error !== undefined && /no photo and no description|not set|No vision model/i.test(nothing.error),
-    nothing.error,
+    typeof nothing.error === "string" &&
+      /no photo and no description|not set|No vision model/i.test(nothing.error),
+    nothing.error ?? "",
   );
 
   // A photo entry's re-analysis must not gain the text-only framing.

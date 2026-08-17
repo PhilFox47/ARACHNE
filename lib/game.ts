@@ -12,7 +12,7 @@
  * exactly where people quit, so both need to be visible.
  */
 
-import { addDays, dayKeyOf, daysBetween, weekIndex } from "./dates";
+import { addDays, dayKeyOf, daysBetween, weekIndex, weekStartDate } from "./dates";
 import {
   CORRIDOR_TOLERANCE_KG,
   PROTEIN_PER_MEAL_G,
@@ -336,9 +336,42 @@ export function logStreak(weights: { date: string }[], today: string): number {
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * The calendar week a week index covers — Monday to Sunday.
+ *
+ * This counted from the start date rather than from the Monday of the week the
+ * start date fell in, and `weekIndex` has always counted calendar weeks. Start
+ * on a Tuesday and the two disagreed by a day in a way that lost work rather
+ * than misfiling it: on Monday the index had already rolled over to the new
+ * week, while the window that index produced did not open until the Tuesday.
+ * Monday sat in the gap. Every Monday, not only the first — a patrol, a weight,
+ * a meal logged on one counted towards no weekly challenge at all.
+ *
+ * The general shape was worse than the report: a run started on day N lost
+ * Monday through day N-1 of every week, so a Saturday start would have thrown
+ * away five days in seven.
+ */
 function weekRange(startDate: string, wk: number): { from: string; to: string } {
-  const from = addDays(startDate, wk * 7);
+  const from = weekStartDate(startDate, wk);
   return { from, to: addDays(from, 6) };
+}
+
+/**
+ * The days of a window the run had actually begun for.
+ *
+ * Anchoring the window on Monday means a mid-week start has a short week 0 —
+ * the days before it are real calendar days the plan simply did not exist for.
+ * Counting them would set targets that cannot be met, which is the same defect
+ * as losing the Monday wearing different clothes.
+ */
+function daysIn(from: string, to: string, startDate: string): string[] {
+  const out: string[] = [];
+  for (let d = from > startDate ? from : startDate; d <= to; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+
+function patrolDaysIn(from: string, to: string, startDate: string): string[] {
+  return daysIn(from, to, startDate).filter((d) => TRAINING_DAYS.includes(dayKeyOf(d) as DayKey));
 }
 
 function inRange(date: string, from: string, to: string): boolean {
@@ -365,16 +398,11 @@ function fullPatrolWeeks(sessions: GameSession[], startDate: string, today: stri
   for (let wk = 0; wk <= lastWeek; wk++) {
     const { from, to } = weekRange(startDate, wk);
     if (to > today) break;
-    let all = true;
-    for (let d = 0; d < 7; d++) {
-      const date = addDays(from, d);
-      if (!TRAINING_DAYS.includes(dayKeyOf(date) as DayKey)) continue;
-      if (!done.has(date)) {
-        all = false;
-        break;
-      }
-    }
-    if (all) count++;
+    // Only the training days the run had begun for. A Tuesday start would
+    // otherwise fail week 0 on the Monday before it — a day with nothing to
+    // turn up for.
+    const patrols = patrolDaysIn(from, to, startDate);
+    if (patrols.length > 0 && patrols.every((date) => done.has(date))) count++;
   }
   return count;
 }
@@ -403,14 +431,28 @@ interface ChallengeCtx {
   measurements: { date: string }[];
   lowProfile: boolean;
   daily: Map<string, { kcal: number; protein: number; snack: number }>;
+  /** Days in the window the run had begun for — 7 except in a short week 0. */
+  days: string[];
+  /** Those of them that are training days. */
+  patrolDays: string[];
 }
+
+/**
+ * A target, never asking for more days than the window holds.
+ *
+ * A mid-week start has a week 0 shorter than seven days, and a challenge that
+ * cannot be cleared is worse than no challenge — it reads as the app not
+ * noticing what you did, which is exactly the complaint this release answers.
+ */
+const fit = (target: number, available: number) => Math.min(target, available);
 
 const TEMPLATES: ChallengeTemplate[] = [
   {
     key: "full_patrol",
     scope: "weekly",
     build: (c) => {
-      const need = TRAINING_DAYS.length;
+      const need = c.patrolDays.length;
+      if (need === 0) return null;
       const done = c.sessions.filter((s) => s.completed).length;
       return {
         title: "Full Patrol",
@@ -424,6 +466,8 @@ const TEMPLATES: ChallengeTemplate[] = [
     key: "mobility_kept",
     scope: "weekly",
     build: (c) => {
+      // A start later in the week can produce a week 0 with no Tuesday in it.
+      if (!c.patrolDays.some((d) => dayKeyOf(d) === "tue")) return null;
       const done = c.sessions.some((s) => s.completed && s.dayKey === "tue") ? 1 : 0;
       return {
         title: "Don't Skip Tuesday",
@@ -437,7 +481,7 @@ const TEMPLATES: ChallengeTemplate[] = [
     key: "weigh_days",
     scope: "both",
     build: (c) => {
-      const target = c.scope === "weekly" ? 6 : 24;
+      const target = c.scope === "weekly" ? fit(6, c.days.length) : 24;
       return {
         title: "On the Scale",
         description: `Log your weight on ${target} days.`,
@@ -450,7 +494,8 @@ const TEMPLATES: ChallengeTemplate[] = [
     key: "rpe_logged",
     scope: "weekly",
     build: (c) => {
-      const target = 3;
+      const target = fit(3, c.patrolDays.length);
+      if (target === 0) return null;
       const current = c.sessions.filter((s) => s.completed && s.rpe !== null).length;
       return {
         title: "Rate the Effort",
@@ -465,7 +510,8 @@ const TEMPLATES: ChallengeTemplate[] = [
     scope: "weekly",
     build: (c) => {
       if (c.lowProfile) return null; // Never ask for intensity in a deload week.
-      const target = 2;
+      const target = fit(2, c.patrolDays.length);
+      if (target === 0) return null;
       const current = c.sessions.filter((s) => s.completed && (s.rpe ?? 0) >= 4).length;
       return {
         title: "Dig In",
@@ -480,7 +526,8 @@ const TEMPLATES: ChallengeTemplate[] = [
     scope: "weekly",
     build: (c) => {
       if (!c.lowProfile) return null;
-      const target = TRAINING_DAYS.length;
+      const target = c.patrolDays.length;
+      if (target === 0) return null;
       const current = c.sessions.filter((s) => s.completed).length;
       return {
         title: "Low Profile",
@@ -494,7 +541,8 @@ const TEMPLATES: ChallengeTemplate[] = [
     key: "notes",
     scope: "weekly",
     build: (c) => {
-      const target = 2;
+      const target = fit(2, c.patrolDays.length);
+      if (target === 0) return null;
       const current = c.sessions.filter((s) => s.note && s.note.trim().length >= 8).length;
       return {
         title: "Field Notes",
@@ -509,7 +557,7 @@ const TEMPLATES: ChallengeTemplate[] = [
     scope: "both",
     build: (c) => {
       if (c.food.length === 0) return null;
-      const target = c.scope === "weekly" ? 5 : 20;
+      const target = c.scope === "weekly" ? fit(5, c.days.length) : 20;
       let current = 0;
       for (const [date, tot] of c.daily) {
         if (!inRange(date, c.from, c.to)) continue;
@@ -530,7 +578,7 @@ const TEMPLATES: ChallengeTemplate[] = [
     scope: "both",
     build: (c) => {
       if (c.food.length === 0) return null;
-      const target = c.scope === "weekly" ? 5 : 20;
+      const target = c.scope === "weekly" ? fit(5, c.days.length) : 20;
       let current = 0;
       for (const [date, tot] of c.daily) {
         if (!inRange(date, c.from, c.to)) continue;
@@ -573,10 +621,11 @@ const TEMPLATES: ChallengeTemplate[] = [
     build: (c) => {
       if (c.food.length === 0) return null;
       const days = new Set(c.food.map((f) => f.date)).size;
+      const target = fit(6, c.days.length);
       return {
         title: "Nothing Unlogged",
-        description: "Log fuel on 6 days. Awareness is the whole point.",
-        target: 6,
+        description: `Log fuel on ${target} days. Awareness is the whole point.`,
+        target,
         current: days,
       };
     },
@@ -653,7 +702,13 @@ const TEMPLATES: ChallengeTemplate[] = [
         const wk = weekIndex(c.input.startDate, s.date);
         byWeek.set(wk, (byWeek.get(wk) ?? 0) + 1);
       }
-      const current = [...byWeek.values()].filter((n) => n >= TRAINING_DAYS.length).length;
+      // Against that week's own training days, not a flat five — week 0 of a
+      // mid-week start has fewer, and turning up for all of them is still clean.
+      const current = [...byWeek].filter(([wk, n]) => {
+        const { from, to } = weekRange(c.input.startDate, wk);
+        const need = patrolDaysIn(from, to, c.input.startDate).length;
+        return need > 0 && n >= need;
+      }).length;
       return {
         title: "Clean Weeks",
         description: `Complete ${target} weeks with every session done.`,
@@ -1017,6 +1072,8 @@ export function computeGameState(input: GameInput): GameState {
     measurements: input.measurements.filter((m) => inRange(m.date, from, to)),
     lowProfile: isLowProfileWeek(wk),
     daily,
+    days: daysIn(from, to, startDate),
+    patrolDays: patrolDaysIn(from, to, startDate),
   });
 
   const weekly = buildChallenges({ ...scoped(wFrom, wTo), scope: "weekly" }, 3, `w-${startDate}-${wk}`);

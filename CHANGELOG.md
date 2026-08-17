@@ -17,6 +17,110 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.11.1 — 2026-08-17
+
+Mondays counted towards nothing.
+
+Reported as: *"Things I do on Monday don't seem to track. Only from Tuesday on.
+I believe this could be because I started on a Tuesday."*
+
+That diagnosis was exactly right, and the fault is two functions disagreeing
+about what a week is.
+
+`weekIndex` counts **calendar** weeks, from the Monday of the week the run
+started in — deliberately, because a week that runs Tuesday to Monday is not a
+week anyone reads. The challenge window did not:
+
+```ts
+function weekRange(startDate: string, wk: number) {
+  const from = addDays(startDate, wk * 7);   // ← from the start date
+  return { from, to: addDays(from, 6) };
+}
+```
+
+With a Tuesday start the two run a day apart, and they disagree in the direction
+that **loses** work rather than misfiling it. On a Monday the index has already
+turned over to the new week, while the window that index produces does not open
+until the Tuesday:
+
+```
+start 2026-08-04 (tue)
+
+date        dow  wk   window (before)        in?   window (after)
+2026-08-09  sun  0    2026-08-04→2026-08-10  ok    2026-08-03→2026-08-09
+2026-08-10  mon  1    2026-08-11→2026-08-17  LOST  2026-08-10→2026-08-16
+2026-08-11  tue  1    2026-08-11→2026-08-17  ok    2026-08-10→2026-08-16
+```
+
+Monday sits between the week that has ended and the window that has not begun.
+Every Monday, not only the first.
+
+### It was worse than one lost day
+
+"Full Patrol" asks for `TRAINING_DAYS.length` — five — and the window it counted
+against could only ever contain four of them. A perfect Monday-to-Friday week:
+
+```
+before:  4/5  Full Patrol   done=false
+after:   5/5  Full Patrol   done=true
+```
+
+That challenge was **unclearable for the entire run**, and the same one-day skew
+generalises: a run started on day N lost Monday through day N-1 of every week,
+so a Saturday start would have thrown away five days in seven.
+
+### The fix
+
+`weekRange` anchors on the Monday, via the `weekStartDate` helper the rest of
+the app already used. Weeks are Monday→Sunday everywhere.
+
+Nothing is stored — standings, XP and challenge progress are recomputed from the
+logs on every read — so **every Monday already trained is credited as soon as
+this is running, retroactively.** No schema change and nothing to migrate; XP
+goes up on its own.
+
+### The consequence that came with it
+
+Anchoring on Monday gives a mid-week start a first week shorter than seven days,
+and a challenge asking for six days inside a two-day week is the same defect
+wearing different clothes. So targets now fit the window:
+
+- `Full Patrol` / `Low Profile` ask for the training days the week actually
+  holds — four for a Tuesday start's week 0 — and are withheld entirely from a
+  week with none.
+- `On the Scale`, `Nothing Unlogged`, `Under the Line`, `Protein Wall`,
+  `Field Notes`, `Rate the Effort` and `Dig In` clamp to the days available.
+- `Don't Skip Tuesday` is not offered by a week containing no Tuesday.
+- `Clean Weeks` counts a week against its own training days rather than a flat
+  five.
+- `fullPatrolWeeks` no longer fails week 0 on a Monday that fell before the run
+  began — a day with nothing to turn up for.
+
+### Checking
+
+New suite, `scripts/check-game.ts`, wired into `npm run check`. It asks the real
+scorer rather than the date helpers: one day's work and nothing else, for every
+day of four weeks, from all seven possible start days — if that day is inside a
+week, something must move off zero. Against the old code it reproduces the
+report precisely:
+
+```
+FAIL  a tue start loses no day in four weeks — 4 lost: 2026-08-10 (mon),
+      2026-08-17 (mon), 2026-08-24 (mon), 2026-08-31 (mon)
+FAIL  a sun start loses no day in four weeks — 24 lost
+FAIL  a tue start clears Full Patrol in every full week — wk1 4/5, wk3 4/5, …
+11 check(s) failed.
+```
+
+It also proves every challenge a short week 0 offers can be cleared by doing
+everything on the days that exist, from all seven start days.
+
+Verified against a real database seeded to the reported shape — Tuesday start,
+work logged on a Monday — read through the app on HQ: `0/6` → `1/6` on the
+scale, `0/2` → `1/2` on notes.
+
+---
+
 ## 1.11.0 — 2026-08-14
 
 Photograph a meal without keeping it.
