@@ -274,8 +274,21 @@ const GATES: Gate[] = [
   // Tumbling needs something soft. Crawls deliberately aren't on this list —
   // a bear crawl is hands and feet on the floor with nothing to land on, and
   // gating it away costs the baseline sweep a movement for no reason.
+  //
+  // `bridge` on its own used to be one of these alternatives, and it matched
+  // the wrong half of the catalogue. The spine family's back bridge is a
+  // tumbling shape you arch into and can land badly out of; the hinge family's
+  // *glute* bridge is lying on your back and lifting your hips, which needs a
+  // floor and nothing else. The bare word caught both — so a run without a mat
+  // lost Glute bridge, Single-leg glute bridge and Glute bridge march, which
+  // are the bottom three rungs of the entire hinge strand.
+  //
+  // The consequence was Wednesday, the only leg day, having no hip hinge in it
+  // at all: the plan's Romanian deadlift places a beginner onto the glute
+  // bridge, and the glute bridge was then deleted with no substitute and no
+  // message. Anchored to the actual tumbling shapes now.
   {
-    match: /shoulder roll|rock-?backs?|kip-?up|cartwheel|roundoff|bridge|kong vault/i,
+    match: /shoulder roll|rock-?backs?|kip-?up|cartwheel|roundoff|back bridge|walk-?down to bridge|bridge push-?up|kong vault/i,
     needsAny: ["mat", "gym"],
     substitute: null,
   },
@@ -417,6 +430,24 @@ export interface GateResult {
   allowed: boolean;
   substitute: { name: string; dose: string; note: string } | null;
   missing: string[];
+}
+
+/**
+ * The missing kit as a sentence, for a movement that had to be left out.
+ *
+ * A dead hang needs a bar and there is no bar-free version worth prescribing,
+ * so the session simply cannot contain it — but "simply cannot" has to be said
+ * out loud. Silently shortening Wednesday reads as the app losing your session.
+ */
+export function missingKitPhrase(missing: string[]): string {
+  // Listed rather than joined with articles: the alternatives are "pull-up
+  // bar", "gymnastic rings", "gym membership", "outdoor bars or playground",
+  // and any sentence that puts "a" in front of each of those is worse than the
+  // list it was trying to sound better than.
+  const labels = missing.map((k) => EQUIPMENT_CATALOGUE.find((e) => e.key === k)?.label ?? k);
+  if (labels.length === 0) return "kit you have not marked as owned";
+  if (labels.length === 1) return labels[0].toLowerCase();
+  return `one of: ${labels.join(", ").toLowerCase()}`;
 }
 
 /** Whether a movement is doable with what you own, and what to do if not. */

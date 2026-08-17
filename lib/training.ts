@@ -21,7 +21,13 @@ import { addDays, todayISO } from "./dates";
 import { getHqStats } from "./stats";
 import { apiKey, baseUrl } from "./nanogpt";
 import { activeVisionModel, getSettings } from "./settings";
-import { equipmentSummary, gateExercise, ownedKeys, upgradeExercise } from "./equipment";
+import {
+  equipmentSummary,
+  gateExercise,
+  missingKitPhrase,
+  ownedKeys,
+  upgradeExercise,
+} from "./equipment";
 import {
   isBaselinePhase,
   roundsForWeek,
@@ -278,7 +284,17 @@ export function baselinePrescription(
     // Gate before prescribing. Opening a session and finding work you
     // physically cannot do is worse than a substitution.
     const gate = gateExercise(placed.name, owned);
-    if (!gate.allowed && gate.substitute === null) continue;
+    if (!gate.allowed && gate.substitute === null) {
+      // Said out loud, like a tree lock is. This used to `continue` in silence,
+      // so a run with no pull-up bar lost its Wednesday dead hangs — a headline
+      // of Phase 1 — with nothing on the screen to say why the session was one
+      // movement shorter than the plan it claims to be following.
+      locked.push({
+        name: placed.name,
+        why: `Needs ${missingKitPhrase(gate.missing)}, and there is no version of this worth doing without one. Mark it owned in SETTINGS and it comes straight back.`,
+      });
+      continue;
+    }
 
     let use = gate.allowed
       ? { name: placed.name, dose: placed.dose, note: placed.note }

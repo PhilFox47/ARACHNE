@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.11.1";
+export const APP_VERSION = "1.12.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-17";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.12.0",
+    date: "2026-08-17",
+    kind: "minor",
+    headline: "Audit before Phase 1 — four things the plan was quietly getting wrong",
+    changes: [
+      "A hip hinge is back on Wednesday. The gate that keeps tumbling off a bare floor listed “bridge” among the things needing a mat — meaning the back bridge, but it also matched the glute bridge, which is lying on your back lifting your hips. The bottom three rungs of the whole hinge strand were being deleted, so the only leg day of the week had no hinge in it at all.",
+      "Protein now asks for what the phase actually states. Every screen and every challenge multiplied the document's “40 g per meal” by three and called it the day's target — 120 g, through a phase that asks for 160. That is 40 g a day of the one macro deciding how much of 20 kg comes off as muscle. FUEL shows the figure next to the number now.",
+      "A movement dropped for want of kit says so. A dead hang has no bar-free version worth doing, so without a bar it was silently removed — Wednesday just came up one movement shorter than the plan it claims to follow. It now appears with the rest of the locked work, naming the kit and how to get it back.",
+      "The first LOW PROFILE WEEK moved from week 2 of Phase 1 to week 5. Deloads counted from day 0, so the first one landed one real week after a baseline fortnight that was already deliberately easy — a week off from the two weeks designed not to need one. They count training weeks now.",
+    ],
+  },
   {
     version: "1.11.1",
     date: "2026-08-17",

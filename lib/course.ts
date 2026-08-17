@@ -21,6 +21,7 @@ import {
   normaliseCourse,
   phaseForDayIn,
   phasesFor,
+  proteinTargetForDayIn,
   taperFor,
   type Checkpoint,
   type CourseConfig,
@@ -64,6 +65,10 @@ export function corridorAnchors(): { day: number; kg: number }[] {
 
 export function kcalTargetForDay(day: number): { kcal: number; taper: boolean } {
   return kcalTargetForDayIn(activeCourse(), day);
+}
+
+export function proteinTargetForDay(day: number): number {
+  return proteinTargetForDayIn(activeCourse(), day);
 }
 
 export function courseCheckpoints(): Checkpoint[] {

@@ -15,12 +15,11 @@
 import { addDays, dayKeyOf, daysBetween, weekIndex, weekStartDate } from "./dates";
 import {
   CORRIDOR_TOLERANCE_KG,
-  PROTEIN_PER_MEAL_G,
   TRAINING_DAYS,
   isLowProfileWeek,
   type DayKey,
 } from "./plan";
-import { corridorTarget, kcalTargetForDay } from "./course";
+import { corridorTarget, kcalTargetForDay, proteinTargetForDay } from "./course";
 
 // ─────────────────────────────────────────────────────────────
 // XP table — tune freely, nothing else depends on the values
@@ -579,14 +578,18 @@ const TEMPLATES: ChallengeTemplate[] = [
     build: (c) => {
       if (c.food.length === 0) return null;
       const target = c.scope === "weekly" ? fit(5, c.days.length) : 20;
+      // The phase's own figure, read on the window's last day — 160 g through
+      // Phases 1 and 2, not the 120 g that three meals of the per-meal rule
+      // happens to add up to.
+      const need = proteinTargetForDay(daysBetween(c.input.startDate, c.to));
       let current = 0;
       for (const [date, tot] of c.daily) {
         if (!inRange(date, c.from, c.to)) continue;
-        if (tot.protein >= PROTEIN_PER_MEAL_G * 3) current++;
+        if (tot.protein >= need) current++;
       }
       return {
         title: "Protein Wall",
-        description: `Hit ${PROTEIN_PER_MEAL_G * 3} g of protein on ${target} days.`,
+        description: `Hit ${need} g of protein on ${target} days.`,
         target,
         current,
       };
@@ -1009,7 +1012,7 @@ export function computeGameState(input: GameInput): GameState {
     const day = daysBetween(startDate, date);
     const { kcal } = kcalTargetForDay(day);
     if (tot.kcal > 0 && tot.kcal <= kcal * 1.05) kcalDays++;
-    if (tot.protein >= PROTEIN_PER_MEAL_G * 3) proteinDays++;
+    if (tot.protein >= proteinTargetForDay(day)) proteinDays++;
   }
   const waterDays = input.water.filter((w) => w.ml >= input.waterTargetMl).length;
   add("water", "Days on water target", waterDays * XP.waterOnTarget);

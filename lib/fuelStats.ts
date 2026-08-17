@@ -3,8 +3,7 @@ import { db } from "./db";
 import { foodEntries, waterLogs } from "./db/schema";
 import { addDays, daysBetween, todayISO } from "./dates";
 import { getSettings } from "./settings";
-import { PROTEIN_PER_MEAL_G } from "./plan";
-import { kcalTargetForDay, phaseForDay } from "./course";
+import { kcalTargetForDay, phaseForDay, proteinTargetForDay } from "./course";
 
 export interface DayNutrition {
   date: string;
@@ -230,7 +229,7 @@ export function buildFuelStats(periodDays: number): FuelStats {
       snackPct: totalKcal > 0 ? Math.round((totalSnack / totalKcal) * 100) : null,
       waterDaysMet: days.filter((d) => d.waterMl >= s.waterTargetMl).length,
       kcalDaysUnder: logged.filter((d) => d.kcal > 0 && d.kcal <= d.kcalTarget).length,
-      proteinDaysMet: logged.filter((d) => d.proteinG >= PROTEIN_PER_MEAL_G * 3).length,
+      proteinDaysMet: logged.filter((d) => d.proteinG >= proteinTargetForDay(d.day)).length,
     },
     waterTargetMl: s.waterTargetMl,
     proteinTargetG: proteinTarget,

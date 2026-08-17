@@ -349,6 +349,23 @@ export function kcalFloorFor(config: CourseConfig): number {
   return round50(KCAL_FLOOR * kcalScale(config));
 }
 
+/**
+ * The day's protein target in grams.
+ *
+ * The phases state this outright — 160 g through Phase 1 and 2, 165, then 170 —
+ * and for a long time nothing read those numbers. Every screen and every
+ * challenge instead multiplied "40 g per meal" by three, which is the document's
+ * rule for a *meal* and its figure for three of them. The phase target is four
+ * meals' worth, and the gap between the two was 40 g a day of the one macro
+ * that decides how much of 20 kg comes off as muscle.
+ *
+ * Phase 0 states no target on purpose — the fortnight is for measuring what you
+ * already eat — so it falls back to the per-meal rule rather than inventing one.
+ */
+export function proteinTargetForDayIn(config: CourseConfig, day: number): number {
+  return phaseForDayIn(config, day).proteinG ?? PROTEIN_PER_MEAL_G * 3;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Weight corridor
 // ─────────────────────────────────────────────────────────────
@@ -729,9 +746,27 @@ export const WATER_TARGET_ML_DOCUMENT = 3000;
 export const WATER_INCREMENTS_ML = [250, 350, 750] as const;
 export const WATER_CUSTOM_MAX_ML = 3000;
 
-/** Every 4th week. Document: "2 rounds instead of 3, no training to failure." */
+/**
+ * Every 4th week of *training*. Document: "2 rounds instead of 3, no training
+ * to failure."
+ *
+ * Counted from the first week of Phase 1 rather than from day 0. The two
+ * baseline weeks are already a deload in everything but name — the sweep is
+ * explicitly run at the bottom of every range, stopping two or three reps
+ * short, because it is measuring rather than training. Counting them made the
+ * first low-profile week land in week 2 of Phase 1: one real week of work,
+ * then a week off it. That is a deload spent recovering from the fortnight
+ * that was designed not to need one.
+ *
+ * Off the Phase 1 anchor the first one falls after four real weeks, which is
+ * what "every 4th week" was always meant to mean.
+ */
+const FIRST_TRAINING_WEEK = (PHASES[0].endDay + 1) / 7;
+
 export function isLowProfileWeek(weekIndex: number): boolean {
-  return (weekIndex + 1) % 4 === 0;
+  const trainingWeek = weekIndex - FIRST_TRAINING_WEEK;
+  if (trainingWeek < 0) return false; // Phase 0 is its own kind of easy.
+  return (trainingWeek + 1) % 4 === 0;
 }
 
 export function roundsForWeek(weekIndex: number): number {

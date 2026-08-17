@@ -17,6 +17,123 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.12.0 — 2026-08-17
+
+A full audit of the plan before Phase 1 begins. Four defects, all of them
+things the app was doing quietly rather than visibly.
+
+### The hinge strand was being deleted by a regex
+
+The gate that keeps tumbling off a bare floor read:
+
+```ts
+match: /shoulder roll|rock-?backs?|kip-?up|cartwheel|roundoff|bridge|kong vault/i,
+needsAny: ["mat", "gym"],
+substitute: null,
+```
+
+`bridge` meant the **back bridge** — a spine-family shape you arch into and can
+land badly out of. It also matched the **glute bridge**, which is lying on your
+back lifting your hips, and needs a floor and nothing else. Three of the five
+movements it caught were the wrong ones:
+
+```
+CAUGHT  Glute bridge              family=hinge
+CAUGHT  Single-leg glute bridge   family=hinge
+CAUGHT  Glute bridge march        family=hinge
+CAUGHT  Back bridge               family=spine   ← the intended one
+CAUGHT  Wall walk-down to bridge  family=spine   ← the intended one
+```
+
+Those three are the bottom rungs of the entire hinge strand, so a beginner
+without a mat had the plan's Romanian deadlift placed onto a glute bridge and
+the glute bridge then deleted. **Wednesday — the only leg day of the week — had
+no hip hinge in it at all**, which for a 100 kg beginner is the pattern that
+matters most and the one that protects the lower back. Anchored to the actual
+tumbling shapes now (`back bridge`, `walk-down to bridge`, `bridge push-up`).
+
+### Protein was coached 40 g/day below the plan's own figure
+
+The phases state a protein target — 160 g through Phases 1 and 2, then 165, then
+170 — and nothing read it except one line of the stats page. The FUEL screen, the
+weekly challenge and the XP ledger all computed:
+
+```ts
+PROTEIN_PER_MEAL_G * 3   // 40 × 3 = 120 g
+```
+
+That is the document's rule for a *meal*, multiplied by three of them. The phase
+figure is four meals' worth. So through a 20 kg cut the app was setting a daily
+protein goal of 120 g — 1.2 g/kg at the start weight — when the plan asks for
+160 g, which is 1.6 g/kg now and 2.0 g/kg at goal. In a deficit that gap is the
+difference between losing fat and losing fat plus muscle.
+
+`proteinTargetForDayIn(config, day)` is now the single source, and FUEL shows the
+target beside the number rather than only accenting when it is met.
+
+### A movement dropped for want of kit said nothing
+
+`baselinePrescription` handled a gate with no substitute by `continue` — no
+entry in `locked`, no message. A run with no pull-up bar therefore lost its
+Wednesday dead hangs, one of the four things Phase 1 explicitly lists as its
+own, and the session simply appeared one movement shorter than the plan it
+claims to be following. Fifteen movements can vanish this way on a bare install.
+
+They now come back as locked work, which the screen already knows how to show:
+
+```
+LOCKED: Dead hang — Needs one of: pull-up bar, gymnastic rings, gym membership,
+outdoor bars or playground, and there is no version of this worth doing without
+one. Mark it owned in SETTINGS and it comes straight back.
+```
+
+### The first deload landed in week 2 of Phase 1
+
+`isLowProfileWeek` counted from day 0, so with the baseline fortnight occupying
+weeks 0–1 the first low-profile week fell on week 3 — one real training week
+into the phase:
+
+```
+before:  week 2 (P1) 3 rounds │ week 3 (P1) 2 rounds ← LOW PROFILE
+after:   week 2 (P1) 3 rounds │ … │ week 5 (P1) 2 rounds ← LOW PROFILE
+```
+
+The baseline fortnight is already a deload in all but name — the sweep is run at
+the bottom of every range, stopping two or three reps short, because it measures
+rather than trains. Deloading straight after it is a week off from the two weeks
+designed not to need one. They count training weeks now, so the first falls after
+four real ones and the every-fourth-week cadence is unchanged thereafter.
+
+### What the audit found and did not change
+
+The calorie ladder is internally sound. Simulated against Mifflin-St Jeor with
+the plan's own numbers, the intake schedule implies a maintenance of **2,755
+kcal at 100 kg** and the document's stated Phase 0 maintenance is **2,700** —
+agreement within 2%, which is better than most published plans manage. Every
+phase sits under the plan's own 1%-of-bodyweight-per-week ceiling:
+
+```
+FOUNDATION   78d  100→93 kg  0.63 kg/wk  0.63% BW/wk  @2300 kcal
+BUILD        91d   93→88 kg  0.38 kg/wk  0.41% BW/wk  @2200 kcal
+ATHLETIC     91d   88→84 kg  0.31 kg/wk  0.35% BW/wk  @2150 kcal
+SUIT-READY   92d   84→80 kg  0.30 kg/wk  0.36% BW/wk  @2100 kcal
+```
+
+The ladder is open-loop, though — `kcalTargetForDayIn` is a function of the day
+index and nothing else, so it never responds to the scale. At an activity factor
+of 1.45 rather than 1.39 the same schedule finishes 4 kg under target; at 1.55 it
+finishes 10 kg under. SENSE warns about corridor drift but nothing acts on it.
+Left as-is deliberately: closing that loop is a design decision, not a bug fix.
+
+### Checking
+
+`npm run check` gains a section proving that a movement needing only a floor is
+never gated on equipment, that every no-substitute gate can name the kit it
+wants, that each phase's protein target is the phase's own figure, and that no
+low-profile week falls inside the baseline fortnight.
+
+---
+
 ## 1.11.1 — 2026-08-17
 
 Mondays counted towards nothing.

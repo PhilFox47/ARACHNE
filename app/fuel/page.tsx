@@ -8,8 +8,7 @@ import { foodEntries, mealPhotos } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { addDays, daysBetween, formatShort, todayISO } from "@/lib/dates";
-import { PROTEIN_PER_MEAL_G } from "@/lib/plan";
-import { kcalTargetForDay } from "@/lib/course";
+import { kcalTargetForDay, proteinTargetForDay } from "@/lib/course";
 import { listFavourites, quickLogCandidates } from "./actions";
 import { waterForDate } from "./water";
 import { FuelCapture } from "@/components/FuelCapture";
@@ -94,7 +93,10 @@ export default async function Fuel({
   // The target belongs to the day on screen, not to today. Judging a Tuesday in
   // Phase 1 against Phase 3's number would be quietly wrong every time you
   // stepped back to check one.
-  const target = kcalTargetForDay(Math.max(0, daysBetween(settings.startDate, date))).kcal;
+  const dayIndex = Math.max(0, daysBetween(settings.startDate, date));
+  const target = kcalTargetForDay(dayIndex).kcal;
+  // The phase's own figure — 160 g through Phase 1, not three meals' worth.
+  const proteinTarget = proteinTargetForDay(dayIndex);
   const pct = target > 0 ? Math.min(100, Math.round((kcal / target) * 100)) : 0;
   const over = kcal > target;
   const unpriced = entries.filter((e) => e.kcal === null).length;
@@ -186,7 +188,7 @@ export default async function Fuel({
         <TensionLine accent={over && !isPhase0} />
 
         <div className="grid grid-cols-4 border border-edge">
-          <Macro label="Protein" value={protein} unit="g" accent={protein >= PROTEIN_PER_MEAL_G * 3} />
+          <Macro label="Protein" value={protein} unit="g" goal={proteinTarget} accent={protein >= proteinTarget} />
           <Macro label="Carbs" value={carbs} unit="g" bordered />
           <Macro label="Fat" value={fat} unit="g" bordered />
           <Macro label="Fibre" value={fiber} unit="g" bordered />
@@ -266,12 +268,15 @@ function Macro({
   unit,
   bordered,
   accent,
+  goal,
 }: {
   label: string;
   value: number;
   unit: string;
   bordered?: boolean;
   accent?: boolean;
+  /** Shown under the label where the plan states a figure to hit. */
+  goal?: number;
 }) {
   return (
     <div className={`flex flex-col gap-1 p-2.5 ${bordered ? "border-l border-edge" : ""}`}>
@@ -279,7 +284,10 @@ function Macro({
         {Math.round(value)}
         <span className="text-[0.5em] text-muted">{unit}</span>
       </span>
-      <span className="label-xs leading-tight">{label}</span>
+      <span className="label-xs leading-tight">
+        {label}
+        {goal !== undefined ? <span className="text-muted-dim"> / {goal}</span> : null}
+      </span>
     </div>
   );
 }

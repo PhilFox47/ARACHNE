@@ -18,8 +18,24 @@ import path from "node:path";
 import { builtinModules } from "node:module";
 import Database from "better-sqlite3";
 import { MIGRATIONS, SCHEMA_VERSION, openAt } from "../lib/db";
-import { BASELINE_PATROLS, PHASES, sessionFor, type DayKey } from "../lib/plan";
-import { EQUIPMENT_CATALOGUE, gateExercise, upgradeExercise } from "../lib/equipment";
+import {
+  BASELINE_PATROLS,
+  DOCUMENT_COURSE,
+  PHASES,
+  PROTEIN_PER_MEAL_G,
+  isLowProfileWeek,
+  phasesFor,
+  proteinTargetForDayIn,
+  roundsForWeek,
+  sessionFor,
+  type DayKey,
+} from "../lib/plan";
+import {
+  EQUIPMENT_CATALOGUE,
+  gateExercise,
+  missingKitPhrase,
+  upgradeExercise,
+} from "../lib/equipment";
 import {
   LADDER_FAMILIES,
   MASTERY,
@@ -34,7 +50,6 @@ import {
   opensElsewhere,
   setClears,
 } from "../lib/movements";
-import { roundsForWeek } from "../lib/plan";
 
 const CURRENT = MIGRATIONS.length;
 
@@ -501,6 +516,85 @@ for (const m of MOVEMENTS) {
     JSON.stringify(up),
   );
 }
+
+// ── Equipment gates only ever gate on equipment ──
+// The tumbling gate used to list `bridge` among its alternatives, meaning the
+// back bridge — and it matched the glute bridge, which is lying on the floor
+// lifting your hips. So a run without a mat lost the bottom three rungs of the
+// hinge strand, and Wednesday, the only leg day, had no hip hinge in it at all.
+//
+// A gate that needs kit must therefore only ever catch movements that need
+// kit. The floor is not equipment.
+const FLOOR_ONLY = [
+  "Glute bridge",
+  "Single-leg glute bridge",
+  "Glute bridge march",
+  "Dead bug",
+  "Plank",
+  "Hollow hold",
+  "Wall sit",
+  "Reverse lunge",
+  "Bodyweight squat",
+];
+for (const name of FLOOR_ONLY) {
+  const m = findMovement(name);
+  if (!m) continue;
+  const g = gateExercise(m.name, none);
+  ok(`"${m.name}" needs nothing but a floor`, g.allowed, g.allowed ? "" : `gated on ${g.missing.join("/")}`);
+}
+
+// And nothing may be dropped without a reason to show. `substitute: null` is
+// legitimate — a dead hang has no bar-free version — but the session has to be
+// able to say so, which means the missing kit must name itself.
+for (const m of MOVEMENTS) {
+  const g = gateExercise(m.name, none);
+  if (g.allowed || g.substitute !== null) continue;
+  ok(
+    `"${m.name}" can explain why it is missing`,
+    g.missing.length > 0 && missingKitPhrase(g.missing).length > 0,
+    missingKitPhrase(g.missing),
+  );
+}
+
+// ── The plan's own figures are the ones the app uses ──
+// Every screen and every challenge used to multiply the document's per-meal
+// rule by three and call the result the day's protein target. The phases state
+// the real figure and nothing read it, so the app coached 120 g through a phase
+// that asks for 160 — 40 g a day of the macro that decides how much of 20 kg
+// comes off as muscle.
+console.log("\nthe plan's own numbers");
+
+for (const p of phasesFor(DOCUMENT_COURSE).slice(1)) {
+  const mid = Math.floor((p.startDay + p.endDay) / 2);
+  ok(
+    `${p.codename} asks for its own ${p.proteinG} g of protein`,
+    proteinTargetForDayIn(DOCUMENT_COURSE, mid) === p.proteinG,
+    `got ${proteinTargetForDayIn(DOCUMENT_COURSE, mid)}`,
+  );
+}
+ok(
+  "Phase 0 states no protein target and falls back to the per-meal rule",
+  proteinTargetForDayIn(DOCUMENT_COURSE, 3) === PROTEIN_PER_MEAL_G * 3,
+);
+ok(
+  "and the fallback is never what a deficit phase gets",
+  phasesFor(DOCUMENT_COURSE).slice(1).every((p) => p.proteinG !== PROTEIN_PER_MEAL_G * 3),
+);
+
+// ── Deloads count training weeks, not calendar weeks ──
+// The baseline fortnight is already a deload in all but name — run at the
+// bottom of every range, stopping short, because it measures rather than
+// trains. Counting it put the first low-profile week in week 2 of Phase 1:
+// one real week of work and then a week off it.
+const lowProfileWeeks = Array.from({ length: 20 }, (_, w) => w).filter(isLowProfileWeek);
+ok("no low-profile week during the baseline fortnight", !lowProfileWeeks.some((w) => w < 2), lowProfileWeeks.join(", "));
+ok("the first one lands after four training weeks", lowProfileWeeks[0] === 5, `week ${lowProfileWeeks[0]}`);
+ok(
+  "and they stay every fourth week after that",
+  lowProfileWeeks.slice(0, 4).every((w, i) => w === 5 + i * 4),
+  lowProfileWeeks.slice(0, 4).join(", "),
+);
+ok("a low-profile week is two rounds, not three", roundsForWeek(5) === 2 && roundsForWeek(6) === 3);
 
 // ── Gates have to be passable ──
 // A whole strand may be shut at the bottom — tumbling waits on being able to
