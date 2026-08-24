@@ -386,6 +386,30 @@ export const MIGRATIONS: ((db: Database.Database) => void)[] = [
       if (want !== f.norm_key) fixFav.run(want, f.id);
     }
   },
+
+  // ── v15: the daily briefing ──
+  //
+  // One row per day. Stored rather than derived, which is the exception to this
+  // app's rule and earns it twice over: it costs a model call, and a paragraph
+  // that rewrote itself every time the screen was opened would be a paragraph
+  // nobody trusts. What it says at 08:00 is what it says at 22:00.
+  //
+  // `source` distinguishes a briefing the model wrote from one composed locally
+  // when it was unreachable, so a later load can quietly upgrade the second
+  // kind without ever leaving the screen empty in the meantime.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS briefings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        body TEXT NOT NULL,
+        source TEXT NOT NULL,
+        model TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS briefings_date_idx ON briefings(date);
+    `);
+  },
 ];
 
 /**

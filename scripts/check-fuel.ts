@@ -395,6 +395,128 @@ async function main() {
     db.select().from(favourites).all().find((f) => f.label === "Morning coffee")?.uses === 40,
   );
 
+  // ── The morning briefing ──
+  // Three things have to hold or the panel at the top of HQ is worse than not
+  // being there: it must appear at the right time, it must never be empty
+  // because the network was down, and one day must never end up with two of
+  // them.
+  console.log("\nthe morning briefing");
+
+  const { briefings } = await import("../lib/db/schema");
+  const {
+    BRIEFING_HOUR,
+    briefingDue,
+    ensureBriefing,
+    gatherFacts,
+    localBriefing,
+    storedBriefing,
+    stripFormatting,
+    upgradable,
+  } = await import("../lib/briefing");
+
+  const today = todayISO();
+  const at = (h: number) => new Date(`${today}T${String(h).padStart(2, "0")}:30:00`);
+
+  // An empty table is the first morning of a run. Withholding the first
+  // briefing until 08:00 would show a new user an empty panel and no reason.
+  ok("the very first briefing does not wait for 08:00", briefingDue(today, at(6)));
+
+  db.insert(briefings)
+    .values({ date: addDays(today, -1), body: "yesterday", source: "local", model: null, createdAt: 1 })
+    .run();
+
+  ok(`nothing is due before ${BRIEFING_HOUR}:00`, !briefingDue(today, at(BRIEFING_HOUR - 1)));
+  ok(`one is due from ${BRIEFING_HOUR}:00`, briefingDue(today, at(BRIEFING_HOUR)));
+  ok("and stays due for the rest of the day", briefingDue(today, at(22)));
+  ok("a past date is never due", !briefingDue(addDays(today, -1), at(22)));
+
+  const fresh = Math.floor(Date.now() / 1000);
+  const row = (source: "ai" | "local", ageSec: number) =>
+    ({ date: today, body: "x", model: null, source, createdAt: fresh - ageSec }) as never;
+  ok("the model's own briefing is never rewritten", !upgradable(row("ai", 99999)));
+  ok("a fresh local one is left alone", !upgradable(row("local", 300)));
+  ok("an older local one may be upgraded", upgradable(row("local", 3600)));
+
+  // The fallback is the whole reason this can be trusted at 08:00 on a train.
+  const facts = gatherFacts(today);
+  const local = localBriefing(facts);
+  const words = local.split(/\s+/).length;
+  ok("the fallback says something", local.length > 60, `${words} words`);
+  ok("it is not too long to read", words <= 140, `${words} words`);
+  ok(
+    "it names today's calorie and protein targets",
+    local.includes(String(facts.fuel.proteinTargetG)) &&
+      local.includes(facts.fuel.kcalTargetToday.toLocaleString("en-GB")),
+  );
+  ok("it carries no markdown", !/[*#_`]|^\s*[-•]/m.test(local));
+
+  // Two writers, one day.
+  await Promise.all([ensureBriefing(today), ensureBriefing(today)]);
+  const rowsToday = db.select().from(briefings).all().filter((b) => b.date === today);
+  ok("two concurrent writes leave one row", rowsToday.length === 1, `${rowsToday.length} rows`);
+  ok("and it is readable", (storedBriefing(today)?.body.length ?? 0) > 60);
+
+  ok(
+    "markdown is stripped out of what the model returns",
+    stripFormatting("## H\n\n**bold** and *it*\n\n- one\n- two").match(/[*#]|^- /m) === null,
+  );
+
+  // The prompt is where the rules live; a rewrite that drops them is silent.
+  const briefingSrc = fs.readFileSync(path.join(srcDir, "lib/briefing.ts"), "utf8");
+  for (const rule of [
+    /never invent/i,
+    /no headings, no bullet points/i,
+    /PATROL/,
+    /REFUEL WEEK/,
+    /LOW PROFILE WEEK/,
+    /do not give medical advice/i,
+    /below the plan's calorie target/i,
+  ]) {
+    ok(`the prompt still says ${rule.source.slice(0, 34)}`, rule.test(briefingSrc));
+  }
+
+  // Every way the model can let you down has to end in a paragraph, not a gap.
+  // This is the whole reason the local version exists.
+  const { setSetting: setS } = await import("../lib/settings");
+  setS("vision_model", "test/model");
+  process.env.NANOGPT_API_KEY = "test-key";
+  const realFetch = globalThis.fetch;
+  const reply = (c: string) =>
+    new Response(JSON.stringify({ choices: [{ message: { content: c } }] }), { status: 200 });
+
+  const failures_: [string, () => Promise<Response>][] = [
+    ["an empty answer", async () => reply("")],
+    ["a refusal", async () => reply("I cannot help with that.")],
+    ["a wall of text", async () => reply("x".repeat(3000))],
+    ["an HTTP 500", async () => new Response("nope", { status: 500 })],
+    ["malformed JSON", async () => new Response("<html>", { status: 200 })],
+    ["a dead network", async () => { throw new Error("ECONNREFUSED"); }],
+  ];
+  for (const [label, impl] of failures_) {
+    db.delete(briefings).run();
+    globalThis.fetch = impl as never;
+    const r = await ensureBriefing(today);
+    ok(`${label} still leaves a briefing`, r !== null && r.source === "local" && r.body.length > 60);
+  }
+
+  // The request itself: the configured model, and the key nowhere near the body.
+  db.delete(briefings).run();
+  let sent: { url: string; body: Record<string, unknown> } | null = null;
+  globalThis.fetch = (async (url: string, init: { body: string }) => {
+    sent = { url: String(url), body: JSON.parse(init.body) };
+    return reply("A perfectly ordinary briefing, comfortably past the minimum length to be stored.");
+  }) as never;
+  const wrote = await ensureBriefing(today);
+  const req = sent as unknown as { url: string; body: Record<string, unknown> };
+  ok("the model's answer is stored as such", wrote?.source === "ai" && wrote.model === "test/model");
+  ok("it goes to Nano-GPT", req.url.startsWith("https://nano-gpt.com/api/v1"), req.url);
+  ok("the model is the configured one, never hardcoded", req.body.model === "test/model");
+  ok(
+    "the API key is never in the request body",
+    !JSON.stringify(req.body).includes("test-key"),
+  );
+  globalThis.fetch = realFetch;
+
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);

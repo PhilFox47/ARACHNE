@@ -17,6 +17,111 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.14.0 — 2026-08-24
+
+A trainer who has read the whole week.
+
+### Why a paragraph and not another number
+
+Every screen reports one thing. PATROL knows about sessions, FUEL about food,
+VITALS about the scale, JOURNEY about the year. Nothing read across them, and
+that is where the observations worth having live — protein short on exactly the
+days you train hardest, the weekend snacking that quietly undoes a good week, a
+strand that has been one clean session from mastery for a fortnight.
+
+`lib/briefing.ts` gathers the last eight days of all four into one structured
+object — weight trend against the corridor, calories and protein against the
+day's targets, sessions with their RPE and notes, sets logged, water, phase,
+week, whether it is a LOW PROFILE or REFUEL week, today's session and its
+movements, and the next three days — and asks the model for 90 to 150 words of
+prose.
+
+### Written once, at 08:00
+
+Stored in a new `briefings` table (schema v15), one row per day, unique on the
+date. This is the app's one deliberate exception to deriving everything on read,
+and it earns it twice: the paragraph costs a model call, and one that rewrote
+itself on every page load would be one you stop reading. What it says at 08:00
+it says at 22:00.
+
+A poll inside the server writes it rather than a cron:
+
+```
+[arachne] briefing schedule armed — due from 8:00, checked every 5 min
+```
+
+A `setTimeout` aimed at a wall-clock hour is wrong across a suspend, a
+daylight-saving change, or a container that was asleep at 08:00 — all ordinary
+here. Asking "is one due and missing?" every five minutes is right in all of
+them, and the question is one indexed row.
+
+It is armed from the root layout rather than `instrumentation.ts`, which is
+where it belongs and cannot go: the app ships middleware, so Next compiles
+instrumentation for the edge runtime too, and better-sqlite3 cannot be bundled
+for a runtime with no `fs`. The `NEXT_RUNTIME` guard does not help — webpack has
+already had to resolve the import by then.
+
+Three paths reach the same place, and all of them are idempotent because the
+write upserts on the date:
+
+- the poll, at 08:00 on a server that has been up
+- the poll's immediate first tick, for a restart that happened at 09:00
+- the HQ screen itself, if it renders and finds none
+
+The first briefing of a run does not wait for 08:00. An empty panel on the first
+morning reads as a broken feature rather than as a thing that arrives later.
+
+### It cannot show you a failure
+
+Every way the model can let you down ends in a paragraph:
+
+```
+an empty answer   → local, 275 chars  ✓ fell back
+a refusal         → local, 275 chars  ✓ fell back
+a wall of text    → local, 275 chars  ✓ fell back
+an HTTP 500       → local, 275 chars  ✓ fell back
+malformed JSON    → local, 275 chars  ✓ fell back
+a dead network    → local, 275 chars  ✓ fell back
+a good answer     → ai, 82 chars
+```
+
+The fallback is not an apology — it is the same observations composed from the
+same numbers by hand. Worse prose, never an empty panel, which is the right
+trade at 08:00 with no internet. It is stored marked `source: "local"` so a load
+more than thirty minutes later can quietly replace it with the real thing;
+sooner than that and a flat network would turn into a request per refresh.
+
+Working, against a seeded week with no API key present:
+
+> Average is down 0.4 kg on last week, inside the corridor. Protein is averaging
+> 116 g against a target of 160 g — that gap is the one that costs muscle in a
+> deficit. Today is Push & Core — 3 rounds. Target 2,300 kcal and 160 g of
+> protein.
+
+### The prompt
+
+Speaks the app's own vocabulary — PATROL, FUEL, VITALS, THE WEB, LOW PROFILE
+WEEK, REFUEL WEEK, OFF-DUTY — and is told plainly never to invent a figure, to
+lead with what matters today, to name at least one specific thing from the data,
+to say a problem once rather than scold, to give no medical advice and never to
+suggest eating below the plan's target. Markdown is asked for not to appear and
+stripped if it does: a stray `**` in the middle of a paragraph is the one thing
+that makes it look machine-written.
+
+The model is the configured one, never hardcoded, and the key stays in the
+Authorization header and out of the body — both now checked.
+
+### Checking
+
+Thirty-six new assertions: the 08:00 gate from both sides, the first-run
+exception, that a past date is never due, that the model's own briefing is never
+rewritten while a stale local one may be, that two concurrent writes leave one
+row, that the fallback names the day's targets and carries no markdown, that
+each of six model failures still leaves a briefing, and that the request goes to
+Nano-GPT with the configured model and no key in the payload.
+
+---
+
 ## 1.13.0 — 2026-08-17
 
 The sports-science pass. The previous release checked that the app implements

@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.13.0";
+export const APP_VERSION = "1.14.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-17";
+export const RELEASED = "2026-08-24";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.14.0",
+    date: "2026-08-24",
+    kind: "minor",
+    headline: "A trainer who has read the whole week",
+    changes: [
+      "A paragraph at the top of HQ each morning. It reads across everything at once — PATROL, FUEL, VITALS and where you are in the year — says what went well and what did not, and tells you what today is for. Every other screen reports one thing; the useful observations live in between them, like protein running short on exactly the days you train hardest.",
+      "Written once at 08:00 and then left alone. Stored rather than derived, which is this app's one deliberate exception to deriving everything: it costs a model call, and a paragraph that rewrites itself every time you open the screen is a paragraph you stop reading. What it says at 08:00 it says at 22:00.",
+      "A poll inside the server writes it, so it is already there when you open the app rather than making the first open of the day wait. If the container was asleep at 08:00, or restarted, or you simply opened the app at eleven, the check runs and writes it then. The very first one does not wait for 08:00 at all.",
+      "It cannot show you a failure. A model that is unreachable, slow, refusing or rambling falls through to the same observations composed from the same numbers — worse prose, never an empty panel — and that version is marked so a later load can quietly replace it with the real one.",
+    ],
+  },
   {
     version: "1.13.0",
     date: "2026-08-17",

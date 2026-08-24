@@ -3,6 +3,7 @@ import { Barlow_Condensed, Inter } from "next/font/google";
 import "./globals.css";
 import { WebLattice } from "@/components/WebLattice";
 import { ServiceWorker } from "@/components/ServiceWorker";
+import { startBriefingSchedule } from "@/lib/briefingSchedule";
 
 /**
  * Barlow Condensed carries display and numbers: condensed is what lets a weight
@@ -47,6 +48,10 @@ export const viewport: Viewport = {
   userScalable: false,
   viewportFit: "cover",
 };
+
+// Idempotent, and cheap after the first call — the schedule is held on a
+// global so re-renders and dev-server reloads cannot stack up timers.
+startBriefingSchedule();
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

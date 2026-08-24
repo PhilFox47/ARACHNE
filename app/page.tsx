@@ -7,6 +7,7 @@ import { computeInsights } from "@/lib/sense";
 import { getSettings, ensureStartDate } from "@/lib/settings";
 import { loadGameState } from "@/lib/gameData";
 import { todayISO } from "@/lib/dates";
+import { briefingDue, storedBriefing } from "@/lib/briefing";
 import { Mark } from "@/components/Mark";
 import { CountUp } from "@/components/CountUp";
 import { WeightChart } from "@/components/WeightChart";
@@ -15,6 +16,7 @@ import { TensionLine } from "@/components/TensionLine";
 import { BottomNav } from "@/components/BottomNav";
 import { LevelBar, StreakStrip } from "@/components/LevelBar";
 import { ChallengeList } from "@/components/Challenges";
+import { Briefing } from "@/components/Briefing";
 import { PHASES } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,13 @@ export default async function HQ() {
   const series = buildSeries(rows, settings.startDate);
   const insights = computeInsights(stats, rows);
   const game = loadGameState();
+
+  // Server-rendered when it already exists, which is every load after the first
+  // of the day — no request, no spinner. `due` is what tells the client half
+  // whether it is worth asking for one that is not there yet.
+  const today = todayISO();
+  const briefing = storedBriefing(today);
+  const briefingIsDue = briefingDue(today);
 
   // The label names the metric; colour carries the corridor state. Labelling it
   // "In corridor" put a state word directly under a signed delta, which read as
@@ -70,6 +79,11 @@ export default async function HQ() {
           </Link>
         </div>
       </header>
+
+      <Briefing
+        initial={briefing ? { body: briefing.body, source: briefing.source, date: briefing.date } : null}
+        due={briefingIsDue}
+      />
 
       {/* ── Hero: the number that matters ── */}
       <section className="swing panel halftone flex flex-col gap-4 p-4">

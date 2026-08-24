@@ -385,6 +385,26 @@ export const senseDismissals = sqliteTable("sense_dismissals", {
   dismissedAt: integer("dismissed_at").notNull().default(now),
 });
 
+/**
+ * One paragraph a day from the trainer. Unique on date — a day has exactly one
+ * briefing, and the upsert on that index is what makes generation idempotent
+ * when two tabs ask at the same moment.
+ */
+export const briefings = sqliteTable(
+  "briefings",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    date: text("date").notNull(),
+    body: text("body").notNull(),
+    /** "ai" when the model wrote it, "local" when it was composed from the facts. */
+    source: text("source", { enum: ["ai", "local"] }).notNull(),
+    model: text("model"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("briefings_date_idx").on(t.date)],
+);
+
+export type Briefing = typeof briefings.$inferSelect;
 export type Favourite = typeof favourites.$inferSelect;
 export type MovementFeedback = typeof movementFeedback.$inferSelect;
 export type SkillReset = typeof skillResets.$inferSelect;
