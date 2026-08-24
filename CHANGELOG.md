@@ -17,6 +17,109 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.15.0 — 2026-08-24
+
+The trainer is allowed to tell you off.
+
+Reported as: *"I don't want it to be just positive for the sake of it. If I ate
+more than my calorie deficit allows, it should point that out and give guidance
+on what has been too much from the stuff I ate."*
+
+The instruction was easy; the data was the problem. v1.14.0 gave the trainer
+daily **totals** — 2,610 kcal against a 2,300 target — so it could say you went
+over and could not possibly say on what. And it saw sessions only as done or
+not done, so a session where everything collapsed looked identical to a good one.
+
+### What it can see now
+
+**The actual food.** `fuel.overTargetDays` carries each day that went over
+together with `worstItems`, the biggest entries by calories, so the sentence has
+something in it:
+
+```
+Saturday finished 310 kcal over at 2,610, and 1240 of that was the pizza.
+```
+
+`fuel.topSnacks7` comes too — the week's most expensive snacking, which is
+usually the same short list repeating.
+
+**How each movement went.** `findShortfalls` reads the stored prescription for
+every session in the window and compares it against `exercise_logs`: the best
+rep or hold against the target, the sets finished against the sets planned, and
+the best against the best before it. Read from the *stored prescription* rather
+than from the plan, because that is what was on the screen — already placed on
+the ladder, gated on equipment, and adjusted for the last session. Judging a set
+against a number that was never shown would be marking a paper you did not sit.
+
+Each shortfall arrives with the catalogue's `watch` and `cues` for that
+movement, which is the part that makes the advice real:
+
+```
+Incline inverted row: 1 set of 3 and 6 against 10. Finish the sets — the last
+one is the one doing the work. Blades together, chest to the edge, straight from
+heel to head.
+```
+
+Those cues are `lib/movements.ts`'s own words. The model is told to use them
+rather than invent technique advice, and the offline version quotes them
+directly.
+
+**Skipped patrols.** `patrol.skipped` is every training day in the window that
+produced nothing completed, with `started` distinguishing a session opened and
+abandoned from one that never happened — a different failure, worth a different
+sentence.
+
+### The prompt
+
+Rewritten around one rule, under a heading that says so: **honest, not nice.**
+
+- No praise for the sake of it, and none without the number that justifies it.
+- Over the target? Name the item.
+- A movement short? Say by how much, then give one concrete correction from the
+  data's own coaching notes.
+- Skipped a patrol? Say so plainly, without softening it, and do not pretend it
+  was a rest day. Two or more deserves a sharper sentence than one.
+- A number went backwards? Say it went backwards.
+- Do not open with reassurance before the problem, and do not take it back at
+  the end.
+
+And a section on where the line is, because a coach who is merely harsh is not
+better than one who is merely nice: blunt about the work, never about them as a
+person. No shaming, no moralising about food, nothing called a cheat, and never
+a suggestion to train it off or eat below the plan's target. Earned praise is
+still praise and still allowed.
+
+### The offline version got the same teeth
+
+It used to concatenate every true observation, which by a bad week ran to 157
+words and buried the worst thing in the middle. It now scores each observation
+and speaks the three sharpest plus what today is — skipped patrols above a
+blown calorie day, above a movement shortfall, above a protein average, above
+the scale. Roughly eighty words:
+
+```
+2 patrols missed this week — Wednesday and Thursday. That is not a slow week,
+it is most of one gone. Turning up is the whole of Phase 1. Saturday finished
+310 kcal over at 2,610, and 1240 of that was the pizza. Incline inverted row
+came in at 6 against 10. Blades together, chest to the edge, straight from heel
+to head. Today is Push & Core — 3 rounds. 2,300 kcal and 160 g of protein.
+```
+
+The correction quotes the **cues** rather than the `watch` note, which often
+opens with setup — the inverted row's begins "check the table takes your weight
+before you get under it", sound advice and not the reason you managed six
+instead of ten.
+
+### Checking
+
+Twenty new assertions, including the one that matters in both directions: a
+deliberately bad week must produce a briefing naming the pizza, the movement,
+the numbers and a real correction — and a clean week must not have criticism
+invented for it. Plus the prompt still carrying its licence to criticise and its
+limits.
+
+---
+
 ## 1.14.0 — 2026-08-24
 
 A trainer who has read the whole week.

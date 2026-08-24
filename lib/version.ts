@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.14.0";
+export const APP_VERSION = "1.15.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-24";
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.15.0",
+    date: "2026-08-24",
+    kind: "minor",
+    headline: "The trainer is allowed to tell you off",
+    changes: [
+      "It can now see what you actually ate, not just the daily total. A day over the target arrives with the entries that put it there, so the sentence is “Saturday finished 310 kcal over at 2,610, and 1,240 of that was the pizza” rather than “watch your intake”. The week's most expensive snacking comes with it.",
+      "It can see how each movement went. Every session's stored prescription is compared against what you logged — the reps you hit against the reps asked for, the sets finished against the sets planned, and whether the number went backwards since last time. The four worst arrive with the catalogue's own cues for that movement, so the correction is the programme's coaching rather than something invented.",
+      "Skipped patrols are named as misses. A training day that produced nothing is reported by name, and a session you opened and abandoned is called that rather than counted as a rest day.",
+      "The prompt was rewritten around one rule: honest, not nice. No praise without a number behind it, no reassurance before the problem, no taking the criticism back at the end. Blunt about the work and never about you — no shaming, no moralising about food, and never a suggestion to train it off or eat less than the plan allows.",
+      "The offline version got the same teeth, and now ranks what it has found rather than listing all of it — the three sharpest observations and what today is, in about eighty words.",
+    ],
+  },
   {
     version: "1.14.0",
     date: "2026-08-24",

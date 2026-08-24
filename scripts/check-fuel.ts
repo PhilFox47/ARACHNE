@@ -517,6 +517,130 @@ async function main() {
   );
   globalThis.fetch = realFetch;
 
+  // ── The trainer is allowed to be hard on you ──
+  // The whole point of the panel: a briefing that congratulates you on a bad
+  // week is worse than no briefing. These check that the criticism is specific
+  // — the actual food, the actual movement, the actual day — because vague
+  // disapproval is the failure mode and it reads as noise.
+  console.log("\nthe trainer criticises specifically");
+
+  const { sessionPlans, exerciseLogs, sessions: sessTable, weights: wTable } =
+    await import("../lib/db/schema");
+  db.delete(briefings).run();
+  db.delete(foodEntries).run();
+
+  const dayBackISO = (n: number) => addDays(todayISO(), -n);
+  const dkOf = (d: string) => ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][new Date(d).getDay()];
+  setS("start_date", dayBackISO(40));
+
+  // A blown day: 900 over, and one obvious culprit.
+  const bad = dayBackISO(2);
+  for (const [desc, kcal, mt] of [
+    ["Large takeaway pizza", 1400, "meal"],
+    ["Porridge", 400, "meal"],
+    ["Chicken and rice", 600, "meal"],
+    ["Crisps", 500, "snack"],
+  ] as [string, number, "meal" | "snack"][]) {
+    db.insert(foodEntries)
+      .values({
+        loggedAt: 1, date: bad, description: desc, normKey: desc.toLowerCase(),
+        kcal, proteinG: 20, mealType: mt, source: "manual",
+      })
+      .run();
+  }
+
+  // A training day where the rows collapsed and the sets were cut short.
+  const trainDay = [3, 4, 5, 6, 7].map(dayBackISO).find((d) => ["mon", "tue", "wed", "thu", "fri"].includes(dkOf(d)))!;
+  const sid = db
+    .insert(sessTable)
+    .values({ date: trainDay, dayKey: dkOf(trainDay), phase: 1, completed: true, rpe: 4 })
+    .returning({ id: sessTable.id })
+    .get().id;
+  db.insert(sessionPlans)
+    .values({
+      date: trainDay, dayKey: dkOf(trainDay), phase: 1, source: "plan", model: null,
+      payload: JSON.stringify([
+        { key: "incline inverted row", name: "Incline inverted row", sets: 3, metric: "reps", targetReps: 10, targetSeconds: null, targetWeightKg: null },
+      ]),
+    })
+    .run();
+  db.insert(exerciseLogs)
+    .values({ sessionId: sid, date: trainDay, exerciseKey: "incline inverted row", exerciseName: "Incline inverted row", setIndex: 0, reps: 6 })
+    .run();
+  db.insert(wTable).values({ date: dayBackISO(1), weightKg: 98 }).run();
+
+  const badFacts = gatherFacts(todayISO());
+  ok("the blown day is spotted", badFacts.fuel.overTargetDays.length > 0);
+  ok(
+    "and the thing that blew it is named",
+    badFacts.fuel.overTargetDays[0]?.worstItems[0]?.description === "Large takeaway pizza",
+    badFacts.fuel.overTargetDays[0]?.worstItems[0]?.description,
+  );
+  ok("the collapsed movement is spotted", badFacts.patrol.shortfalls.length > 0);
+  const sf = badFacts.patrol.shortfalls[0];
+  ok("with what it should have been", sf?.target === 10 && sf?.best === 6, `${sf?.best} vs ${sf?.target}`);
+  ok("and the sets it did not finish", sf?.setsDone === 1 && sf?.setsPlanned === 3);
+  ok("and the catalogue's own cues to fix it", (sf?.cues.length ?? 0) > 0, sf?.cues.join(", "));
+
+  const badText = localBriefing(badFacts);
+  ok("the briefing names the food", /pizza/i.test(badText), badText.slice(0, 90));
+  ok("it stays short enough to read", badText.split(/\s+/).length <= 140, `${badText.split(/\s+/).length} words`);
+
+  // The shortfall has to win the ranking to be spoken, and against four missed
+  // patrols it rightly does not. Judged on its own, where it is the headline.
+  const onlyShortfall = localBriefing({
+    ...badFacts,
+    patrol: { ...badFacts.patrol, skipped: [], lastSessionDaysAgo: 0 },
+    fuel: { ...badFacts.fuel, overTargetDays: [], avgProtein7: badFacts.fuel.proteinTargetG },
+  });
+  ok("the briefing names the movement", /inverted row/i.test(onlyShortfall), onlyShortfall.slice(0, 90));
+  ok("and gives the catalogue's correction", /blades together|chest to the edge/i.test(onlyShortfall));
+
+  // Skipped patrols are named, and named as misses.
+  db.delete(sessTable).run();
+  const skippedFacts = gatherFacts(todayISO());
+  if (skippedFacts.patrol.skipped.length > 0) {
+    const skipText = localBriefing(skippedFacts);
+    ok(
+      "a skipped patrol is called a miss, not a rest day",
+      /miss|did not happen|days since/i.test(skipText) && !/rest day|well deserved/i.test(skipText),
+      skipText.slice(0, 80),
+    );
+  }
+
+  // And the other direction: a clean week must not have criticism invented for it.
+  db.delete(foodEntries).run();
+  db.delete(exerciseLogs).run();
+  db.delete(sessionPlans).run();
+  for (let i = 1; i <= 7; i++) {
+    const d = dayBackISO(i);
+    for (const [desc, kcal, pro] of [["Breakfast", 500, 45], ["Lunch", 700, 60], ["Dinner", 900, 60]] as [string, number, number][]) {
+      db.insert(foodEntries)
+        .values({ loggedAt: 1, date: d, description: desc, normKey: desc.toLowerCase(), kcal, proteinG: pro, mealType: "meal", source: "manual" })
+        .run();
+    }
+    if (["mon", "tue", "wed", "thu", "fri"].includes(dkOf(d))) {
+      db.insert(sessTable).values({ date: d, dayKey: dkOf(d), phase: 1, completed: true, rpe: 4 }).run();
+    }
+  }
+  const goodFacts = gatherFacts(todayISO());
+  ok("a clean week has nothing over target", goodFacts.fuel.overTargetDays.length === 0);
+  ok("and nothing skipped", goodFacts.patrol.skipped.length === 0, goodFacts.patrol.skipped.map((s) => s.dayKey).join(","));
+  const goodText = localBriefing(goodFacts);
+  ok("so the briefing does not invent a problem", !/missed|over at|went backwards/i.test(goodText), goodText.slice(0, 90));
+
+  // The prompt is where the licence to criticise lives.
+  for (const rule of [
+    /not a cheerleader/i,
+    /No praise without evidence/i,
+    /name the item/i,
+    /skipped a patrol, say so plainly/i,
+    /never about them as a person/i,
+    /do not shame/i,
+  ]) {
+    ok(`the prompt still says ${rule.source.slice(0, 32)}`, rule.test(briefingSrc));
+  }
+
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
