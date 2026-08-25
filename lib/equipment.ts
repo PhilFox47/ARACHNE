@@ -198,15 +198,14 @@ const GATES: Gate[] = [
       note: "Substituted — the bodyweight vertical press.",
     },
   },
-  {
-    match: /lateral raise/i,
-    needsAny: LOAD,
-    substitute: {
-      name: "Wall slides",
-      dose: "15",
-      note: "Substituted — nothing to raise. Keeps the shoulder work.",
-    },
-  },
+  // A lateral raise is a light weight held away from the body, and there is no
+  // bodyweight version of that — the arm on its own is the load, and it is not
+  // enough. This used to substitute wall slides, which is a shoulder *mobility*
+  // drill and was never the same exercise; swapping a strength movement for a
+  // range-of-motion one and saying nothing is how a programme quietly stops
+  // training the thing it says it trains. Locked with a reason instead, the way
+  // the dead hang is.
+  { match: /lateral raise/i, needsAny: LOAD, substitute: null },
   {
     match: /jefferson curl/i,
     needsAny: LOAD,

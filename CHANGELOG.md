@@ -17,6 +17,74 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.15.1 — 2026-08-24
+
+Wall slides removed.
+
+Reported as: *"I just don't have any smooth walls to do this on, only very rough
+ones."*
+
+Removed from all four places it lived:
+
+- **Tuesday, MOBILITY & FLOW** (Phase 1 onward). Tuesday is now seven movements.
+- **The Phase 0 baseline sweep**, so it is not measured either.
+- **The catalogue**, so it cannot be prescribed, substituted in, or appear on
+  THE WEB.
+- **The lateral-raise substitute**, which is the one that mattered.
+
+### The substitute was wrong anyway
+
+`gateExercise` swapped lateral raises for wall slides when you owned nothing to
+lift:
+
+```ts
+{ match: /lateral raise/i, needsAny: LOAD,
+  substitute: { name: "Wall slides", dose: "15",
+                note: "Substituted — nothing to raise. Keeps the shoulder work." } }
+```
+
+It did not keep the shoulder work. A lateral raise is a light weight held away
+from the body — a strength movement for the side deltoid. A wall slide is a
+range-of-motion drill. Swapping one for the other and saying nothing is how a
+programme quietly stops training the thing it says it trains, and this one was
+doing it in the plan's own priority muscle.
+
+There is no bodyweight version of a lateral raise: the arm alone is the load and
+it is not enough. So it now locks with a reason, exactly as the dead hang does
+since v1.12.0:
+
+```
+owns dumbbells  → allowed
+owns nothing    → locked: needs one of: dumbbells, heavier dumbbells,
+                  kettlebell, resistance bands, gym membership, weighted vest
+```
+
+### History is untouched
+
+It was `track: "groundwork"` — never a ladder rung, never mastered, gating
+nothing — so removing it breaks no strand. Sets logged against it during the
+baseline fortnight stay exactly where they are. Every reader was run against a
+database holding orphaned wall-slide logs:
+
+```
+findMovement('Wall slides') → null
+ok   standings()                      ok   loadGameState()
+ok   movementRecords()                ok   buildWeb()
+ok   exerciseHistory('wall slides')   ok   baselinePrescription(1,'tue')
+ok   getHqStats()                     ok   gatherFacts() / localBriefing()
+```
+
+`exerciseHistory` still returns the sets. The movement is gone from the plan,
+not from the record.
+
+### What covers the gap
+
+Tuesday keeps Thread the Needle for shoulder range, and Monday's warm-up still
+carries shoulder circles with a towel, arm circles and scapula push-ups. The
+overhead work does not leave with it.
+
+---
+
 ## 1.15.0 — 2026-08-24
 
 The trainer is allowed to tell you off.

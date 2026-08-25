@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.15.0";
+export const APP_VERSION = "1.15.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-24";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.15.1",
+    date: "2026-08-24",
+    kind: "patch",
+    headline: "Wall slides removed — no smooth wall to do them on",
+    changes: [
+      "Gone from Tuesday's MOBILITY & FLOW and from the Phase 0 baseline sweep, and gone from the catalogue, so it will not turn up again anywhere. Tuesday is now seven movements.",
+      "It was also standing in as the substitute for lateral raises when there is nothing to lift, which it should never have been — a lateral raise is a strength movement and a wall slide is a mobility drill, and swapping one for the other while saying nothing is how a plan quietly stops training what it claims to. Lateral raises now lock with a reason when you own nothing to raise, the way the dead hang does.",
+      "Any sets you already logged against it are untouched and still readable — the movement is gone from the plan, not from your history.",
+      "Tuesday keeps Thread the Needle for shoulder range, and Monday's warm-up still has shoulder circles and scapula push-ups, so the overhead work is not lost with it.",
+    ],
+  },
   {
     version: "1.15.0",
     date: "2026-08-24",

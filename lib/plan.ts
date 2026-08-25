@@ -738,13 +738,6 @@ export const BASELINE_PATROLS: BaselinePatrol[] = [
         perSide: true,
       },
       {
-        name: "Wall slides",
-        family: "mobility",
-        metric: "reps",
-        sets: 2,
-        how: "Wrists and lower back stay on the wall. Count only the reps where they do.",
-      },
-      {
         name: "Couch stretch",
         family: "mobility",
         metric: "time",
@@ -1087,7 +1080,6 @@ const P1: Record<DayKey, Session | null> = {
       { name: "Cossack squat", dose: "8 per side" },
       { name: "Open book", dose: "10 per side", note: "Thoracic rotation" },
       { name: "Couch stretch", dose: "60 s per side" },
-      { name: "Wall slides", dose: "15" },
       { name: "Thread the needle", dose: "8 per side" },
     ],
     rule: "Never stretch into pain. Pulling yes, stabbing no. Breathe — mobility happens on the exhale.",

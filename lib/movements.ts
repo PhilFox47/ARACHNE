@@ -3208,29 +3208,6 @@ export const MOVEMENTS: Movement[] = [
     masterAt: { reps: 8 },
   },
   {
-    name: "Wall slides",
-    family: "mobility",
-    track: "groundwork",
-    tier: 0,
-    metric: "reps",
-    dose: "10",
-    summary:
-      "Standing against a wall with your arms in a goalpost shape and sliding them up and down while keeping every point of contact.",
-    setup: [
-      "Back against a wall, feet a little way out from it.",
-      "Lower back, upper back and head all touching. Arms up, elbows and wrists on the wall.",
-    ],
-    execution: [
-      "Slide the arms up as far as they go without anything peeling off the wall.",
-      "Slide back down until the elbows are level with your ribs.",
-    ],
-    watch:
-      "The wrists and the lower back are where this is cheated. If the back arches away from the wall to get the arms higher, you have swapped shoulder range for lumbar range and gained nothing — stop where the contact stops.",
-    cues: ["Everything stays on the wall", "Stop where contact stops", "Slow"],
-    trains: ["overhead shoulder range", "upper back position"],
-    masterAt: { reps: 10 },
-  },
-  {
     name: "Doorway chest stretch",
     family: "mobility",
     track: "groundwork",
