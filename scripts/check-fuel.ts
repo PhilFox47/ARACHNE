@@ -451,6 +451,12 @@ async function main() {
   ok("it carries no markdown", !/[*#_`]|^\s*[-•]/m.test(local));
 
   // Two writers, one day.
+  //
+  // The table is cleared first so this does not depend on the clock: with
+  // yesterday's row still present and the suite running before 08:00, nothing
+  // is due and both writers correctly do nothing — which is the app behaving
+  // and the check failing every morning.
+  db.delete(briefings).run();
   await Promise.all([ensureBriefing(today), ensureBriefing(today)]);
   const rowsToday = db.select().from(briefings).all().filter((b) => b.date === today);
   ok("two concurrent writes leave one row", rowsToday.length === 1, `${rowsToday.length} rows`);
@@ -639,6 +645,109 @@ async function main() {
     /do not shame/i,
   ]) {
     ok(`the prompt still says ${rule.source.slice(0, 32)}`, rule.test(briefingSrc));
+  }
+
+  // ── It remembers what it already said ──
+  // The complaint: it covered the same ground every morning as though it had
+  // never spoken before. The fix is memory, not silence — a point that keeps
+  // being true should still resurface, just not ahead of something unsaid.
+  console.log("\nthe trainer does not repeat itself");
+
+  const {
+    recentBriefings,
+    recentTopics,
+    RECALL_DAYS,
+    // Aliased: lib/vision exports a buildUserText too, and it is already in scope.
+    buildUserText: buildBriefingText,
+  } = await import("../lib/briefing");
+
+  db.delete(briefings).run();
+  for (let i = 1; i <= 20; i++) {
+    db.insert(briefings)
+      .values({ date: addDays(today, -i), body: `briefing from ${i} days ago`, source: "local", model: null, createdAt: 1 })
+      .run();
+  }
+  db.insert(briefings).values({ date: today, body: "today's own", source: "local", model: null, createdAt: 1 }).run();
+
+  const recalled = recentBriefings(today);
+  ok(`it looks back ${RECALL_DAYS} days`, recalled.length === RECALL_DAYS, `${recalled.length}`);
+  ok("newest first", recalled[0].date === addDays(today, -1));
+  ok("and never reads the day it is writing", !recalled.some((r) => r.date === today));
+
+  // The model has to actually be handed them.
+  const withHistory = buildBriefingText(gatherFacts(today), recalled);
+  ok("the previous briefings reach the model", withHistory.includes("briefing from 1 days ago"));
+  ok("and they are labelled as already said", /ALREADY TOLD THEM/i.test(withHistory));
+  ok("with the instruction not to repeat them", /Do not repeat these points/i.test(withHistory));
+  ok(
+    "a first-ever briefing carries no such section",
+    !/ALREADY TOLD THEM/i.test(buildBriefingText(gatherFacts(today), [])),
+  );
+
+  // Topic detection, including the one that bit: the closing line names the
+  // protein target every single day, so a bare /protein/ flagged it forever.
+  const asRow = (body: string) => ({ date: today, body, source: "local" as const, model: null, createdAt: 1 });
+  ok(
+    "the closing line's protein target is not a protein observation",
+    !recentTopics([asRow("Today is Push & Core — 3 rounds. 2,300 kcal and 160 g of protein.")]).has("protein"),
+  );
+  ok(
+    "but a real protein observation is",
+    recentTopics([asRow("Protein is averaging 118 g against 160 g.")]).get("protein") === 1,
+  );
+  ok(
+    "topics are dated by how many mornings ago",
+    recentTopics([asRow("Average is up 0.3 kg."), asRow("2 patrols missed this week.")]).get("skipped") === 2,
+  );
+  ok(
+    "a named movement is remembered as its own topic",
+    recentTopics([asRow("Incline inverted row: 6 against 10.")]).has("shortfall:Incline inverted row"),
+  );
+
+  // And the behaviour that matters: four mornings of identical data must not
+  // produce four identical paragraphs.
+  db.delete(briefings).run();
+  const richFacts = {
+    ...gatherFacts(today),
+    vitals: { ...gatherFacts(today).vitals, avg7: 98.2, avg7LastWeek: 97.9, daysSinceWeighIn: 0 },
+    fuel: {
+      ...gatherFacts(today).fuel,
+      daysLogged7: 6, avgProtein7: 118, proteinDaysMet7: 1,
+      overTargetDays: [{ date: addDays(today, -3), kcal: 2900, target: 2300, overBy: 600,
+        worstItems: [{ description: "Takeaway curry", kcal: 1100, mealType: "meal" }] }],
+    },
+    patrol: {
+      ...gatherFacts(today).patrol,
+      skipped: [{ date: addDays(today, -4), dayKey: "thu", title: "Conditioning", started: false }],
+      shortfalls: [{ date: addDays(today, -2), name: "Incline inverted row", metric: "reps",
+        target: 10, best: 6, previousBest: 10, setsDone: 3, setsPlanned: 3,
+        watch: "Hips stay up.", cues: ["Blades together"] }],
+    },
+  };
+  const mornings: string[] = [];
+  for (let i = 3; i >= 0; i--) {
+    const d = addDays(today, -i);
+    const body = localBriefing(richFacts, recentBriefings(d));
+    db.insert(briefings).values({ date: d, body, source: "local", model: null, createdAt: 1 }).run();
+    mornings.push(body);
+  }
+  ok(
+    "four mornings of the same data are not four identical paragraphs",
+    new Set(mornings).size >= 3,
+    `${new Set(mornings).size} distinct of ${mornings.length}`,
+  );
+  ok(
+    "and the worst thing is never silenced by the rotation",
+    mornings.every((m) => /curry|missed|did not happen|inverted row/i.test(m)),
+  );
+
+  for (const rule of [
+    /DO NOT REPEAT YOURSELF/,
+    /WHEN REPEATING IS RIGHT/,
+    /getting worse rather than staying the same/i,
+    /amnesia, not emphasis/i,
+  ]) {
+    ok(`the prompt still says ${rule.source.slice(0, 34)}`, rule.test(briefingSrc));
   }
 
   fs.rmSync(root, { recursive: true, force: true });

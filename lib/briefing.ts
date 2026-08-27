@@ -72,6 +72,36 @@ export function upgradable(row: BriefingRow, now = new Date()): boolean {
   return now.getTime() / 1000 - row.createdAt > LOCAL_RETRY_MINUTES * 60;
 }
 
+/** How far back the trainer remembers what it has already said. */
+export const RECALL_DAYS = 14;
+
+/**
+ * What the trainer has said recently, newest first.
+ *
+ * Without this it wrote every morning as though it had never spoken to you
+ * before — the same protein observation, the same note about the corridor, in
+ * the same order, for a week. A coach who tells you the same thing five days
+ * running is one you stop listening to on day two, and the repetition also
+ * crowds out whatever is actually new.
+ *
+ * Excludes the day being written, so a regeneration cannot read itself.
+ */
+export function recentBriefings(date: string, days = RECALL_DAYS): BriefingRow[] {
+  return db
+    .select()
+    .from(briefings)
+    .where(and(gte(briefings.date, addDays(date, -days)), lte(briefings.date, addDays(date, -1))))
+    .orderBy(desc(briefings.date))
+    .all()
+    .map((r) => ({
+      date: r.date,
+      body: r.body,
+      source: r.source,
+      model: r.model,
+      createdAt: r.createdAt,
+    }));
+}
+
 // ─────────────────────────────────────────────────────────────
 // The facts
 // ─────────────────────────────────────────────────────────────
@@ -517,18 +547,41 @@ RULES
 - Do not give medical advice. Never suggest eating below the plan's calorie target, and never suggest training to make up for food.
 - If there is barely any data yet — a new run, a quiet week — say something short and useful rather than padding it out.
 
+DO NOT REPEAT YOURSELF
+You will be given the briefings you wrote over the last fortnight, newest first. Read them before you write. They are what this person has already been told, and saying it again as though for the first time is the fastest way to make them stop reading.
+
+- Default to finding something you have not said. There is almost always more in the data than fits in one paragraph, so a point you made two days ago should lose to one you have not made at all.
+- If the only thing worth saying is something you have said, say it differently and say what has changed since. "Protein short again — third week now, and it is the reason the scale has stalled" is a new sentence. Repeating the old one word for word is not.
+- Never re-use a phrase or an opening you used in the last few days. Vary how a briefing starts; several in a row that open the same way read as a template.
+- Do not congratulate them on something you already congratulated them on this week unless it has grown into a streak worth naming.
+
+WHEN REPEATING IS RIGHT
+Repetition is a tool, not a rule to break. Say a thing again, deliberately and harder, when:
+- it is getting worse rather than staying the same;
+- they have been told and it has changed nothing, and naming that pattern is the point ("that is the fourth time this fortnight");
+- it is the single most important thing in the data today and everything else is noise.
+In those cases be explicit that it is not the first time. The problem is amnesia, not emphasis.
+
 WHAT THE DATA GIVES YOU
 fuel.overTargetDays carries each day that went over, with worstItems — the biggest entries by calories. That is where you find the thing to name.
 fuel.topSnacks7 is the week's most expensive snacking, usually the same short list repeating.
 patrol.skipped is training days that produced nothing. "started": true means they opened the session and abandoned it, which is a different failure from not turning up and can be said differently.
 patrol.shortfalls is movements that came in under the prescription, each with target, best, previousBest, the sets done against the sets planned, and the catalogue's own "watch" and "cues" for that movement. Use those for the correction — they are the programme's own coaching, and they are why you can be specific about technique without guessing.`;
 
-export function buildUserText(f: BriefingFacts): string {
-  return [
-    "Write today's briefing from this data.",
-    "",
-    JSON.stringify(f, null, 1),
-  ].join("\n");
+export function buildUserText(f: BriefingFacts, previous: BriefingRow[] = []): string {
+  const parts = ["Write today's briefing from this data.", "", JSON.stringify(f, null, 1)];
+
+  if (previous.length > 0) {
+    parts.push(
+      "",
+      `WHAT YOU ALREADY TOLD THEM — your last ${previous.length} ${previous.length === 1 ? "briefing" : "briefings"}, newest first.`,
+      "Do not repeat these points as though they were new. Find something you have not said, or say it differently and say what has changed.",
+      "",
+      ...previous.map((p) => `[${p.date}] ${p.body}`),
+    );
+  }
+
+  return parts.join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -542,33 +595,34 @@ export function buildUserText(f: BriefingFacts): string {
  * same facts by hand. It is worse prose and it is never nothing, which is the
  * right trade at 08:00 on a Tuesday with no internet.
  */
-export function localBriefing(f: BriefingFacts): string {
+export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): string {
   const { vitals, fuel, patrol, week } = f;
   /** Observations, ranked. Only the sharpest few make it into the paragraph. */
-  const seen: { p: number; text: string }[] = [];
-  const say = (p: number, text: string) => seen.push({ p, text });
+  const seen: { p: number; topic: string; text: string }[] = [];
+  const say = (p: number, topic: string, text: string) => seen.push({ p, topic, text });
 
   if (week.refuel) {
-    say(100, `REFUEL WEEK. Eat at maintenance — ${fuel.kcalTargetToday.toLocaleString("en-GB")} kcal — and take the two-round sessions. Scheduled recovery, not a slip.`);
+    say(100, "refuel", `REFUEL WEEK. Eat at maintenance — ${fuel.kcalTargetToday.toLocaleString("en-GB")} kcal — and take the two-round sessions. Scheduled recovery, not a slip.`);
   } else if (week.lowProfile) {
-    say(60, "LOW PROFILE WEEK — two rounds instead of three, and nothing to failure.");
+    say(60, "lowprofile", "LOW PROFILE WEEK — two rounds instead of three, and nothing to failure.");
   }
 
   // ── Skipped patrols. The loudest thing in the data. ──
   if (patrol.skipped.length >= 2) {
-    say(98, `${patrol.skipped.length} patrols missed this week — ${listOf(patrol.skipped.map((s) => dayName(s.dayKey)))}. That is not a slow week, it is most of one gone. Turning up is the whole of Phase 1.`);
+    say(98, "skipped", `${patrol.skipped.length} patrols missed this week — ${listOf(patrol.skipped.map((s) => dayName(s.dayKey)))}. That is not a slow week, it is most of one gone. Turning up is the whole of Phase 1.`);
   } else if (patrol.skipped.length === 1) {
     const s = patrol.skipped[0];
     say(
       88,
+      "skipped",
       s.started
         ? `You opened ${dayName(s.dayKey)}'s ${s.title ?? "session"} and did not finish it. An abandoned session is still a miss.`
         : `${dayName(s.dayKey)}'s ${s.title ?? "patrol"} did not happen. Recoverable — but do not stack it on top of today's.`,
     );
   } else if (patrol.lastSessionDaysAgo !== null && patrol.lastSessionDaysAgo >= 3) {
-    say(95, `${patrol.lastSessionDaysAgo} days since the last PATROL. Start with today's and do not try to make up the others.`);
+    say(95, "skipped", `${patrol.lastSessionDaysAgo} days since the last PATROL. Start with today's and do not try to make up the others.`);
   } else if (patrol.doneThisWeek >= 4) {
-    say(40, `${patrol.doneThisWeek} of ${patrol.dueThisWeek} patrols done this week — that is the number that decides the year.`);
+    say(40, "attendance", `${patrol.doneThisWeek} of ${patrol.dueThisWeek} patrols done this week — that is the number that decides the year.`);
   }
 
   // ── The movement that went worst, and the catalogue's reason why. ──
@@ -589,6 +643,7 @@ export function localBriefing(f: BriefingFacts): string {
     if (parts.length > 0) {
       say(
         cut && !short ? 80 : short ? 85 : 83,
+        `shortfall:${worst.name}`,
         `${worst.name}: ${listOf(parts)}.` +
           (cut ? " Finish the sets — the last one is the one doing the work." : "") +
           (short || back ? correction(worst) : ""),
@@ -598,7 +653,7 @@ export function localBriefing(f: BriefingFacts): string {
 
   // ── FUEL, naming what actually did the damage. ──
   if (fuel.daysLogged7 === 0) {
-    say(92, "Nothing logged in FUEL this week. Photograph what you eat — you cannot fix a week you cannot see.");
+    say(92, "logging", "Nothing logged in FUEL this week. Photograph what you eat — you cannot fix a week you cannot see.");
   } else {
     const over = [...fuel.overTargetDays].sort((a, b) => b.overBy - a.overBy);
     if (over.length > 0) {
@@ -606,29 +661,30 @@ export function localBriefing(f: BriefingFacts): string {
       const item = d.worstItems[0];
       say(
         90,
+        "overtarget",
         `${dayName(dayKeyOf(d.date))} finished ${d.overBy} kcal over at ${d.kcal.toLocaleString("en-GB")}` +
           (item ? `, and ${item.kcal} of that was the ${item.description.toLowerCase()}` : "") +
           `.${over.length > 1 ? ` ${over.length} days over this week.` : ""}`,
       );
     }
-    if (fuel.daysLogged7 <= 4) say(70, `FUEL logged on only ${fuel.daysLogged7} of the last 8 days.`);
+    if (fuel.daysLogged7 <= 4) say(70, "logging", `FUEL logged on only ${fuel.daysLogged7} of the last 8 days.`);
     if (fuel.avgProtein7 !== null && fuel.avgProtein7 < fuel.proteinTargetG) {
-      say(75, `Protein is averaging ${fuel.avgProtein7} g against ${fuel.proteinTargetG} g — the gap that costs muscle in a deficit.`);
+      say(75, "protein", `Protein is averaging ${fuel.avgProtein7} g against ${fuel.proteinTargetG} g — the gap that costs muscle in a deficit.`);
     } else if (fuel.proteinDaysMet7 >= 5 && over.length === 0) {
-      say(50, `Protein hit on ${fuel.proteinDaysMet7} of the logged days and nothing over target. That is a good week.`);
+      say(50, "protein", `Protein hit on ${fuel.proteinDaysMet7} of the logged days and nothing over target. That is a good week.`);
     }
   }
 
   // ── VITALS ──
   if (vitals.daysSinceWeighIn === null) {
-    say(94, "No weight logged yet. The corridor cannot tell you anything without a reading.");
+    say(94, "weighin", "No weight logged yet. The corridor cannot tell you anything without a reading.");
   } else if (vitals.daysSinceWeighIn >= 3) {
-    say(91, `No reading for ${vitals.daysSinceWeighIn} days — the average is guesswork until you step on the scale.`);
+    say(91, "weighin", `No reading for ${vitals.daysSinceWeighIn} days — the average is guesswork until you step on the scale.`);
   } else if (vitals.avg7 !== null && vitals.avg7LastWeek !== null) {
     const move = Math.round((vitals.avg7LastWeek - vitals.avg7) * 10) / 10;
-    if (move > 0.1) say(45, `Average is down ${move} kg on last week.`);
-    else if (move < -0.1) say(65, `Average is up ${Math.abs(move)} kg on last week. One week is noise; two is a trend.`);
-    else say(55, "Average is flat on last week.");
+    if (move > 0.1) say(45, "trend", `Average is down ${move} kg on last week.`);
+    else if (move < -0.1) say(65, "trend", `Average is up ${Math.abs(move)} kg on last week. One week is noise; two is a trend.`);
+    else say(55, "trend", "Average is flat on last week.");
   }
 
   // The closing line always survives — a briefing that does not land on today
@@ -639,8 +695,79 @@ export function localBriefing(f: BriefingFacts): string {
 
   // Three observations at most. Everything true is not the same as everything
   // worth saying, and a paragraph nobody finishes coaches nobody.
-  const chosen = seen.sort((a, b) => b.p - a.p).slice(0, 3);
+  //
+  // Demoted rather than dropped if it was said in the last few days: a point
+  // that keeps being true deserves to resurface, just not ahead of something
+  // that has never been said at all. A missed patrol at 98 still outranks a
+  // fresh weight trend at 45 even after the penalty, which is correct — some
+  // things are worth saying twice.
+  const said = recentTopics(previous);
+  const chosen = seen
+    .map((o) => ({ ...o, p: o.p - repeatPenalty(said.get(o.topic)) }))
+    .sort((a, b) => b.p - a.p)
+    .slice(0, 3);
   return [...chosen.map((c) => c.text), closing].join(" ");
+}
+
+/**
+ * What a topic loses for having been raised recently, by how recently.
+ *
+ * Graded rather than flat. A flat penalty saturates: after two mornings every
+ * topic has been said, every topic is docked the same amount, and the order
+ * collapses back to raw severity — which is the loop this was meant to break.
+ * Decaying by age keeps the ranking moving, and a point drops far enough to
+ * make room for something unsaid without ever being silenced.
+ */
+const REPEAT_PENALTIES = [35, 25, 15, 8];
+
+function repeatPenalty(daysAgo: number | undefined): number {
+  if (daysAgo === undefined) return 0;
+  return REPEAT_PENALTIES[Math.min(daysAgo, REPEAT_PENALTIES.length) - 1] ?? 0;
+}
+
+/** Only the last few days count — a fortnight ago is not repeating yourself. */
+const REPEAT_WINDOW_DAYS = REPEAT_PENALTIES.length;
+
+/**
+ * Which topics recent briefings already covered.
+ *
+ * Matched against the composer's own phrasings, which is reliable for the text
+ * it wrote itself and best-effort for anything the model wrote. A miss costs a
+ * repeated sentence, not a wrong one, so best-effort is the right bar — and the
+ * model has the full texts anyway and is told not to repeat them.
+ */
+const TOPIC_SIGNS: [string, RegExp][] = [
+  ["skipped", /patrols? missed|did not happen|still a miss|since the last PATROL|abandoned/i],
+  ["attendance", /patrols done this week/i],
+  ["overtarget", /kcal over at|days over this week/i],
+  // Specific to the observation, not to the word. The closing line names the
+  // protein target every single day — a bare /protein/ matched that and left
+  // the topic permanently flagged as already said, so the one observation the
+  // rotation most needed to surface was the one it could never reach.
+  ["protein", /protein is averaging|protein hit on/i],
+  ["logging", /logged on only|nothing logged in FUEL|photograph what you eat/i],
+  ["weighin", /no reading for|no weight logged|step on the scale/i],
+  ["trend", /average is (down|up|flat)/i],
+  ["refuel", /REFUEL WEEK/i],
+  ["lowprofile", /LOW PROFILE WEEK/i],
+];
+
+/** Topic → how many mornings ago it was last raised (1 = yesterday's briefing). */
+export function recentTopics(previous: BriefingRow[]): Map<string, number> {
+  const out = new Map<string, number>();
+  // Newest first, so the first time a topic is seen is the most recent time.
+  previous.slice(0, REPEAT_WINDOW_DAYS).forEach((row, i) => {
+    const age = i + 1;
+    const note = (topic: string) => {
+      if (!out.has(topic)) out.set(topic, age);
+    };
+    for (const [topic, sign] of TOPIC_SIGNS) if (sign.test(row.body)) note(topic);
+    // Shortfalls are keyed by movement, so the name in the text is the signal.
+    for (const m of row.body.matchAll(/\b([A-Z][a-z]+(?: [a-z-]+){1,3})(?=:| came in| went backwards)/g)) {
+      note(`shortfall:${m[1]}`);
+    }
+  });
+  return out;
 }
 
 /**
@@ -688,10 +815,11 @@ export async function ensureBriefing(date = todayISO(), timeoutMs = 30_000): Pro
   if (!existing && !briefingDue(date)) return null;
 
   const facts = gatherFacts(date);
+  const previous = recentBriefings(date);
   const key = apiKey();
   const model = activeVisionModel();
 
-  if (!key || !model) return existing ?? save(date, localBriefing(facts), "local", null);
+  if (!key || !model) return existing ?? save(date, localBriefing(facts, previous), "local", null);
 
   try {
     const res = await fetch(`${baseUrl()}/chat/completions`, {
@@ -704,7 +832,7 @@ export async function ensureBriefing(date = todayISO(), timeoutMs = 30_000): Pro
         max_tokens: 500,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserText(facts) },
+          { role: "user", content: buildUserText(facts, previous) },
         ],
       }),
     });
@@ -717,7 +845,7 @@ export async function ensureBriefing(date = todayISO(), timeoutMs = 30_000): Pro
     if (text.length < 40 || text.length > 2000) throw new Error("unusable length");
     return save(date, stripFormatting(text), "ai", model);
   } catch {
-    return existing ?? save(date, localBriefing(facts), "local", null);
+    return existing ?? save(date, localBriefing(facts, previous), "local", null);
   }
 }
 

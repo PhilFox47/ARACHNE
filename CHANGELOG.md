@@ -17,6 +17,88 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.16.0 — 2026-08-27
+
+The trainer remembers what it already told you.
+
+Reported as: *"it tends to repeat itself, covering the same things as if it has
+never mentioned them before"* — with the qualifier that repeating a point should
+be possible, just not the default.
+
+The trainer had no memory at all. Each morning it was handed the same shape of
+data and asked for a paragraph, with nothing to tell it that yesterday's
+paragraph existed. On a stable week the same observation is the most important
+one every day, so it got written every day.
+
+### It now reads its own last fortnight
+
+`recentBriefings(date, 14)` returns the previous fourteen days, newest first,
+excluding the day being written so a regeneration cannot read itself. They go
+into the user turn under a heading that says what they are:
+
+```
+WHAT YOU ALREADY TOLD THEM — your last 14 briefings, newest first.
+Do not repeat these points as though they were new. Find something you have not
+said, or say it differently and say what has changed.
+
+[2026-08-26] …
+```
+
+The system prompt gained two sections. **DO NOT REPEAT YOURSELF** makes finding
+something new the default, bans re-using an opening from the last few days, and
+says a point made two days ago should lose to one never made at all.
+**WHEN REPEATING IS RIGHT** is the other half, because a coach who can only say
+a thing once is no better than one who says it every day — repeat deliberately
+when it is getting worse, when it has been said and changed nothing and naming
+that pattern *is* the point, or when it is genuinely the only thing that matters
+today. In those cases it must be explicit that this is not the first time. The
+problem was amnesia, not emphasis.
+
+### The offline version got its own memory
+
+The fallback picks the three sharpest observations from a ranked list, which on
+unchanging data is the same three every morning. Each observation now carries a
+topic, and `recentTopics` dates each topic by how many mornings ago it was last
+raised. The penalty decays with age:
+
+```
+yesterday −35   two days −25   three days −15   four days −8
+```
+
+Graded rather than flat, and that mattered. A flat penalty saturates: after two
+mornings every topic has been said, all of them are docked the same, the order
+collapses back to raw severity, and the loop returns. Four consecutive mornings
+on identical data now produce three distinct paragraphs, and the worst thing in
+the data still appears in all of them — demotion is never enough to silence a
+missed patrol.
+
+### A bug found in the building
+
+The closing line names the day's protein target every single day — "2,300 kcal
+and 160 g of protein". The first topic detector matched a bare `/protein/`, so
+every briefing ever written looked like it had already covered protein, and the
+protein observation was permanently suppressed. The signatures now match the
+composer's own observation phrasings (`protein is averaging`, `protein hit on`)
+rather than the word.
+
+### An unrelated flake, fixed
+
+`two concurrent writes leave one row` had been passing on the clock. It runs
+`ensureBriefing` with yesterday's row already present, so before 08:00 nothing
+is due, both writers correctly do nothing, and the check fails — the app
+behaving and the test wrong. It clears the table first now.
+
+### Checking
+
+Seventeen new assertions: that the lookback is exactly fourteen days, newest
+first, never including today; that the texts reach the model labelled and with
+the instruction; that a first-ever briefing carries no such section; that the
+closing line's protein target is not mistaken for a protein observation; that
+topics are dated by age; and that four mornings of identical data do not produce
+four identical paragraphs while the worst thing still survives the rotation.
+
+---
+
 ## 1.15.1 — 2026-08-24
 
 Wall slides removed.

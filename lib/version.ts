@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.15.1";
+export const APP_VERSION = "1.16.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-24";
+export const RELEASED = "2026-08-27";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.16.0",
+    date: "2026-08-27",
+    kind: "minor",
+    headline: "The trainer remembers what it already told you",
+    changes: [
+      "It now reads its own last fortnight before writing. Every briefing from the previous fourteen days goes into the prompt, newest first, labelled as what you have already been told — so the same protein observation does not arrive five mornings running as though it were news.",
+      "Repetition is demoted, not banned. A point you have not heard beats one from two days ago; a point that is getting worse, or that you have been told and ignored, is still worth saying again — and when it does come back it has to say that it is not the first time. Amnesia was the problem, not emphasis.",
+      "The offline version got its own memory. Each observation carries a topic, and a topic raised recently loses ground by how recently — thirty-five points for yesterday, down to eight for four days ago. A flat penalty made everything equal again after two days and the loop came straight back; grading it keeps the ranking moving.",
+      "One bug found while building it: the closing line names the protein target every single day, so the topic detector saw “protein” in every briefing and permanently suppressed the one observation the rotation most needed to reach.",
+    ],
+  },
   {
     version: "1.15.1",
     date: "2026-08-24",
