@@ -875,6 +875,122 @@ async function main() {
   db.delete(choreTbl).run();
   db.delete(choreLogTbl).run();
 
+  // ── The trainer's blind spots ──
+  // Five things it could not see. The first is the one that mattered for
+  // safety: it could read that your rows collapsed and could not read that you
+  // had told the app your shoulder hurt, so a coach told to push had every
+  // reason to push on exactly the day it should have said stop.
+  console.log("\nthe trainer can see the rest of the app");
+
+  const { movementFeedback, measurements: measTbl, trials: trialTbl } = await import("../lib/db/schema");
+  db.delete(sessTable).run();
+  db.delete(exerciseLogs).run();
+  db.delete(movementFeedback).run();
+  db.delete(measTbl).run();
+  db.delete(trialTbl).run();
+  setS("start_date", addDays(today, -60));
+
+  const painDay = addDays(today, -2);
+  db.insert(movementFeedback).values({ date: painDay, exerciseKey: "incline inverted row", verdict: "pain" }).run();
+  db.insert(movementFeedback).values({ date: addDays(today, -5), exerciseKey: "incline inverted row", verdict: "pain" }).run();
+  db.insert(movementFeedback).values({ date: addDays(today, -3), exerciseKey: "wall push-up", verdict: "hard" }).run();
+  db.insert(measTbl).values({ date: addDays(today, -45), waistCm: 108 }).run();
+  db.insert(measTbl).values({ date: addDays(today, -3), waistCm: 104 }).run();
+  db.insert(trialTbl).values({ date: addDays(today, -20), monthIndex: 1, score: 210 }).run();
+  const noteDay = [1, 2, 3, 4].map((i) => addDays(today, -i)).find((d) => dkOf(d) !== "sat" && dkOf(d) !== "sun")!;
+  db.insert(sessTable)
+    .values({ date: noteDay, dayKey: dkOf(noteDay), phase: 1, completed: true, rpe: 4, note: "Slept about four hours" })
+    .run();
+
+  const seen = gatherFacts(today);
+
+  ok("pain is visible at all", seen.feedback.painful.length > 0, JSON.stringify(seen.feedback.painful));
+  ok("with the movement named", seen.feedback.painful[0]?.movement === "Incline inverted row", seen.feedback.painful[0]?.movement);
+  ok("and how often it has happened", seen.feedback.painful[0]?.times === 2);
+  ok("'hard' is counted separately from pain", seen.feedback.hardCount === 1 && seen.feedback.painful.length === 1);
+
+  ok("the session note reaches the trainer", seen.patrol.last7.some((s) => s.note?.includes("four hours")), seen.patrol.last7.map((s) => s.note).join("|"));
+
+  ok("the tape is visible", seen.measurements.latest?.waistCm === 104, `${seen.measurements.latest?.waistCm}`);
+  ok("with the change over time", seen.measurements.waistDeltaCm === -4, `${seen.measurements.waistDeltaCm}`);
+  ok("THE TRIAL is visible", seen.milestones.trialsRun === 1 && seen.milestones.lastTrial?.score === 210);
+  ok("THE WEB is reachable", Array.isArray(seen.web.nearMastery));
+
+  // Pain outranks everything, including a week of missed patrols and a blown day.
+  const loud = {
+    ...seen,
+    patrol: {
+      ...seen.patrol,
+      skipped: [1, 2, 3].map((i) => ({ date: addDays(today, -i), dayKey: "mon", title: "Push & Core", started: false })),
+    },
+    fuel: {
+      ...seen.fuel,
+      overTargetDays: [{ date: addDays(today, -1), kcal: 3400, target: 2300, overBy: 1100,
+        worstItems: [{ description: "Takeaway", kcal: 1500, mealType: "meal" }] }],
+    },
+  };
+  const loudText = localBriefing(loud, []);
+  ok(
+    "pain leads the briefing even against missed patrols and a blown day",
+    /painful/i.test(loudText.split(".")[0] + "."),
+    loudText.slice(0, 110),
+  );
+  ok(
+    "and it says to back off rather than push",
+    /leave it out|drop to the rung|easier version/i.test(loudText),
+  );
+  ok(
+    "it never tells you to push through a painful movement",
+    !/push through|work through the pain|harder on/i.test(loudText),
+  );
+
+  // The two wordings that would otherwise be nonsense. Everything louder is
+  // quieted first — asserting the absence of a bad string in a paragraph that
+  // never mentioned the subject would pass for the wrong reason.
+  const quiet = {
+    ...seen,
+    feedback: { recent: [], painful: [], hardCount: 0 },
+    fuel: { ...seen.fuel, daysLogged7: 7, avgProtein7: 200, proteinDaysMet7: 7, overTargetDays: [] },
+    measurements: { ...seen.measurements, waistDeltaCm: null, daysSinceLast: 1 },
+    patrol: { ...seen.patrol, skipped: [], shortfalls: [], lastSessionDaysAgo: 0, doneThisWeek: 2 },
+    maintenance: { ...seen.maintenance, malusPct: 0, outstandingThisWeek: [] },
+  };
+
+  const over100 = localBriefing(
+    { ...quiet, composition: { fatDeltaKg: -2, leanDeltaKg: 0.4, fatSharePct: 125, spanDays: 30 } },
+    [],
+  );
+  ok("the composition line is actually spoken", /lean mass/i.test(over100), over100.slice(0, 120));
+  ok("and a fat share over 100% is described, never printed", !/125%/.test(over100));
+
+  const banked = localBriefing(
+    {
+      ...quiet,
+      composition: null,
+      web: {
+        ...quiet.web,
+        nearMastery: [{ movement: "Incline inverted row", cleanSessions: 3, needSessions: 3, cleanWeeks: 1, needWeeks: 2 }],
+      },
+    },
+    [],
+  );
+  ok("the mastery line is actually spoken", /Incline inverted row/.test(banked), banked.slice(0, 120));
+  ok(
+    "sessions banked but weeks short says so, not '0 sessions from mastered'",
+    /waiting on the calendar/.test(banked) && !/0 clean sessions/.test(banked),
+  );
+
+  for (const rule of [
+    /PAIN OVERRIDES EVERYTHING/,
+    /Do not tell someone to work harder on a movement they have reported pain on/i,
+    /patrol\.last7 carries their own note/i,
+    /never ignore one that explains a shortfall/i,
+    /waistDeltaCm is the honest progress number/i,
+    /web\.nearMastery/,
+  ]) {
+    ok(`the prompt still says ${rule.source.slice(0, 36)}`, rule.test(briefingSrc));
+  }
+
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);

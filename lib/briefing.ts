@@ -1,12 +1,17 @@
 import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "./db";
-import { briefings, exerciseLogs, foodEntries, sessionPlans, sessions, waterLogs } from "./db/schema";
+import {
+  briefings, exerciseLogs, foodEntries, measurements as measurementsTable,
+  movementFeedback, sessionPlans, sessions, trials, abilities, waterLogs,
+} from "./db/schema";
 import { addDays, dayKeyOf, daysBetween, todayISO, weekIndex } from "./dates";
 import { getSettings } from "./settings";
 import { TRAINING_DAYS, isLowProfileWeek, roundsForWeek, sessionFor, type DayKey } from "./plan";
 import { intakeForDay, isRefuelWeek, phaseForDay, proteinTargetForDay } from "./course";
-import { getHqStats, loadWeights, rollingAverage } from "./stats";
-import { findMovement } from "./movements";
+import { buildComposition, compositionSummary, getHqStats, loadWeights, rollingAverage } from "./stats";
+import { findMovement, masterySessions, masteryWeeks } from "./movements";
+import { movementRecords } from "./skills";
+import { lockedFor } from "./training";
 import { WEEKLY_MALUS, malusFor, standingsFor } from "./chores";
 import { allChores, choreLogBetween } from "./choreData";
 import { apiKey, baseUrl } from "./nanogpt";
@@ -190,6 +195,58 @@ export interface BriefingFacts {
       watch: string | null;
       cues: string[];
     }[];
+  };
+  /**
+   * How a movement *felt*, which no number in the session says.
+   *
+   * The gap this closes is the one that could do harm. The trainer could see
+   * that your rows fell from ten to six and could not see that you had told the
+   * app your shoulder hurt — so a coach told to push you had every reason to
+   * push, on exactly the day it should have said stop. "pain" outranks every
+   * other observation in the briefing for that reason.
+   */
+  feedback: {
+    recent: { date: string; movement: string; verdict: "controlled" | "hard" | "pain" }[];
+    /** Movements flagged painful in the window, newest first. */
+    painful: { movement: string; date: string; times: number }[];
+    hardCount: number;
+  };
+  /**
+   * The tape. Better evidence than the scale on a stalled fortnight, and the
+   * one reading that keeps moving when the weight does not.
+   */
+  measurements: {
+    latest: { date: string; waistCm: number | null; neckCm: number | null; chestCm: number | null; thighCm: number | null; upperArmCm: number | null } | null;
+    /** Change since the earliest reading, where there are two far enough apart. */
+    waistDeltaCm: number | null;
+    spanDays: number | null;
+    daysSinceLast: number | null;
+  };
+  /**
+   * What the last fortnight of weight was actually made of. Ahead of the
+   * corridor is a bad result if the missing kilos came off the wrong tissue.
+   */
+  composition: {
+    fatDeltaKg: number;
+    leanDeltaKg: number;
+    fatSharePct: number | null;
+    spanDays: number;
+  } | null;
+  /**
+   * THE WEB. What is nearly mastered is the most motivating sentence available
+   * and was completely invisible — "two more clean sessions and the next rung
+   * opens" is a reason to do a boring movement properly.
+   */
+  web: {
+    nearMastery: { movement: string; cleanSessions: number; needSessions: number; cleanWeeks: number; needWeeks: number }[];
+    masteredRecently: string[];
+    lockedInTodaysSession: { name: string; why: string }[];
+  };
+  /** Capability milestones — THE TRIAL and ABILITIES. */
+  milestones: {
+    trialsRun: number;
+    lastTrial: { date: string; monthIndex: number; score: number | null } | null;
+    abilitiesUnlocked: number;
   };
   /**
    * MAINTENANCE — the chores, and what neglecting them is costing.
@@ -492,6 +549,71 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
     if (s.length > 0 && s.every((x) => x.done)) cleanDays7++;
   }
 
+  // ── How movements felt ──
+  // The one that could do harm if missing: a coach told to push you, on the
+  // day you reported pain.
+  const fbRows = db
+    .select()
+    .from(movementFeedback)
+    .where(and(gte(movementFeedback.date, addDays(date, -14)), lte(movementFeedback.date, date)))
+    .orderBy(desc(movementFeedback.date))
+    .all();
+  const painTally = new Map<string, { movement: string; date: string; times: number }>();
+  for (const f of fbRows) {
+    if (f.verdict !== "pain") continue;
+    const name = findMovement(f.exerciseKey)?.name ?? f.exerciseKey;
+    const cur = painTally.get(f.exerciseKey);
+    if (cur) cur.times += 1;
+    else painTally.set(f.exerciseKey, { movement: name, date: f.date, times: 1 });
+  }
+
+  // ── The tape ──
+  const tape = db
+    .select()
+    .from(measurementsTable)
+    .orderBy(asc(measurementsTable.date))
+    .all();
+  const lastTape = tape.length ? tape[tape.length - 1] : null;
+  const firstWaist = tape.find((r) => r.waistCm !== null) ?? null;
+  const lastWaist = [...tape].reverse().find((r) => r.waistCm !== null) ?? null;
+  const waistSpan =
+    firstWaist && lastWaist && firstWaist.date !== lastWaist.date
+      ? daysBetween(firstWaist.date, lastWaist.date)
+      : null;
+
+  // ── What the weight was made of ──
+  const split = compositionSummary(buildComposition(rows));
+
+  // ── THE WEB ──
+  const records = movementRecords();
+  const nearMastery = [...records.values()]
+    .filter((r) => !r.mastered && r.cleanSessions > 0)
+    .map((r) => ({
+      movement: r.movement.name,
+      cleanSessions: r.cleanSessions,
+      needSessions: masterySessions(r.movement),
+      cleanWeeks: r.cleanWeeks,
+      needWeeks: masteryWeeks(r.movement),
+    }))
+    .sort(
+      (a, b) =>
+        b.cleanSessions / b.needSessions - a.cleanSessions / a.needSessions,
+    )
+    .slice(0, 4);
+  const masteredRecently = [...records.values()]
+    .filter((r) => r.mastered && r.lastDate !== null && r.lastDate >= addDays(date, -14))
+    .map((r) => r.movement.name)
+    .slice(0, 4);
+
+  // ── Milestones ──
+  const trialRows = db.select().from(trials).orderBy(asc(trials.date)).all();
+  const lastTrial = trialRows.length ? trialRows[trialRows.length - 1] : null;
+  const abilityCount = db
+    .select({ n: sql<number>`COUNT(*)` })
+    .from(abilities)
+    .where(eq(abilities.achieved, true))
+    .get()?.n ?? 0;
+
   const phase = phaseForDay(day);
   const todaysPlan = sessionFor(phase.id, dayKeyOf(date));
   const intake = intakeForDay(day);
@@ -560,6 +682,56 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
       missedLastWeek: malus.missedWeekly,
       cleanDays7,
     },
+    feedback: {
+      recent: fbRows.slice(0, 12).map((f) => ({
+        date: f.date,
+        movement: findMovement(f.exerciseKey)?.name ?? f.exerciseKey,
+        verdict: f.verdict,
+      })),
+      painful: [...painTally.values()].sort((a, b) => b.date.localeCompare(a.date)),
+      hardCount: fbRows.filter((f) => f.verdict === "hard").length,
+    },
+    measurements: {
+      latest: lastTape
+        ? {
+            date: lastTape.date,
+            waistCm: lastTape.waistCm,
+            neckCm: lastTape.neckCm,
+            chestCm: lastTape.chestCm,
+            thighCm: lastTape.thighCm,
+            upperArmCm: lastTape.upperArmCm,
+          }
+        : null,
+      waistDeltaCm:
+        firstWaist && lastWaist && waistSpan !== null && waistSpan >= 14
+          ? round1(lastWaist.waistCm! - firstWaist.waistCm!)
+          : null,
+      spanDays: waistSpan,
+      daysSinceLast: lastTape ? daysBetween(lastTape.date, date) : null,
+    },
+    composition: split
+      ? {
+          fatDeltaKg: split.fatDeltaKg,
+          leanDeltaKg: split.leanDeltaKg,
+          fatSharePct: split.fatShare === null ? null : Math.round(split.fatShare * 100),
+          spanDays: split.spanDays,
+        }
+      : null,
+    web: {
+      nearMastery,
+      masteredRecently,
+      lockedInTodaysSession: lockedFor(phase.id, dayKeyOf(date), date).map((l) => ({
+        name: l.name,
+        why: l.why,
+      })),
+    },
+    milestones: {
+      trialsRun: trialRows.length,
+      lastTrial: lastTrial
+        ? { date: lastTrial.date, monthIndex: lastTrial.monthIndex, score: lastTrial.score }
+        : null,
+      abilitiesUnlocked: abilityCount,
+    },
   };
 }
 
@@ -584,6 +756,11 @@ This is the part that matters most. You are a coach, not a cheerleader. They hav
 - If they skipped a patrol, say so plainly and without softening it. Skipping one is a fact to state; skipping two or more in a week deserves a sharper sentence than that. Do not pretend it was a rest day.
 - If a number went backwards, say it went backwards.
 - Do not open with reassurance before getting to the problem, and do not end by taking the criticism back. Say the hard thing once, mean it, then say what to do about it.
+
+PAIN OVERRIDES EVERYTHING
+feedback.painful lists movements they marked as painful, with how many times. If anything is in there, it is the most important thing in the data and it changes what you are for that morning: say which movement, and tell them to leave it out or drop to an easier version rather than push through it. Do not tell someone to work harder on a movement they have reported pain on — not in the same paragraph, not anywhere. If the pain has repeated, say so and tell them to get it looked at. You are not diagnosing anything; you are declining to coach through it.
+
+feedback.hardCount and the "hard" verdicts are different and ordinary — hard is what training is. Only "pain" triggers any of the above.
 
 WHERE THE LINE IS
 Blunt about the work, never about them as a person. Criticise the session, the choice, the week — never their character, their body or their worth. Do not shame, do not moralise about food, do not call anything a cheat or a sin, and never imply they should punish themselves with training or by eating less. Sharp and fair, the way a good coach is. If the week was genuinely good, say that plainly too — earned praise is not flattery.
@@ -618,6 +795,14 @@ WHAT THE DATA GIVES YOU
 fuel.overTargetDays carries each day that went over, with worstItems — the biggest entries by calories. That is where you find the thing to name.
 fuel.topSnacks7 is the week's most expensive snacking, usually the same short list repeating.
 patrol.skipped is training days that produced nothing. "started": true means they opened the session and abandoned it, which is a different failure from not turning up and can be said differently.
+patrol.last7 carries their own note against each session. Read them. A note is the only thing in this entire dataset written by them rather than measured about them, and it will often explain a number you would otherwise misread — a bad session with "slept four hours" in the note is not a discipline problem. Quote or answer a note where it is relevant; never ignore one that explains a shortfall you are about to criticise.
+
+measurements is the tape. waistDeltaCm is the honest progress number when the scale stalls — say so when the weight has not moved but the waist has. composition splits the last fortnight's weight change into fat and lean: a large lean loss is bad news however good the scale looks, and fatSharePct above 85 is the deficit working properly.
+
+web.nearMastery is what is closest to unlocking on THE WEB, with clean sessions and weeks against what is needed. "Two more clean sessions on the incline row and the next rung opens" is the single most motivating sentence available to you — use it when something is genuinely close. web.lockedInTodaysSession is work the tree is holding back today, with the reason.
+
+milestones is THE TRIAL and ABILITIES. Rarely the story; worth a line when a trial has just happened or is overdue.
+
 maintenance is the chores. A daily one missed yesterday costs 10% of today's XP and a weekly one missed last week costs 20%, added together and capped at 50% — so malusPct is a real number you can name. missedYesterday and missedLastWeek are what earned it; outstandingToday and outstandingThisWeek are what is still open. cleanDays7 counts days last week that ended with every daily chore done.
 
 Treat this like the rest: worth a sentence when there is something to say, not a daily roll-call. Do not list the chores back at them. A running penalty, a chore missed several days in a row, or a week where they cleared everything are all worth naming; one forgotten toothbrushing is not. Never moralise about it — a missed chore is a missed chore, not a character flaw.
@@ -729,6 +914,75 @@ export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): s
     } else if (fuel.proteinDaysMet7 >= 5 && over.length === 0) {
       say(50, "protein", `Protein hit on ${fuel.proteinDaysMet7} of the logged days and nothing over target. That is a good week.`);
     }
+  }
+
+  // ── Pain ──
+  // Above everything, including a week of missed patrols. A briefing that tells
+  // you to push on a movement you flagged as painful is the one way this panel
+  // could actually do harm, and severity ranking is what prevents it.
+  const hurt = f.feedback?.painful ?? [];
+  if (hurt.length > 0) {
+    const worstPain = [...hurt].sort((a, b) => b.times - a.times)[0];
+    say(
+      99,
+      `pain:${worstPain.movement}`,
+      worstPain.times > 1
+        ? `You have marked ${worstPain.movement.toLowerCase()} as painful ${worstPain.times === 2 ? "twice" : `${worstPain.times} times`}. Leave it out and use the easier version underneath it — and if it keeps happening, get it looked at rather than trained through.`
+        : `You marked ${worstPain.movement.toLowerCase()} as painful on ${dayName(dayKeyOf(worstPain.date))}. Drop to the rung below it today rather than pushing through.`,
+    );
+  }
+
+  // ── The tape, when the scale is being unhelpful ──
+  const tape = f.measurements;
+  if (tape?.waistDeltaCm !== null && tape?.waistDeltaCm !== undefined && tape.waistDeltaCm <= -1) {
+    say(
+      68,
+      "waist",
+      `Waist is down ${Math.abs(tape.waistDeltaCm)} cm over ${tape.spanDays} days. That is the number that matters when the scale is being stubborn.`,
+    );
+  } else if (tape?.daysSinceLast !== null && tape?.daysSinceLast !== undefined && tape.daysSinceLast >= 30) {
+    say(48, "tape", `No tape measurements for ${tape.daysSinceLast} days. The waist reading is the one that keeps moving when the scale does not.`);
+  }
+
+  // ── What the weight was made of ──
+  const comp = f.composition;
+  if (comp && comp.leanDeltaKg <= -1 && (comp.fatSharePct ?? 100) < 70) {
+    say(
+      93,
+      "composition",
+      `Only ${comp.fatSharePct}% of the last ${comp.spanDays} days' change came off as fat — lean mass is down ${Math.abs(comp.leanDeltaKg)} kg. Hit the protein every day and do not deepen the deficit.`,
+    );
+  } else if (comp && (comp.fatSharePct ?? 0) >= 85) {
+    // Over 100% is not a rounding error: it means lean mass went *up* while fat
+    // came down, which is the best outcome available and reads as nonsense if
+    // reported as a percentage.
+    say(
+      44,
+      "composition",
+      (comp.fatSharePct ?? 0) > 100
+        ? `Over the last ${comp.spanDays} days you lost ${Math.abs(comp.fatDeltaKg)} kg of fat and gained ${comp.leanDeltaKg} kg of lean mass. That is the outcome everything else is in service of.`
+        : `${comp.fatSharePct}% of the last ${comp.spanDays} days' change was fat. That is the deficit doing exactly its job.`,
+    );
+  }
+
+  // ── THE WEB ──
+  const close = (f.web?.nearMastery ?? []).filter(
+    (n) => n.needSessions - n.cleanSessions <= 2 || n.needWeeks - n.cleanWeeks <= 1,
+  );
+  if (close.length > 0) {
+    const n = close[0];
+    const sessionsLeft = Math.max(0, n.needSessions - n.cleanSessions);
+    const weeksLeft = Math.max(0, n.needWeeks - n.cleanWeeks);
+    // The sessions can all be there and the movement still not be mastered:
+    // the bar asks for them spread across calendar weeks, and that is the part
+    // you cannot cram. Saying "0 sessions from mastered" would be a lie.
+    say(
+      66,
+      `web:${n.movement}`,
+      sessionsLeft === 0 && weeksLeft > 0
+        ? `${n.movement} has its ${n.needSessions} clean sessions — it is waiting on the calendar now, ${weeksLeft} more ${weeksLeft === 1 ? "week" : "weeks"} with a clean session in ${weeksLeft === 1 ? "it" : "each"}.`
+        : `${n.movement} is ${sessionsLeft} clean ${sessionsLeft === 1 ? "session" : "sessions"} from mastered — ${n.cleanSessions} of ${n.needSessions}, across ${n.cleanWeeks} of ${n.needWeeks} weeks.`,
+    );
   }
 
   // ── MAINTENANCE ──
@@ -852,6 +1106,9 @@ const TOPIC_SIGNS: [string, RegExp][] = [
   ["logging", /logged on only|nothing logged in FUEL|photograph what you eat/i],
   ["weighin", /no reading for|no weight logged|step on the scale/i],
   ["trend", /average is (down|up|flat)/i],
+  ["waist", /waist is down|tape measurements/i],
+  ["tape", /tape measurements/i],
+  ["composition", /came off as fat|change was fat/i],
   ["malus", /% XP today|malus/i],
   ["chores", /MAINTENANCE/],
   ["choresweek", /still open and the week/i],

@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.17.0";
+export const APP_VERSION = "1.18.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-08-30";
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.18.0",
+    date: "2026-08-30",
+    kind: "minor",
+    headline: "The trainer can see the rest of the app",
+    changes: [
+      "It can now read how a movement felt. It could see that your rows fell from ten to six and could not see that you had told the app your shoulder hurt — so a coach instructed to push you had every reason to push on exactly the day it should have said stop. Pain now outranks everything in the briefing, including a week of missed patrols, and it is told to say back off rather than harder.",
+      "Your session notes are read rather than merely carried. A note is the only thing in the whole dataset written by you rather than measured about you, and it usually explains a number that would otherwise be misread — a bad session with “slept four hours” against it is not a discipline problem. It is told never to criticise a shortfall a note already explains.",
+      "The tape measurements are in, which is the answer to a stalled fortnight: the waist keeps moving when the scale does not. So is the fat-versus-lean split of the last two weeks, so being ahead of the corridor can be called what it is when the missing kilos came off the wrong tissue.",
+      "THE WEB is visible, so it can tell you what is close. “Two more clean sessions and the next rung opens” is the most motivating sentence available and was completely invisible to it — along with the sessions that are banked and only waiting on the calendar.",
+      "THE TRIAL and ABILITIES round it out. XP, levels and streaks are still deliberately withheld: it should coach the work, not the scoreboard.",
+    ],
+  },
   {
     version: "1.17.0",
     date: "2026-08-30",

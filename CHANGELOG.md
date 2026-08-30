@@ -17,6 +17,81 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.18.0 — 2026-08-30
+
+The trainer can see the rest of the app.
+
+An audit of `gatherFacts` against the schema found it querying six tables of
+nineteen. Four areas were covered in detail; five things it could not see at all.
+
+### The one that mattered for safety
+
+`movement_feedback` records how each movement felt — `controlled`, `hard` or
+`pain` — and the trainer had never read it. So it could see that your rows fell
+from ten to six, and could not see that you had told the app your shoulder hurt.
+A coach explicitly instructed to push you had every reason to push, on precisely
+the day it should have said stop.
+
+Pain now sits at priority 99 in the offline composer — above a week of missed
+patrols, above a 1,100 kcal overshoot — and the prompt gained a section of its
+own:
+
+> **PAIN OVERRIDES EVERYTHING.** Do not tell someone to work harder on a
+> movement they have reported pain on — not in the same paragraph, not anywhere.
+> If the pain has repeated, say so and tell them to get it looked at. You are not
+> diagnosing anything; you are declining to coach through it.
+
+`hard` is left alone, because hard is what training is. Only `pain` triggers any
+of it.
+
+### Your notes, actually read
+
+Session notes were already in the facts and nothing drew attention to them. They
+are now called out explicitly in the prompt, with the reason:
+
+> A note is the only thing in this entire dataset written by them rather than
+> measured about them, and it will often explain a number you would otherwise
+> misread — a bad session with "slept four hours" in the note is not a discipline
+> problem. Never ignore one that explains a shortfall you are about to criticise.
+
+### The other three
+
+- **The tape.** Waist, neck, chest, thigh, arm, plus the waist change over time.
+  This is the answer to a stalled fortnight — the waist keeps moving when the
+  scale does not, and the trainer previously could not say so.
+- **Body composition.** The fat-versus-lean split of the last two weeks, which
+  `lib/stats.ts` already computed and only SENSE used. Being ahead of the
+  corridor is a bad result if the missing kilos came off the wrong tissue.
+- **THE WEB, THE TRIAL and ABILITIES.** What is closest to mastery, what today's
+  session has locked and why, and the capability milestones.
+
+XP, levels, streaks and challenges stay withheld on purpose: it should coach the
+work, not the scoreboard.
+
+### Three wordings that would have embarrassed it
+
+Found by running the new observations rather than by reading them:
+
+- "painful **2 times**" → "painful **twice**".
+- A fat share of **125%** is not a rounding error — it means lean mass went *up*
+  while fat came down, the best outcome available, and printing it as a
+  percentage is nonsense. It now says so in words.
+- "**0 clean sessions** from mastered" — the sessions can all be banked and the
+  movement still not mastered, because the bar asks for them spread across
+  calendar weeks and that is the part you cannot cram. It now says it is waiting
+  on the calendar.
+
+### Checking
+
+Twenty new assertions, including that pain leads the briefing even against four
+missed patrols and a blown day, that it says to back off rather than push, and
+that it never contains "push through". Two of the wording checks were initially
+passing vacuously — asserting the absence of a bad string in a paragraph that
+never mentioned the subject — and now quiet the louder observations first so
+they assert the real sentence.
+
+---
+
 ## 1.17.0 — 2026-08-30
 
 MAINTENANCE — the chores, and what skipping them costs.
