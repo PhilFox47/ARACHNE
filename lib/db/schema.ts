@@ -404,6 +404,44 @@ export const briefings = sqliteTable(
   (t) => [uniqueIndex("briefings_date_idx").on(t.date)],
 );
 
+/**
+ * A chore. `created_on` / `archived_on` are dates, not timestamps: the only
+ * question ever asked of them is "did this exist on that day", which is what
+ * keeps a chore added today from making last month a retroactive failure.
+ */
+export const chores = sqliteTable(
+  "chores",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    cadence: text("cadence", { enum: ["daily", "weekly"] }).notNull(),
+    sort: integer("sort").notNull().default(0),
+    createdOn: text("created_on").notNull(),
+    /** Set instead of deleting, so the history it earned survives. */
+    archivedOn: text("archived_on"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [index("chores_cadence_idx").on(t.cadence)],
+);
+
+/**
+ * One row per completion. There is deliberately no "done" flag anywhere — the
+ * presence of a row for a date is what "done" means, so a new day resets itself.
+ */
+export const choreLog = sqliteTable(
+  "chore_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    choreId: integer("chore_id").notNull(),
+    /** For a weekly chore this is the day it was actually ticked. */
+    date: text("date").notNull(),
+    doneAt: integer("done_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("chore_log_once_idx").on(t.choreId, t.date), index("chore_log_date_idx").on(t.date)],
+);
+
+export type Chore = typeof chores.$inferSelect;
+export type ChoreLog = typeof choreLog.$inferSelect;
 export type Briefing = typeof briefings.$inferSelect;
 export type Favourite = typeof favourites.$inferSelect;
 export type MovementFeedback = typeof movementFeedback.$inferSelect;

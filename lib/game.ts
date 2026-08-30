@@ -20,6 +20,7 @@ import {
   type DayKey,
 } from "./plan";
 import { corridorTarget, intakeForDay, proteinTargetForDay } from "./course";
+import { malusFor, type ChoreLogRow, type ChoreRow } from "./chores";
 
 // ─────────────────────────────────────────────────────────────
 // XP table — tune freely, nothing else depends on the values
@@ -235,6 +236,9 @@ export interface GameInput {
   /** Daily water totals, in ml. */
   water: { date: string; ml: number }[];
   waterTargetMl: number;
+  /** MAINTENANCE. Empty until the first chore exists, and then never a surprise. */
+  chores: ChoreRow[];
+  choreLog: ChoreLogRow[];
 }
 
 export interface LedgerRow {
@@ -371,6 +375,58 @@ function daysIn(from: string, to: string, startDate: string): string[] {
 
 function patrolDaysIn(from: string, to: string, startDate: string): string[] {
   return daysIn(from, to, startDate).filter((d) => TRAINING_DAYS.includes(dayKeyOf(d) as DayKey));
+}
+
+/**
+ * XP earned on each day, for the categories the MAINTENANCE malus can touch.
+ *
+ * The line drawn here is between *earnings* and *records*. Logging a weight,
+ * finishing a session, hitting the protein target — those are what you did on a
+ * day, and docking them for a day of neglected chores is the rule as asked for.
+ *
+ * Achievements, ABILITIES, checkpoints, THE TRIAL, full patrol weeks and the
+ * weekly and monthly challenges are deliberately absent. They are milestones,
+ * not daily takings: an achievement earned once in twelve months should not be
+ * quietly worth 10% less because the washing-up waited. Decay is absent for a
+ * blunter reason — it is negative, and reducing a penalty by 20% would turn
+ * missing your chores into a reward.
+ */
+function dailyGrossXp(input: GameInput): Map<string, number> {
+  const out = new Map<string, number>();
+  const bump = (date: string, xp: number) => out.set(date, (out.get(date) ?? 0) + xp);
+
+  for (const w of input.weights) bump(w.date, XP.weightLog);
+  for (const s of input.sessions) {
+    if (!s.completed) continue;
+    bump(s.date, XP.session);
+    if (s.rpe !== null) bump(s.date, XP.sessionRpe);
+    if (s.note && s.note.trim().length >= 8) bump(s.date, XP.sessionNote);
+  }
+  for (const s of input.sets) bump(s.date, XP.setLogged);
+  for (const f of input.food) bump(f.date, XP.foodEntry);
+  for (const m of input.measurements) bump(m.date, XP.measurements);
+
+  const daily = kcalByDate(input.food);
+  const weightDays = weightDaysOf(input);
+  for (const [date, tot] of daily) {
+    const day = daysBetween(input.startDate, date);
+    if (tot.kcal > 0 && tot.kcal <= intakeForDay(day, weightDays).kcal * 1.05) bump(date, XP.kcalOnTarget);
+    if (tot.protein >= proteinTargetForDay(day)) bump(date, XP.proteinOnTarget);
+  }
+  for (const w of input.water) if (w.ml >= input.waterTargetMl) bump(w.date, XP.waterOnTarget);
+
+  // A SUIT CHECK pays once its four angles exist, so it lands on the day the
+  // set was completed rather than being spread across the week.
+  const byWeek = new Map<number, { angles: Set<string>; last: string }>();
+  for (const p of input.photos) {
+    const cur = byWeek.get(p.weekIndex) ?? { angles: new Set<string>(), last: p.date };
+    cur.angles.add(p.angle);
+    if (p.date > cur.last) cur.last = p.date;
+    byWeek.set(p.weekIndex, cur);
+  }
+  for (const w of byWeek.values()) if (w.angles.size >= 4) bump(w.last, XP.suitCheck);
+
+  return out;
 }
 
 /** Weight readings as days-since-start, which is what the intake maths wants. */
@@ -1038,6 +1094,20 @@ export function computeGameState(input: GameInput): GameState {
 
   add("measure", "Measurement sets", input.measurements.length * XP.measurements);
   add("trials", "Trials run", input.trials.length * XP.trial);
+
+  // ── MAINTENANCE malus ──
+  // The categories above are totals across the run; a "10% less today" rule
+  // needs the same earnings attributed to the days they happened on. Computed
+  // separately and subtracted as one row rather than shaved off each category,
+  // so the ledger still shows what you earned and what the chores cost you as
+  // two numbers instead of one blurred one.
+  const gross = dailyGrossXp(input);
+  let malusTotal = 0;
+  for (const [date, xp] of gross) {
+    if (xp <= 0) continue;
+    malusTotal += xp * malusFor(date, input.chores, input.choreLog).fraction;
+  }
+  add("maintenance", "Maintenance malus", -malusTotal);
 
   const abilitiesDone = input.abilities.filter((a) => a.achieved).length;
   add("abilities", "Abilities unlocked", abilitiesDone * XP.abilityUnlocked);

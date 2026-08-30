@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.16.0";
+export const APP_VERSION = "1.17.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-27";
+export const RELEASED = "2026-08-30";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.17.0",
+    date: "2026-08-30",
+    kind: "minor",
+    headline: "MAINTENANCE — the chores, and what skipping them costs",
+    changes: [
+      "A new screen for the household half of a healthy week. Daily chores reset every morning, weekly ones every Monday and can be ticked any day of the week. Add, rename, reorder and retire them all in the app; the six you named are there to start with.",
+      "No XP for doing them, a malus for not. A daily chore missed yesterday costs 10% of today's earnings and a weekly one missed last week costs 20% of every day of this one. They add up, capped at 50% — without a cap every chore you add would raise the maximum punishment, which would make tracking more of your life actively worse.",
+      "Milestones are never touched. Achievements, ABILITIES, checkpoints, THE TRIAL and full patrol weeks are records rather than daily takings, and an achievement earned once in twelve months should not quietly be worth less because the washing-up waited. The penalty appears in the ledger as its own line, so you can see what it cost rather than finding other numbers quietly smaller.",
+      "Nothing can punish you before it existed: a chore added today is never missed yesterday, and retiring one stops it counting from today — though it will not wipe a penalty already earned, because a penalty with an undo button is not one.",
+      "The trainer reads it as a fifth source and will name a running malus or a clean week, but it is told not to read the list back to you every morning.",
+    ],
+  },
   {
     version: "1.16.0",
     date: "2026-08-27",

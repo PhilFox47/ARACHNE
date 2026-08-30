@@ -8,6 +8,9 @@ import { getSettings, ensureStartDate } from "@/lib/settings";
 import { loadGameState } from "@/lib/gameData";
 import { todayISO } from "@/lib/dates";
 import { briefingDue, storedBriefing } from "@/lib/briefing";
+import { seedChores, allChores, choreLogBetween } from "@/lib/choreData";
+import { malusFor, standingsFor } from "@/lib/chores";
+import { addDays } from "@/lib/dates";
 import { Mark } from "@/components/Mark";
 import { CountUp } from "@/components/CountUp";
 import { WeightChart } from "@/components/WeightChart";
@@ -17,6 +20,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { LevelBar, StreakStrip } from "@/components/LevelBar";
 import { ChallengeList } from "@/components/Challenges";
 import { Briefing } from "@/components/Briefing";
+import { MaintenanceCard } from "@/components/MaintenanceCard";
 import { PHASES } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +43,13 @@ export default async function HQ() {
   const today = todayISO();
   const briefing = storedBriefing(today);
   const briefingIsDue = briefingDue(today);
+
+  // MAINTENANCE. Seeded on first sight so the card is never an empty promise.
+  seedChores();
+  const choreRows = allChores();
+  const choreEntries = choreLogBetween(addDays(today, -21), today);
+  const choreStandings = standingsFor(today, choreRows, choreEntries);
+  const choreMalus = malusFor(today, choreRows, choreEntries);
 
   // The label names the metric; colour carries the corridor state. Labelling it
   // "In corridor" put a state word directly under a signed delta, which read as
@@ -180,6 +191,13 @@ export default async function HQ() {
           today={todayISO()}
         />
       </div>
+
+      <MaintenanceCard
+        daily={choreStandings.daily}
+        weekly={choreStandings.weekly}
+        malus={choreMalus}
+        date={today}
+      />
 
       {/* ── Chart ── */}
       <section className="swing panel flex flex-col gap-3 p-4" style={{ animationDelay: "120ms" }}>

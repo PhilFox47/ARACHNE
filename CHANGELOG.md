@@ -17,6 +17,113 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.17.0 — 2026-08-30
+
+MAINTENANCE — the chores, and what skipping them costs.
+
+### No "done" column anywhere
+
+The obvious model is a boolean on each chore, reset at midnight. That reset is a
+scheduled job, and it breaks in every interesting case: the container was asleep
+at midnight, it ran twice, you crossed a timezone, you brushed your teeth at
+00:30. Schema v16 stores *when* something was done instead:
+
+```
+chores      id, name, cadence, sort, created_on, archived_on
+chore_log   chore_id, date, done_at
+```
+
+"Is it done?" is then a lookup — a row for today, or a row since Monday — and
+**the reset is free** because a new day simply has no row. Same reasoning as no
+stored XP, and it means a rule change fixes history retroactively.
+
+`created_on` and `archived_on` are dates rather than timestamps because the only
+question ever asked of them is "did this exist on that day". They are what stops
+a chore added today from making last month a retroactive failure.
+
+### The malus forced a change to how XP is computed
+
+`computeGameState` produced category totals across the whole run — "Fuel entries:
+28 × 15". Nothing was attributed to a *day*, and "10% less XP tomorrow" needs
+exactly that. `dailyGrossXp` now buckets earnings by date, and the line it draws
+is the one that matters:
+
+- **Reduced:** weight logs, sessions, sets, RPE, notes, fuel entries, calorie /
+  protein / water target days, SUIT CHECK, measurements
+- **Exempt:** achievements, ABILITIES, checkpoints, THE TRIAL, full patrol weeks,
+  weekly and monthly challenges
+
+Milestones are records, not daily takings. An achievement earned once in twelve
+months should not quietly be worth 10% less because the washing-up waited. Decay
+is exempt for a blunter reason: it is negative, and reducing a penalty by 20%
+would turn missing your chores into a reward.
+
+The result is one new ledger row rather than a shave off every category:
+
+```
+Maintenance malus   −132 XP
+```
+
+Existing rows are untouched, so the progress screen shows what you earned and
+what the chores cost as two numbers instead of one blurred one. Verified: three
+days of 220 XP each, two dailies missed → exactly −132, with THE TRIAL's 1,500
+and the decay both unchanged.
+
+### The rules, and the four defaults
+
+Daily 10%, weekly 20%, additive, **capped at 50%**. The cap is not tidiness:
+without it every chore you add raises the maximum punishment, so tracking more of
+your life makes the app harsher — exactly backwards — and an uncapped malus is a
+death spiral where the day you are least likely to engage is the day engaging is
+worth least.
+
+```
+2 dailies + 2 weeklies missed → 60% uncapped → 50% applied
+```
+
+Three protections against the malus being unfair or gameable:
+
+- **Nothing can be missed before it existed.** A chore added today is never a
+  miss for yesterday.
+- **Retiring stops the count without erasing history**, and does *not* wipe a
+  penalty already earned. Otherwise retiring a chore would be an undo button for
+  a malus, and the one thing a penalty must not have is an undo button.
+- **A weekly chore added mid-week is tickable this week but cannot be missed for
+  it.** The two tests are deliberately different: `standingsFor` asks "does this
+  exist today" so the list is usable immediately, `malusFor` asks "did it exist
+  on Monday" so you are not penalised for a week you had no chance at.
+
+### The screens
+
+`/maintenance` has today's list, this week's list, what the malus is costing and
+why, and a folded-away editor for adding, renaming, reordering and retiring. HQ
+gets a card showing only what is still outstanding, tickable in place — it is a
+several-times-a-day interaction and should never cost a navigation — collapsing
+to a single line once everything is clear.
+
+The trainer gets chores as a fifth source, with a malus observation ranked just
+under a skipped patrol, and is told explicitly not to read the list back every
+morning.
+
+### One thing found in the building
+
+Purely recency-based rotation in the offline briefing was demoting a missed
+patrol and a 600 kcal overshoot *below* a notice that this is a LOW PROFILE
+WEEK, because both had been mentioned yesterday and the deload notice had not.
+The top slot now goes to the highest severity undemoted, and only the other two
+rotate: a problem does not stop being the biggest problem because you were told
+about it once.
+
+### Checking
+
+Twenty-one new assertions covering the arithmetic, the cap, clearing yesterday
+lifting the penalty, a weekly ticked on any day counting, chores that cannot
+punish retroactively, mid-week weeklies, archiving semantics both ways, and the
+ledger — that the malus arrives as its own row, that THE TRIAL is never reduced,
+and that decay is never turned into a reward.
+
+---
+
 ## 1.16.0 — 2026-08-27
 
 The trainer remembers what it already told you.

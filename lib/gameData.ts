@@ -2,6 +2,8 @@ import { asc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   abilities,
+  choreLog,
+  chores,
   exerciseLogs,
   foodEntries,
   measurements,
@@ -75,6 +77,14 @@ export function loadGameState(): GameState {
       .from(abilities)
       .all(),
     sets: db.select({ date: exerciseLogs.date }).from(exerciseLogs).all(),
+    chores: db
+      .select({
+        id: chores.id, name: chores.name, cadence: chores.cadence,
+        sort: chores.sort, createdOn: chores.createdOn, archivedOn: chores.archivedOn,
+      })
+      .from(chores)
+      .all(),
+    choreLog: db.select({ choreId: choreLog.choreId, date: choreLog.date }).from(choreLog).all(),
     water: db
       .select({ date: waterLogs.date, ml: sql<number>`SUM(${waterLogs.ml})` })
       .from(waterLogs)

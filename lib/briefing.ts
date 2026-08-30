@@ -7,6 +7,8 @@ import { TRAINING_DAYS, isLowProfileWeek, roundsForWeek, sessionFor, type DayKey
 import { intakeForDay, isRefuelWeek, phaseForDay, proteinTargetForDay } from "./course";
 import { getHqStats, loadWeights, rollingAverage } from "./stats";
 import { findMovement } from "./movements";
+import { WEEKLY_MALUS, malusFor, standingsFor } from "./chores";
+import { allChores, choreLogBetween } from "./choreData";
 import { apiKey, baseUrl } from "./nanogpt";
 import { activeVisionModel } from "./settings";
 
@@ -189,6 +191,26 @@ export interface BriefingFacts {
       cues: string[];
     }[];
   };
+  /**
+   * MAINTENANCE — the chores, and what neglecting them is costing.
+   *
+   * The fifth source. It is the only one that touches XP directly, so the
+   * trainer can point at a number rather than at a habit.
+   */
+  maintenance: {
+    dailyTotal: number;
+    dailyDone: number;
+    weeklyTotal: number;
+    weeklyDone: number;
+    outstandingToday: string[];
+    outstandingThisWeek: string[];
+    /** Today's penalty, as a percentage, and what earned it. */
+    malusPct: number;
+    missedYesterday: string[];
+    missedLastWeek: string[];
+    /** Days in the last week that ended with every daily chore done. */
+    cleanDays7: number;
+  };
 }
 
 const round1 = (n: number | null) => (n === null ? null : Math.round(n * 10) / 10);
@@ -200,6 +222,8 @@ const DAY_NAMES: Record<string, string> = {
   fri: "Friday", sat: "Saturday", sun: "Sunday",
 };
 const dayName = (k: string) => DAY_NAMES[k] ?? k;
+
+const WEEKLY_MALUS_PCT = Math.round(WEEKLY_MALUS * 100);
 
 /** "Monday, Tuesday and Thursday" — not three ands in a row. */
 function listOf(items: string[]): string {
@@ -452,6 +476,22 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
   // ── Movements that came in short ──
   const shortfalls = findShortfalls(from, date);
 
+  // ── MAINTENANCE ──
+  const choreRows = allChores();
+  const choreEntries = choreLogBetween(addDays(date, -21), date);
+  const standings = standingsFor(date, choreRows, choreEntries);
+  const malus = malusFor(date, choreRows, choreEntries);
+
+  // Days in the last week that ended with every daily chore ticked. Counted
+  // here rather than left to the model, which cannot do it from a list of rows.
+  let cleanDays7 = 0;
+  for (let i = 1; i <= 7; i++) {
+    const d = addDays(date, -i);
+    if (d < settings.startDate) continue;
+    const s = standingsFor(d, choreRows, choreEntries).daily;
+    if (s.length > 0 && s.every((x) => x.done)) cleanDays7++;
+  }
+
   const phase = phaseForDay(day);
   const todaysPlan = sessionFor(phase.id, dayKeyOf(date));
   const intake = intakeForDay(day);
@@ -508,6 +548,18 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
       skipped,
       shortfalls,
     },
+    maintenance: {
+      dailyTotal: standings.daily.length,
+      dailyDone: standings.daily.filter((s) => s.done).length,
+      weeklyTotal: standings.weekly.length,
+      weeklyDone: standings.weekly.filter((s) => s.done).length,
+      outstandingToday: standings.daily.filter((s) => !s.done).map((s) => s.chore.name),
+      outstandingThisWeek: standings.weekly.filter((s) => !s.done).map((s) => s.chore.name),
+      malusPct: Math.round(malus.fraction * 100),
+      missedYesterday: malus.missedDaily,
+      missedLastWeek: malus.missedWeekly,
+      cleanDays7,
+    },
   };
 }
 
@@ -537,7 +589,7 @@ WHERE THE LINE IS
 Blunt about the work, never about them as a person. Criticise the session, the choice, the week — never their character, their body or their worth. Do not shame, do not moralise about food, do not call anything a cheat or a sin, and never imply they should punish themselves with training or by eating less. Sharp and fair, the way a good coach is. If the week was genuinely good, say that plainly too — earned praise is not flattery.
 
 THE PROGRAMME'S OWN WORDS — use these, they are what the screens say:
-PATROL is a training session. FUEL is food. VITALS is the scale. THE WEB is the skill tree. LOW PROFILE WEEK is a deload. REFUEL WEEK is a planned week at maintenance calories. OFF-DUTY is a rest day.
+PATROL is a training session. FUEL is food. VITALS is the scale. THE WEB is the skill tree. MAINTENANCE is the household chores — daily ones like brushing teeth, weekly ones like laundry. LOW PROFILE WEEK is a deload. REFUEL WEEK is a planned week at maintenance calories. OFF-DUTY is a rest day.
 
 RULES
 - Use only the numbers in the data. Never invent a figure, a weight, a calorie count, a food or a session that is not there.
@@ -566,6 +618,10 @@ WHAT THE DATA GIVES YOU
 fuel.overTargetDays carries each day that went over, with worstItems — the biggest entries by calories. That is where you find the thing to name.
 fuel.topSnacks7 is the week's most expensive snacking, usually the same short list repeating.
 patrol.skipped is training days that produced nothing. "started": true means they opened the session and abandoned it, which is a different failure from not turning up and can be said differently.
+maintenance is the chores. A daily one missed yesterday costs 10% of today's XP and a weekly one missed last week costs 20%, added together and capped at 50% — so malusPct is a real number you can name. missedYesterday and missedLastWeek are what earned it; outstandingToday and outstandingThisWeek are what is still open. cleanDays7 counts days last week that ended with every daily chore done.
+
+Treat this like the rest: worth a sentence when there is something to say, not a daily roll-call. Do not list the chores back at them. A running penalty, a chore missed several days in a row, or a week where they cleared everything are all worth naming; one forgotten toothbrushing is not. Never moralise about it — a missed chore is a missed chore, not a character flaw.
+
 patrol.shortfalls is movements that came in under the prescription, each with target, best, previousBest, the sets done against the sets planned, and the catalogue's own "watch" and "cues" for that movement. Use those for the correction — they are the programme's own coaching, and they are why you can be specific about technique without guessing.`;
 
 export function buildUserText(f: BriefingFacts, previous: BriefingRow[] = []): string {
@@ -675,6 +731,37 @@ export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): s
     }
   }
 
+  // ── MAINTENANCE ──
+  // The malus first, because it is the only observation here attached to a
+  // number the person is actively losing.
+  // Defensive: a caller assembling facts by hand (a test, a probe) should not
+  // be able to take the top of HQ down over a missing section.
+  const m = f.maintenance ?? {
+    dailyTotal: 0, dailyDone: 0, weeklyTotal: 0, weeklyDone: 0,
+    outstandingToday: [], outstandingThisWeek: [],
+    malusPct: 0, missedYesterday: [], missedLastWeek: [], cleanDays7: 0,
+  };
+  if (m.malusPct > 0) {
+    const why = [
+      m.missedYesterday.length > 0 ? `${listOf(m.missedYesterday.map((s) => s.toLowerCase()))} yesterday` : null,
+      m.missedLastWeek.length > 0 ? `${listOf(m.missedLastWeek.map((s) => s.toLowerCase()))} last week` : null,
+    ].filter(Boolean);
+    say(
+      87,
+      "malus",
+      `You are on −${m.malusPct}% XP today for ${why.join(" and ")}. Clear today's list and tomorrow is back to full.`,
+    );
+  } else if (m.cleanDays7 >= 6 && m.dailyTotal > 0) {
+    say(42, "chores", `${m.cleanDays7} clean days of MAINTENANCE last week, and no malus to show for it.`);
+  }
+  if (m.outstandingThisWeek.length > 0 && ["fri", "sat", "sun"].includes(f.dayKey)) {
+    say(
+      72,
+      "choresweek",
+      `${listOf(m.outstandingThisWeek)} still open and the week is nearly gone — after Sunday it is a ${WEEKLY_MALUS_PCT}% malus on every day of next week.`,
+    );
+  }
+
   // ── VITALS ──
   if (vitals.daysSinceWeighIn === null) {
     say(94, "weighin", "No weight logged yet. The corridor cannot tell you anything without a reading.");
@@ -702,10 +789,27 @@ export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): s
   // fresh weight trend at 45 even after the penalty, which is correct — some
   // things are worth saying twice.
   const said = recentTopics(previous);
-  const chosen = seen
+
+  // The worst thing survives the rotation, always.
+  //
+  // Demoting purely by recency put a missed patrol and a 600 kcal overshoot
+  // below a notice that this is a LOW PROFILE WEEK, because both had been
+  // mentioned yesterday and the deload notice had not. That is the rotation
+  // working against the point of the paragraph: a problem does not stop being
+  // the biggest problem because you were told about it once.
+  //
+  // So the top slot goes to the highest severity, undemoted, and the other two
+  // rotate. Repetition is discouraged in the places where there is a genuine
+  // alternative, and nowhere else.
+  const ranked = [...seen].sort((a, b) => b.p - a.p);
+  const headline = ranked[0];
+  const rest = ranked
+    .filter((o) => o !== headline)
     .map((o) => ({ ...o, p: o.p - repeatPenalty(said.get(o.topic)) }))
     .sort((a, b) => b.p - a.p)
-    .slice(0, 3);
+    .slice(0, 2);
+
+  const chosen = headline ? [headline, ...rest] : rest;
   return [...chosen.map((c) => c.text), closing].join(" ");
 }
 
@@ -748,6 +852,9 @@ const TOPIC_SIGNS: [string, RegExp][] = [
   ["logging", /logged on only|nothing logged in FUEL|photograph what you eat/i],
   ["weighin", /no reading for|no weight logged|step on the scale/i],
   ["trend", /average is (down|up|flat)/i],
+  ["malus", /% XP today|malus/i],
+  ["chores", /MAINTENANCE/],
+  ["choresweek", /still open and the week/i],
   ["refuel", /REFUEL WEEK/i],
   ["lowprofile", /LOW PROFILE WEEK/i],
 ];

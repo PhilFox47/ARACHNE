@@ -750,6 +750,131 @@ async function main() {
     ok(`the prompt still says ${rule.source.slice(0, 34)}`, rule.test(briefingSrc));
   }
 
+  // ── MAINTENANCE ──
+  // Two rules carry the whole feature. Nothing stores "done", so a new day
+  // resets itself; and nothing can be missed before it existed, so adding a
+  // chore never makes last month retroactively a failure.
+  console.log("\nMAINTENANCE");
+
+  const { chores: choreTbl, choreLog: choreLogTbl } = await import("../lib/db/schema");
+  const {
+    malusFor, standingsFor, liveOn, liveForWeek,
+    MALUS_CAP, DAILY_MALUS, WEEKLY_MALUS, SEED_CHORES,
+  } = await import("../lib/chores");
+  const { mondayOf } = await import("../lib/dates");
+
+  db.delete(choreTbl).run();
+  db.delete(choreLogTbl).run();
+
+  const long = addDays(today, -30);
+  const mk = (name: string, cadence: "daily" | "weekly", createdOn = long, archivedOn: string | null = null) =>
+    db.insert(choreTbl).values({ name, cadence, sort: 0, createdOn, archivedOn })
+      .returning({ id: choreTbl.id }).get().id;
+
+  const teeth = mk("Teeth", "daily");
+  const desk = mk("Desk", "daily");
+  const wash = mk("Laundry", "weekly");
+  const vac = mk("Vacuum", "weekly");
+  const rows = () =>
+    db.select({
+      id: choreTbl.id, name: choreTbl.name, cadence: choreTbl.cadence,
+      sort: choreTbl.sort, createdOn: choreTbl.createdOn, archivedOn: choreTbl.archivedOn,
+    }).from(choreTbl).all();
+  const logs = () => db.select({ choreId: choreLogTbl.choreId, date: choreLogTbl.date }).from(choreLogTbl).all();
+  const tick = (id: number, date: string) =>
+    db.insert(choreLogTbl).values({ choreId: id, date }).onConflictDoNothing().run();
+
+  ok("the seed list has both cadences", SEED_CHORES.some((c) => c.cadence === "daily") && SEED_CHORES.some((c) => c.cadence === "weekly"));
+
+  // Nothing done at all: 2 daily + 2 weekly = 20% + 40% = 60%, capped.
+  let m = malusFor(today, rows(), logs());
+  ok("every daily missed yesterday counts", m.missedDaily.length === 2, m.missedDaily.join(", "));
+  ok("every weekly missed last week counts", m.missedWeekly.length === 2, m.missedWeekly.join(", "));
+  ok(
+    "and the arithmetic is the stated rule",
+    Math.abs(m.uncapped - (2 * DAILY_MALUS + 2 * WEEKLY_MALUS)) < 1e-9,
+    `${m.uncapped}`,
+  );
+  ok("capped where it should be", m.fraction === MALUS_CAP && m.capped, `${m.fraction}`);
+
+  // Clearing yesterday and last week lifts it entirely.
+  const yest = addDays(today, -1);
+  const lastMon = addDays(mondayOf(today), -7);
+  tick(teeth, yest); tick(desk, yest);
+  tick(wash, addDays(lastMon, 2)); tick(vac, addDays(lastMon, 5));
+  m = malusFor(today, rows(), logs());
+  ok("a cleared yesterday means no malus today", m.fraction === 0, `${m.fraction}`);
+  ok("a weekly done on any day of the week counts", m.missedWeekly.length === 0);
+
+  // One missed daily is exactly one step.
+  db.delete(choreLogTbl).where(eq(choreLogTbl.choreId, desk)).run();
+  m = malusFor(today, rows(), logs());
+  ok("one missed daily is one step", Math.abs(m.fraction - DAILY_MALUS) < 1e-9, `${m.fraction}`);
+  ok("and it names which one", m.missedDaily.join() === "Desk", m.missedDaily.join());
+
+  // Nothing can be missed before it existed.
+  const plants = mk("Water the plants", "daily", today);
+  m = malusFor(today, rows(), logs());
+  ok(
+    "a chore added today is not missed yesterday",
+    !m.missedDaily.includes("Water the plants"),
+    m.missedDaily.join(", "),
+  );
+  ok("but it is due today", standingsFor(today, rows(), logs()).daily.some((s) => s.chore.id === plants));
+  ok("liveOn is false before it existed", !liveOn(rows().find((c) => c.id === plants)!, yest));
+
+  // A weekly chore added mid-week shows this week but cannot be missed for it.
+  const midweek = mk("Bins", "weekly", today);
+  const mwRow = rows().find((c) => c.id === midweek)!;
+  ok("a mid-week weekly is still tickable this week", standingsFor(today, rows(), logs()).weekly.some((s) => s.chore.id === midweek));
+  ok(
+    "but does not count for a week it did not start",
+    mondayOf(today) === today || !liveForWeek(mwRow, mondayOf(today)),
+  );
+
+  // Archiving stops the count without erasing the history.
+  db.update(choreTbl).set({ archivedOn: today }).where(eq(choreTbl.id, desk)).run();
+  m = malusFor(today, rows(), logs());
+  ok("an archived chore leaves today's list", !standingsFor(today, rows(), logs()).daily.some((s) => s.chore.id === desk));
+  ok(
+    "but retiring one does not wipe a penalty it already earned",
+    m.missedDaily.includes("Desk"),
+    m.missedDaily.join(", "),
+  );
+  db.update(choreTbl).set({ archivedOn: addDays(today, -3) }).where(eq(choreTbl.id, desk)).run();
+  ok(
+    "and once it has been gone a while it stops counting entirely",
+    !malusFor(today, rows(), logs()).missedDaily.includes("Desk"),
+  );
+  ok("while its history is still there", logs().some((l) => l.choreId === teeth));
+
+  // The malus reaches the ledger, and only the day-attributable half of it.
+  const { computeGameState } = await import("../lib/game");
+  const baseInput = {
+    startDate: addDays(today, -30), today,
+    weights: [{ date: yest, weightKg: 98 }],
+    sessions: [{ date: yest, dayKey: "mon", completed: true, rpe: 4, note: null }],
+    food: [], trials: [{ date: yest, monthIndex: 1, score: 70, pullupsReps: 3 }],
+    photos: [], measurements: [], abilities: [], sets: [{ date: yest }],
+    water: [], waterTargetMl: 2000,
+  };
+  const withChores = computeGameState({ ...baseInput, chores: rows(), choreLog: [] } as never);
+  const without = computeGameState({ ...baseInput, chores: [], choreLog: [] } as never);
+  const rowOf = (s: typeof withChores, k: string) => s.ledger.find((r) => r.key === k)?.xp ?? 0;
+  ok("the malus reaches the ledger as its own row", rowOf(withChores, "maintenance") < 0, `${rowOf(withChores, "maintenance")}`);
+  ok("no chores means no row", rowOf(without, "maintenance") === 0);
+  ok(
+    "THE TRIAL is never reduced",
+    rowOf(withChores, "trials") === rowOf(without, "trials") && rowOf(withChores, "trials") > 0,
+  );
+  ok(
+    "and the malus never turns the decay into a reward",
+    rowOf(withChores, "decay") === rowOf(without, "decay"),
+  );
+
+  db.delete(choreTbl).run();
+  db.delete(choreLogTbl).run();
+
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);

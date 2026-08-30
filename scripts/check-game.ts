@@ -66,6 +66,8 @@ function everything(start: string, today: string): GameInput {
     sets: days.map((date) => ({ date })),
     water: days.map((date) => ({ date, ml: 2000 })),
     waterTargetMl: 2000,
+    chores: [],
+    choreLog: [],
   };
 }
 

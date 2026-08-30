@@ -410,6 +410,44 @@ export const MIGRATIONS: ((db: Database.Database) => void)[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS briefings_date_idx ON briefings(date);
     `);
   },
+
+  // ── v16: MAINTENANCE — chores and their completions ──
+  //
+  // Two tables, and no "done" column anywhere. That absence is the design: a
+  // boolean on the chore would have to be reset at midnight, and that reset is
+  // a scheduled job which breaks every time the container was asleep at
+  // midnight, ran twice, or met a timezone. Recording *when* something was done
+  // makes the reset free — a new day simply has no row — and it is the same
+  // reason nothing in this app stores XP.
+  //
+  // `created_on` and `archived_on` are dates rather than timestamps because the
+  // question asked of them is always "did this chore exist on that day". They
+  // are what stops a chore added today from making last month retroactively a
+  // failure, and what lets one be retired without erasing the months it was
+  // done.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS chores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        cadence TEXT NOT NULL,
+        sort INTEGER NOT NULL DEFAULT 0,
+        created_on TEXT NOT NULL,
+        archived_on TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS chores_cadence_idx ON chores(cadence);
+
+      CREATE TABLE IF NOT EXISTS chore_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chore_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        done_at INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS chore_log_once_idx ON chore_log(chore_id, date);
+      CREATE INDEX IF NOT EXISTS chore_log_date_idx ON chore_log(date);
+    `);
+  },
 ];
 
 /**

@@ -93,6 +93,9 @@ function buildYear(days: number, attendance: number, trackingRate: number): Game
   return {
     startDate: start, today, weights, sessions, food, trials, photos,
     measurements, abilities, sets, water, waterTargetMl: 2000,
+    // The curve is tuned on a run with no malus: chores are the player's own
+    // list and cannot be assumed into a model of what a year pays out.
+    chores: [], choreLog: [],
   };
 }
 
