@@ -210,6 +210,24 @@ export interface BriefingFacts {
     /** Movements flagged painful in the window, newest first. */
     painful: { movement: string; date: string; times: number }[];
     hardCount: number;
+    /**
+     * How many verdicts there were at all, so `hardCount` has a denominator.
+     *
+     * The question used to be asked once per movement, ever, so a raw count was
+     * readable on its own — four "hard" out of a handful of first attempts. It
+     * is now asked every session, so the same number is drawn from ten times as
+     * many answers and means nothing without knowing how many were given.
+     */
+    answered: number;
+    /**
+     * Movements whose most recent sessions in a row all came back "hard".
+     *
+     * The reason for asking every session rather than once. A single "hard" is
+     * training working; the same movement hard four sessions running is a load
+     * that is not being absorbed, and it is the one signal here that says to
+     * change the programming rather than the effort.
+     */
+    hardStreak: { movement: string; sessions: number }[];
   };
   /**
    * The tape. Better evidence than the scale on a stalled fortnight, and the
@@ -567,6 +585,24 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
     else painTally.set(f.exerciseKey, { movement: name, date: f.date, times: 1 });
   }
 
+  // Run of consecutive "hard" verdicts on the same movement, most recent first.
+  // Only the current run counts: a movement that was hard three times and came
+  // back controlled last session is a movement you are winning, and reporting
+  // that as a three-session streak would say the opposite of what happened.
+  const byMovement = new Map<string, typeof fbRows>();
+  for (const f of fbRows) byMovement.set(f.exerciseKey, [...(byMovement.get(f.exerciseKey) ?? []), f]);
+  const hardStreak = [...byMovement]
+    .map(([key, entries]) => {
+      let sessions = 0;
+      for (const e of entries) {
+        if (e.verdict !== "hard") break;
+        sessions++;
+      }
+      return { movement: findMovement(key)?.name ?? key, sessions };
+    })
+    .filter((s) => s.sessions >= 2)
+    .sort((a, b) => b.sessions - a.sessions);
+
   // ── The tape ──
   const tape = db
     .select()
@@ -690,6 +726,8 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
       })),
       painful: [...painTally.values()].sort((a, b) => b.date.localeCompare(a.date)),
       hardCount: fbRows.filter((f) => f.verdict === "hard").length,
+      answered: fbRows.length,
+      hardStreak,
     },
     measurements: {
       latest: lastTape
@@ -760,7 +798,9 @@ This is the part that matters most. You are a coach, not a cheerleader. They hav
 PAIN OVERRIDES EVERYTHING
 feedback.painful lists movements they marked as painful, with how many times. If anything is in there, it is the most important thing in the data and it changes what you are for that morning: say which movement, and tell them to leave it out or drop to an easier version rather than push through it. Do not tell someone to work harder on a movement they have reported pain on — not in the same paragraph, not anywhere. If the pain has repeated, say so and tell them to get it looked at. You are not diagnosing anything; you are declining to coach through it.
 
-feedback.hardCount and the "hard" verdicts are different and ordinary — hard is what training is. Only "pain" triggers any of the above.
+feedback.hardCount and the "hard" verdicts are different and ordinary — hard is what training is. Only "pain" triggers any of the above. Read hardCount against feedback.answered rather than on its own; it is a share of the verdicts given, not a tally of bad sessions.
+
+feedback.hardStreak is the one thing in here worth acting on short of pain. They are asked how every movement felt after every session, so a movement appearing there came back "hard" that many sessions in a row with no easier session in between. Two is worth naming. Three or more is a load that is not being absorbed, and the answer is to change the programming rather than ask for more effort: hold the weight or reps where they are until it comes back controlled, or drop to the rung below for a session. Never respond to a hard streak by telling them to push harder. A movement that has left the list has stopped being hard, and saying so is earned praise.
 
 WHERE THE LINE IS
 Blunt about the work, never about them as a person. Criticise the session, the choice, the week — never their character, their body or their worth. Do not shame, do not moralise about food, do not call anything a cheat or a sin, and never imply they should punish themselves with training or by eating less. Sharp and fair, the way a good coach is. If the week was genuinely good, say that plainly too — earned praise is not flattery.
@@ -839,13 +879,21 @@ export function buildUserText(f: BriefingFacts, previous: BriefingRow[] = []): s
 export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): string {
   const { vitals, fuel, patrol, week } = f;
   /** Observations, ranked. Only the sharpest few make it into the paragraph. */
-  const seen: { p: number; topic: string; text: string }[] = [];
-  const say = (p: number, topic: string, text: string) => seen.push({ p, topic, text });
+  const seen: { p: number; topic: string; text: string; context?: boolean }[] = [];
+  /**
+   * `context: true` marks a standing state rather than a finding — that this is
+   * a REFUEL WEEK, that it is a deload. Those are true all week and are never
+   * the headline: the headline slot is exempt from repetition demotion, so a
+   * week-long state parked in it makes seven identical mornings, which is the
+   * exact complaint the rotation exists to answer.
+   */
+  const say = (p: number, topic: string, text: string, context = false) =>
+    seen.push({ p, topic, text, context });
 
   if (week.refuel) {
-    say(100, "refuel", `REFUEL WEEK. Eat at maintenance — ${fuel.kcalTargetToday.toLocaleString("en-GB")} kcal — and take the two-round sessions. Scheduled recovery, not a slip.`);
+    say(86, "refuel", `REFUEL WEEK. Eat at maintenance — ${fuel.kcalTargetToday.toLocaleString("en-GB")} kcal — and take the two-round sessions. Scheduled recovery, not a slip.`, true);
   } else if (week.lowProfile) {
-    say(60, "lowprofile", "LOW PROFILE WEEK — two rounds instead of three, and nothing to failure.");
+    say(60, "lowprofile", "LOW PROFILE WEEK — two rounds instead of three, and nothing to failure.", true);
   }
 
   // ── Skipped patrols. The loudest thing in the data. ──
@@ -924,11 +972,26 @@ export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): s
   if (hurt.length > 0) {
     const worstPain = [...hurt].sort((a, b) => b.times - a.times)[0];
     say(
-      99,
+      100,
       `pain:${worstPain.movement}`,
       worstPain.times > 1
         ? `You have marked ${worstPain.movement.toLowerCase()} as painful ${worstPain.times === 2 ? "twice" : `${worstPain.times} times`}. Leave it out and use the easier version underneath it — and if it keeps happening, get it looked at rather than trained through.`
         : `You marked ${worstPain.movement.toLowerCase()} as painful on ${dayName(dayKeyOf(worstPain.date))}. Drop to the rung below it today rather than pushing through.`,
+    );
+  }
+
+  // ── A movement that keeps coming back hard ──
+  // Below pain and below a missed patrol, but above the weight trend: it is a
+  // programming problem with a specific answer, and it is only visible at all
+  // because the question is asked after every session rather than the first.
+  const streak = (f.feedback?.hardStreak ?? []).filter(
+    (s) => !hurt.some((p) => p.movement === s.movement),
+  )[0];
+  if (streak) {
+    say(
+      72,
+      `hard:${streak.movement}`,
+      `${streak.movement} has come back hard ${streak.sessions === 2 ? "twice" : `${streak.sessions} times`} in a row. Hold the load where it is until it feels controlled again — adding to it now buys nothing.`,
     );
   }
 
@@ -1056,10 +1119,10 @@ export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): s
   // rotate. Repetition is discouraged in the places where there is a genuine
   // alternative, and nowhere else.
   const ranked = [...seen].sort((a, b) => b.p - a.p);
-  const headline = ranked[0];
+  const headline = ranked.find((o) => !o.context);
   const rest = ranked
     .filter((o) => o !== headline)
-    .map((o) => ({ ...o, p: o.p - repeatPenalty(said.get(o.topic)) }))
+    .map((o) => ({ ...o, p: o.p - (said.get(o.topic) ?? 0) }))
     .sort((a, b) => b.p - a.p)
     .slice(0, 2);
 
@@ -1078,10 +1141,13 @@ export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): s
  */
 const REPEAT_PENALTIES = [35, 25, 15, 8];
 
-function repeatPenalty(daysAgo: number | undefined): number {
-  if (daysAgo === undefined) return 0;
-  return REPEAT_PENALTIES[Math.min(daysAgo, REPEAT_PENALTIES.length) - 1] ?? 0;
-}
+/**
+ * The most repetition can cost, however many times it has been said.
+ *
+ * Without a ceiling a topic raised four days running would be buried under
+ * roughly everything, and some topics are worth saying four days running.
+ */
+const REPEAT_PENALTY_CAP = 60;
 
 /** Only the last few days count — a fortnight ago is not repeating yourself. */
 const REPEAT_WINDOW_DAYS = REPEAT_PENALTIES.length;
@@ -1116,19 +1182,33 @@ const TOPIC_SIGNS: [string, RegExp][] = [
   ["lowprofile", /LOW PROFILE WEEK/i],
 ];
 
-/** Topic → how many mornings ago it was last raised (1 = yesterday's briefing). */
+/**
+ * Topic → what it should lose for having been said recently.
+ *
+ * Accumulated across every morning it appeared, not just the most recent one.
+ * Counting only the latest mention made the ranking oscillate with a period of
+ * two and then settle: a high-severity topic dropped for one morning, came
+ * straight back the next, and three mornings in four were identical — which is
+ * the complaint this whole mechanism exists to answer. Repetition fatigue
+ * builds up, so the penalty does too.
+ */
 export function recentTopics(previous: BriefingRow[]): Map<string, number> {
   const out = new Map<string, number>();
-  // Newest first, so the first time a topic is seen is the most recent time.
+  // Newest first, so index 0 is yesterday.
   previous.slice(0, REPEAT_WINDOW_DAYS).forEach((row, i) => {
-    const age = i + 1;
+    const cost = REPEAT_PENALTIES[i] ?? 0;
     const note = (topic: string) => {
-      if (!out.has(topic)) out.set(topic, age);
+      out.set(topic, Math.min(REPEAT_PENALTY_CAP, (out.get(topic) ?? 0) + cost));
     };
     for (const [topic, sign] of TOPIC_SIGNS) if (sign.test(row.body)) note(topic);
     // Shortfalls are keyed by movement, so the name in the text is the signal.
     for (const m of row.body.matchAll(/\b([A-Z][a-z]+(?: [a-z-]+){1,3})(?=:| came in| went backwards)/g)) {
       note(`shortfall:${m[1]}`);
+    }
+    // As is a hard streak, which is a different thing to say about the same
+    // movement and so is tracked separately rather than folded into the above.
+    for (const m of row.body.matchAll(/\b([A-Z][a-z]+(?: [a-z-]+){1,3}) has come back hard/g)) {
+      note(`hard:${m[1]}`);
     }
   });
   return out;

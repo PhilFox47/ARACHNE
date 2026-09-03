@@ -693,22 +693,47 @@ async function main() {
   );
   ok(
     "but a real protein observation is",
-    recentTopics([asRow("Protein is averaging 118 g against 160 g.")]).get("protein") === 1,
+    (recentTopics([asRow("Protein is averaging 118 g against 160 g.")]).get("protein") ?? 0) > 0,
   );
+
+  // What a topic costs is graded by recency and accumulated across mornings.
+  // Both halves are load-bearing: without grading the penalty saturates after
+  // two days and the order collapses back to raw severity, and without
+  // accumulation a topic dropped for one morning comes straight back the next.
+  const missed = asRow("2 patrols missed this week.");
+  const filler = asRow("Average is up 0.3 kg.");
+  const cost = (rows: typeof missed[]) => recentTopics(rows).get("skipped") ?? 0;
+  ok("yesterday costs a topic more than the day before", cost([missed, filler]) > cost([filler, missed]));
+  ok("being said twice costs more than once", cost([missed, missed]) > cost([missed, filler]));
   ok(
-    "topics are dated by how many mornings ago",
-    recentTopics([asRow("Average is up 0.3 kg."), asRow("2 patrols missed this week.")]).get("skipped") === 2,
+    "but repetition fatigue has a ceiling",
+    cost([missed, missed, missed, missed]) < cost([missed]) * 4,
+    `${cost([missed, missed, missed, missed])} for four mornings, ${cost([missed])} for one`,
   );
+  ok("and a fortnight ago is not repeating yourself", cost([filler, filler, filler, filler, missed]) === 0);
   ok(
     "a named movement is remembered as its own topic",
     recentTopics([asRow("Incline inverted row: 6 against 10.")]).has("shortfall:Incline inverted row"),
   );
 
-  // And the behaviour that matters: four mornings of identical data must not
-  // produce four identical paragraphs.
+  // And the behaviour that matters. Two properties, not one paragraph count:
+  // no morning reads like the one before it, and nothing true stays unsaid.
+  //
+  // Counting distinct paragraphs was the wrong bar. This fixture holds five
+  // observations and the paragraph has three slots, one of them pinned to the
+  // worst finding — so the two that rotate can only ever draw from four, and
+  // an A-B-A-B alternation is arithmetic rather than a fault. What would be a
+  // fault is a topic that is true every day and never once reaches the page,
+  // which is exactly what pure severity ordering does: it would print the
+  // overshoot, the skipped patrol and the shortfall every morning for a year
+  // and never mention protein or the weight trend at all.
   db.delete(briefings).run();
   const richFacts = {
     ...gatherFacts(today),
+    // No pain in this one on purpose. Pain is the headline whenever it exists
+    // and never rotates, which is correct and is checked on its own further
+    // down — leaving it in here would make this test measure that instead.
+    feedback: { recent: [], painful: [], hardCount: 0 },
     vitals: { ...gatherFacts(today).vitals, avg7: 98.2, avg7LastWeek: 97.9, daysSinceWeighIn: 0 },
     fuel: {
       ...gatherFacts(today).fuel,
@@ -732,12 +757,24 @@ async function main() {
     mornings.push(body);
   }
   ok(
-    "four mornings of the same data are not four identical paragraphs",
-    new Set(mornings).size >= 3,
+    "no morning repeats the one before it",
+    mornings.every((m, i) => i === 0 || m !== mornings[i - 1]),
     `${new Set(mornings).size} distinct of ${mornings.length}`,
   );
+  const unsaid = (
+    [
+      ["the overshoot", /600 kcal over|takeaway curry/i],
+      ["the skipped patrol", /did not happen/i],
+      ["the shortfall", /incline inverted row/i],
+      ["protein", /protein is averaging/i],
+      ["the weight trend", /average is up/i],
+    ] as [string, RegExp][]
+  )
+    .filter(([, sign]) => !mornings.some((m) => sign.test(m)))
+    .map(([name]) => name);
+  ok("and nothing true goes unsaid across four of them", unsaid.length === 0, unsaid.join(", "));
   ok(
-    "and the worst thing is never silenced by the rotation",
+    "the worst thing is never silenced by the rotation",
     mornings.every((m) => /curry|missed|did not happen|inverted row/i.test(m)),
   );
 
@@ -908,6 +945,48 @@ async function main() {
   ok("with the movement named", seen.feedback.painful[0]?.movement === "Incline inverted row", seen.feedback.painful[0]?.movement);
   ok("and how often it has happened", seen.feedback.painful[0]?.times === 2);
   ok("'hard' is counted separately from pain", seen.feedback.hardCount === 1 && seen.feedback.painful.length === 1);
+  ok("and it comes with a denominator", seen.feedback.answered === 3, `${seen.feedback.hardCount} of ${seen.feedback.answered}`);
+
+  // The reason for asking every session rather than once: a run of "hard" on
+  // one movement is a load that is not being absorbed, and it is invisible if
+  // the question is only ever asked the first time.
+  db.delete(movementFeedback).run();
+  // Newest first: three hard sessions running, with an easier one behind them.
+  const runOfHard = ["hard", "hard", "hard", "controlled"] as const;
+  runOfHard.forEach((verdict, i) => {
+    db.insert(movementFeedback).values({ date: addDays(today, -(i + 1)), exerciseKey: "box squat", verdict }).run();
+  });
+  // One hard session on its own is training working, not a problem.
+  db.insert(movementFeedback).values({ date: addDays(today, -1), exerciseKey: "wall push-up", verdict: "hard" }).run();
+
+  const streaks = gatherFacts(today).feedback.hardStreak;
+  ok("a run of hard sessions on one movement is seen", streaks.length === 1, JSON.stringify(streaks));
+  ok("with the movement named and the run counted", streaks[0]?.movement === "Box squat" && streaks[0]?.sessions === 3,
+    `${streaks[0]?.movement} ×${streaks[0]?.sessions}`);
+  ok("a single hard session is not a streak", !streaks.some((s) => s.movement === "Wall push-up"));
+
+  // And the run has to be the current one. A movement that was hard three
+  // times and came back controlled is one you are winning; reporting that as
+  // a streak would say the opposite of what happened.
+  db.insert(movementFeedback).values({ date: today, exerciseKey: "box squat", verdict: "controlled" }).run();
+  ok(
+    "a movement that came back controlled has no streak left",
+    gatherFacts(today).feedback.hardStreak.length === 0,
+    JSON.stringify(gatherFacts(today).feedback.hardStreak),
+  );
+
+  const streakSaid = localBriefing(
+    { ...gatherFacts(today), feedback: { recent: [], painful: [], hardCount: 4, answered: 6,
+      hardStreak: [{ movement: "Box squat", sessions: 3 }] } },
+    [],
+  );
+  ok("the streak is spoken, not just carried", /box squat has come back hard/i.test(streakSaid), streakSaid.slice(0, 110));
+  ok("and it says hold the load rather than add to it", /hold the load/i.test(streakSaid));
+  ok(
+    "the rotation can tell a hard streak from a shortfall on the same movement",
+    recentTopics([asRow("Box squat has come back hard 3 times in a row.")]).has("hard:Box squat") &&
+      !recentTopics([asRow("Box squat has come back hard 3 times in a row.")]).has("shortfall:Box squat"),
+  );
 
   ok("the session note reaches the trainer", seen.patrol.last7.some((s) => s.note?.includes("four hours")), seen.patrol.last7.map((s) => s.note).join("|"));
 
@@ -987,6 +1066,9 @@ async function main() {
     /never ignore one that explains a shortfall/i,
     /waistDeltaCm is the honest progress number/i,
     /web\.nearMastery/,
+    /feedback\.hardStreak/,
+    /Never respond to a hard streak by telling them to push harder/i,
+    /Read hardCount against feedback\.answered/i,
   ]) {
     ok(`the prompt still says ${rule.source.slice(0, 36)}`, rule.test(briefingSrc));
   }

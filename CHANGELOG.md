@@ -17,6 +17,81 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.19.0 — 2026-09-03
+
+How it felt, after every session.
+
+The question — *controlled*, *hard*, *something hurt* — used to be asked only the
+first time you ever did a movement. The reasoning was friction: a question asked
+every session stops being answered. That was the wrong trade.
+
+This is the only signal in the app for **how hard** a movement was rather than
+how much of it you did, and almost all of its value is in the trend. One reading
+says nothing. Twenty say whether a rung is settling or grinding you down. Asked
+once ever, the app learned that your first box squat was hard and then never
+asked again — which is the least informative moment in the movement's whole life.
+
+### The question
+
+It now appears on every movement, every session, as soon as there is a set logged
+against it — never before, because it is a question about something that has not
+happened yet.
+
+The friction the old design worried about is handled rather than avoided:
+
+- One tap. Nothing blocks, nothing is required to finish the session.
+- It shows what you already said today, so a reload is not a second
+  interrogation. The label changes to *How it felt · tap to change*.
+- Tapping again corrects it. The row is an upsert on `(date, exercise_key)`, so
+  a change of mind replaces the answer instead of adding a second one.
+- The wording matches the situation: *First time on box squat — how did it feel?*
+  on a movement new to you, plain *How did that feel?* on one you know.
+
+### What it unlocks
+
+**The step-down works properly now.** A day you said it hurt has never counted
+towards mastery, whatever the reps said — but that check could only ever fire on
+the first session you ever did. It fires on any session now, and two painful days
+drop the movement a rung.
+
+**The trainer can see a trend it could not see before.** New in the facts:
+
+- `feedback.hardStreak` — movements whose most recent sessions in a row *all*
+  came back hard, with no easier session in between. One hard session is training
+  working. The same movement hard four sessions running is a load that is not
+  being absorbed, and the answer is to change the programming rather than ask for
+  more effort. The prompt says so explicitly, and says never to answer a hard
+  streak by telling you to push harder.
+- `feedback.answered` — a denominator. `hardCount` was readable on its own when
+  the question was asked once per movement ever; drawn from ten times as many
+  answers it means nothing without knowing how many were given.
+
+The offline composer speaks the streak too, at priority 72 — below pain and below
+a missed patrol, above the weight trend — so it survives a failed model call:
+*"Box squat has come back hard 3 times in a row. Hold the load where it is until
+it feels controlled again — adding to it now buys nothing."*
+
+### A repetition bug found on the way
+
+The briefing's anti-repetition demotion counted only a topic's **most recent**
+mention, so a high-severity point dropped for one morning and came straight back
+the next. Four mornings of identical data produced an A-B-A-B alternation with
+three of the four paragraphs the same — the exact complaint the mechanism exists
+to answer. The penalty now accumulates across every morning in the window, capped
+so that a point which keeps being true is never silenced outright.
+
+The check that was supposed to catch this was also measuring the wrong thing. It
+counted distinct paragraphs, and the fixture holds five observations for three
+slots with one pinned to the worst finding — so an alternation is arithmetic, not
+a fault. It now asserts the two properties that matter: no morning repeats the
+one before it, and nothing true goes unsaid across four of them. Pure severity
+ordering fails the second outright; it would print the same three findings every
+morning for a year and never mention protein or the weight trend at all.
+
+No schema change. Nothing to migrate.
+
+---
+
 ## 1.18.0 — 2026-08-30
 
 The trainer can see the rest of the app.

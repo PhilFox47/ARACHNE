@@ -26,6 +26,7 @@ import {
   isPreview,
   storedPrescription,
 } from "@/lib/training";
+import { feedbackFor } from "@/lib/skills";
 import { SessionLogger } from "@/components/SessionLogger";
 import { findMovement, type Movement } from "@/lib/movements";
 import { treeContext } from "@/lib/web";
@@ -55,6 +56,12 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
 
   const row = db.select().from(sessions).where(eq(sessions.date, date)).get();
   const rx = storedPrescription(date) ?? baselinePrescription(phase.id, dk, wk, date);
+
+  // What was already said about each movement today, so a reload shows the
+  // answer rather than asking again — which, now that it is asked every session
+  // rather than once ever, is the difference between a question and a nag.
+  const feel: Record<string, "controlled" | "hard" | "pain"> = {};
+  for (const f of feedbackFor(date)) feel[f.exerciseKey] = f.verdict;
 
   /**
    * The catalogue entry behind every movement in the session, so the ⓘ on each
@@ -183,6 +190,7 @@ export default async function SessionPage({ params }: { params: Promise<{ date: 
             isDeload={isLowProfileWeek(wk)}
             preview={preview}
             briefs={briefs}
+            feel={feel}
           />
 
           {planSession.cooldown ? (

@@ -23,7 +23,7 @@
  *   about how to read it. Delete the reset row and everything comes back.
  */
 
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs, movementFeedback, skillResets } from "./db/schema";
 import { mondayOf, toISODate } from "./dates";
@@ -265,6 +265,21 @@ export function movementRecords(): Map<string, MovementRecord> {
  */
 export function painCounts(): Map<string, number> {
   return new Map([...painDays()].map(([key, dates]) => [key, dates.size]));
+}
+
+/**
+ * What was said about each movement on one day.
+ *
+ * Read by the session screen so the question shows its own answer. Asked once
+ * ever this barely mattered; asked every session it is the whole difference
+ * between a question and a nag.
+ */
+export function feedbackFor(date: string): { exerciseKey: string; verdict: "controlled" | "hard" | "pain" }[] {
+  return db
+    .select({ exerciseKey: movementFeedback.exerciseKey, verdict: movementFeedback.verdict })
+    .from(movementFeedback)
+    .where(eq(movementFeedback.date, date))
+    .all();
 }
 
 /** Dates on which each movement was reported as hurting. */

@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.18.0";
+export const APP_VERSION = "1.19.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-08-30";
+export const RELEASED = "2026-09-03";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.19.0",
+    date: "2026-09-03",
+    kind: "minor",
+    headline: "How it felt, after every session",
+    changes: [
+      "Controlled, hard or something hurt is now asked on every movement after every session, not only the first time you ever did it. Asked once, the app learned that your first box squat was hard and then never asked again — which is the least informative moment in that movement's whole life. This is the only signal here for how hard something was rather than how much of it you did, and nearly all of its value is in the trend.",
+      "One tap, nothing blocking, and it shows what you already said today so a reload is not a second interrogation. Tapping again corrects it rather than adding a second answer.",
+      "The step-down works properly now. A day you said it hurt has never counted towards mastery whatever the reps said, but that check could only ever fire on the first session you ever did. It fires on any session now, and two painful days still drop a movement a rung.",
+      "The trainer reads the run rather than the reading. A movement that comes back hard several sessions in a row with no easier session in between is a load that is not being absorbed, and it is told to answer that by holding the weight where it is — never by asking for more effort. The count of hard sessions also has a denominator now, which it needs at ten times the volume of answers.",
+      "A repetition bug in the briefing, found on the way: the demotion counted only a topic's most recent mention, so a point dropped for one morning came straight back the next and three mornings in four read the same. It accumulates now, capped so nothing that keeps being true is silenced outright.",
+    ],
+  },
   {
     version: "1.18.0",
     date: "2026-08-30",

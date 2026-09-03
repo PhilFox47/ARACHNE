@@ -27,6 +27,7 @@ export function SessionLogger({
   isDeload,
   preview = false,
   briefs = {},
+  feel = {},
 }: {
   date: string;
   initialPrescription: Prescription;
@@ -38,6 +39,8 @@ export function SessionLogger({
   isDeload: boolean;
   /** The day has not arrived. Nothing is issued, stored, or logged. */
   preview?: boolean;
+  /** Today's verdict per movement, so the question can show its own answer. */
+  feel?: Record<string, "controlled" | "hard" | "pain">;
   /** The catalogue entry behind each movement, keyed by exercise key. */
   briefs?: Record<string, MovementBrief>;
 }) {
@@ -241,6 +244,7 @@ export function SessionLogger({
               sets={setsFor(ex)}
               pb={personalBests[ex.key] ?? null}
               hasBrief={briefs[ex.key] !== undefined}
+              storedFeel={feel[ex.key] ?? null}
               onExplain={() => setShowing(ex.key)}
               onSave={(i, v) => onSaveSet(ex, i, v)}
             />
@@ -393,6 +397,7 @@ function ExerciseCard({
   sets,
   pb,
   hasBrief,
+  storedFeel,
   onExplain,
   onSave,
 }: {
@@ -401,6 +406,8 @@ function ExerciseCard({
   sets: LoggedSet[];
   pb: { reps: number | null; weightKg: number | null; seconds: number | null } | null;
   hasBrief: boolean;
+  /** What was already said about this movement today, if anything. */
+  storedFeel: "controlled" | "hard" | "pain" | null;
   onExplain: () => void;
   onSave: (setIndex: number, v: { reps?: number | null; weightKg?: number | null; seconds?: number | null }) => void;
 }) {
@@ -473,9 +480,9 @@ function ExerciseCard({
         </p>
       ) : null}
 
-      {/* Asked once, after the work is in, and only on a movement new to you.
-          Any earlier and it is a question about something that hasn't happened. */}
-      {ex.firstTime && sets.length > 0 ? <FeelCheck date={date} ex={ex} /> : null}
+      {/* Every session, once the work is in — never before, because it is a
+          question about something that has not happened yet. */}
+      {sets.length > 0 ? <FeelCheck date={date} ex={ex} stored={storedFeel} /> : null}
     </div>
   );
 }
@@ -487,21 +494,48 @@ const VERDICTS = [
 ] as const;
 
 /**
- * The first time you do a movement, one question.
+ * How the movement felt, asked after every session rather than once ever.
  *
  * The app can see that you did eight reps. It cannot see that the form fell
- * apart on the sixth, and that is the thing that decides whether the next level
- * up should open. Two "something hurt" answers and the movement closes rather
- * than being offered again.
+ * apart on the sixth, and that is the thing that decides whether the next rung
+ * should open.
+ *
+ * It used to appear only the first time you ever did something, on the
+ * reasoning that a question asked every session stops being answered. That was
+ * the wrong trade. This is the only signal in the app for *how hard* a movement
+ * was rather than how much of it you did, and its value is almost entirely in
+ * the trend — one reading says nothing, twenty say whether a rung is settling
+ * or grinding you down. It also feeds the step-down: two painful days on a
+ * movement drop it a level.
+ *
+ * The friction that worry was about is handled instead of avoided. One tap, no
+ * blocking, nothing required to finish the session — and it shows what you
+ * already said today, so a reload is not a second interrogation.
  */
-function FeelCheck({ date, ex }: { date: string; ex: PrescribedExercise }) {
-  const [chosen, setChosen] = useState<string | null>(null);
+function FeelCheck({
+  date,
+  ex,
+  stored,
+}: {
+  date: string;
+  ex: PrescribedExercise;
+  stored: "controlled" | "hard" | "pain" | null;
+}) {
+  const [chosen, setChosen] = useState<string | null>(stored);
   const [, start] = useTransition();
+
+  // Answered on the server for this day: the row is an upsert on
+  // (date, exercise_key), so tapping again simply corrects it.
+  const answered = chosen !== null;
 
   return (
     <div className="flex flex-col gap-2 border-t border-edge pt-3">
       <p className="label-xs">
-        {chosen ? "Noted." : `First time on ${ex.name.toLowerCase()} — how did it feel?`}
+        {answered
+          ? "How it felt · tap to change"
+          : ex.firstTime
+            ? `First time on ${ex.name.toLowerCase()} — how did it feel?`
+            : "How did that feel?"}
       </p>
       <div className="grid grid-cols-3 gap-2">
         {VERDICTS.map((v) => (
@@ -515,6 +549,7 @@ function FeelCheck({ date, ex }: { date: string; ex: PrescribedExercise }) {
                 await recordFeel(date, ex.key, v.key);
               });
             }}
+            aria-pressed={chosen === v.key}
             className={`tap flex flex-col items-center justify-center gap-0.5 border px-2 py-2 ${
               chosen === v.key
                 ? v.key === "pain"
