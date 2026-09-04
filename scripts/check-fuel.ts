@@ -602,6 +602,128 @@ async function main() {
   ok("the briefing names the movement", /inverted row/i.test(onlyShortfall), onlyShortfall.slice(0, 90));
   ok("and gives the catalogue's correction", /blades together|chest to the edge/i.test(onlyShortfall));
 
+  // ── A range is a range ──
+  // Reported from the phone: "I should do 8–12 squats and do 10, and the next
+  // day the trainer says I was two reps short."
+  //
+  // It was reading `targetReps` — the number the form prefills — as the
+  // requirement. That number is one more than last session, and it drops back
+  // to the bottom of the range when the weight goes up, so it is a suggestion
+  // that walks up through the range. The requirement is the range's floor.
+  //
+  // Both directions are checked, because the tempting fix is to stop reporting
+  // shortfalls on ranged movements at all, which would hide the real ones.
+  console.log("\na set inside its range is a set done right");
+
+  db.delete(sessTable).run();
+  db.delete(exerciseLogs).run();
+  db.delete(sessionPlans).run();
+
+  const gDay = [1, 2, 3, 4, 5].map(dayBackISO).find((d) => ["mon", "tue", "wed", "thu", "fri"].includes(dkOf(d)))!;
+  const earlierDay = addDays(gDay, -7);
+
+  /** One movement, one or two sessions of it, straight through gatherFacts. */
+  const logRange = (
+    plan: { repRange: string | null; targetReps: number },
+    days: { date: string; reps: number; weightKg: number | null; sets: number }[],
+  ) => {
+    db.delete(sessTable).run();
+    db.delete(exerciseLogs).run();
+    db.delete(sessionPlans).run();
+    for (const d of days) {
+      db.insert(sessionPlans)
+        .values({
+          date: d.date, dayKey: dkOf(d.date), phase: 1, source: "plan", model: null,
+          payload: JSON.stringify([
+            {
+              key: "goblet squat", name: "Goblet squat", sets: 3, metric: "reps",
+              repRange: plan.repRange, targetReps: plan.targetReps,
+              targetSeconds: null, targetWeightKg: 20,
+            },
+          ]),
+        })
+        .run();
+      const id = db
+        .insert(sessTable)
+        .values({ date: d.date, dayKey: dkOf(d.date), phase: 1, completed: true, rpe: 4 })
+        .returning({ id: sessTable.id })
+        .get().id;
+      for (let i = 0; i < d.sets; i++) {
+        db.insert(exerciseLogs)
+          .values({
+            sessionId: id, date: d.date, exerciseKey: "goblet squat", exerciseName: "Goblet squat",
+            setIndex: i, reps: d.reps, weightKg: d.weightKg,
+          })
+          .run();
+      }
+    }
+    return gatherFacts(todayISO()).patrol.shortfalls;
+  };
+
+  // The reported case, exactly.
+  const inside = logRange({ repRange: "8–12", targetReps: 12 }, [{ date: gDay, reps: 10, weightKg: 20, sets: 3 }]);
+  ok(
+    "10 reps of an 8–12 set is not a shortfall",
+    inside.length === 0,
+    inside.length ? `flagged: best ${inside[0].best} against ${inside[0].target}` : "clean",
+  );
+  ok(
+    "and the bottom of the range is still inside it",
+    logRange({ repRange: "8–12", targetReps: 12 }, [{ date: gDay, reps: 8, weightKg: 20, sets: 3 }]).length === 0,
+  );
+  ok(
+    "nor is drifting from the top of the range to the middle",
+    logRange({ repRange: "8–12", targetReps: 11 }, [
+      { date: earlierDay, reps: 12, weightKg: 20, sets: 3 },
+      { date: gDay, reps: 10, weightKg: 20, sets: 3 },
+    ]).length === 0,
+  );
+  // Double progression's whole mechanism: the weight goes up, the reps reset to
+  // the floor. Calling that a bad session tells them to undo what is working.
+  ok(
+    "and fewer reps under a heavier weight is progression, not a collapse",
+    logRange({ repRange: "8–12", targetReps: 8 }, [
+      { date: earlierDay, reps: 12, weightKg: 20, sets: 3 },
+      { date: gDay, reps: 8, weightKg: 22.5, sets: 3 },
+    ]).length === 0,
+  );
+
+  // The other direction — none of the above may cost a real miss.
+  const under = logRange({ repRange: "8–12", targetReps: 12 }, [{ date: gDay, reps: 6, weightKg: 20, sets: 3 }]);
+  ok("but 6 reps is below the range and is still caught", under.length === 1, `${under.length} flagged`);
+  ok("judged against the floor, not the prefill", under[0]?.target === 8, `target ${under[0]?.target}`);
+  ok("with the range carried through for the wording", under[0]?.range === "8–12", `${under[0]?.range}`);
+  const cutShort = logRange({ repRange: "8–12", targetReps: 12 }, [{ date: gDay, reps: 10, weightKg: 20, sets: 1 }]);
+  ok("and one set of three is still an abandoned movement", cutShort.length === 1 && cutShort[0].setsDone === 1);
+
+  // A movement with no range keeps the old, correct behaviour.
+  const flat = logRange({ repRange: "10", targetReps: 10 }, [
+    { date: earlierDay, reps: 12, weightKg: 20, sets: 3 },
+    { date: gDay, reps: 10, weightKg: 20, sets: 3 },
+  ]);
+  ok("a single-target movement still reports going backwards", flat.length === 1, `${flat.length} flagged`);
+  ok("and carries no range", flat[0]?.range === null);
+
+  // What the sentence actually reads, since that is what gets seen.
+  const said = localBriefing({
+    ...gatherFacts(todayISO()),
+    feedback: { recent: [], painful: [], hardCount: 0, answered: 0, hardStreak: [] },
+    patrol: {
+      ...gatherFacts(todayISO()).patrol,
+      skipped: [], lastSessionDaysAgo: 0,
+      shortfalls: [{
+        date: gDay, name: "Goblet squat", metric: "reps", target: 8, range: "8–12",
+        best: 6, previousBest: null, setsDone: 3, setsPlanned: 3,
+        watch: "Chest tall.", cues: ["Weight at the chest"],
+      }],
+    },
+  });
+  ok("the miss is written against the range", /6 against 8–12/.test(said), said.slice(0, 100));
+
+  db.delete(sessTable).run();
+  db.delete(exerciseLogs).run();
+  db.delete(sessionPlans).run();
+
   // Skipped patrols are named, and named as misses.
   db.delete(sessTable).run();
   const skippedFacts = gatherFacts(todayISO());
@@ -1069,6 +1191,9 @@ async function main() {
     /feedback\.hardStreak/,
     /Never respond to a hard streak by telling them to push harder/i,
     /Read hardCount against feedback\.answered/i,
+    /MOST SETS ARE A RANGE, AND ANYWHERE INSIDE IT IS A PASS/,
+    /never compute a gap against the top of a range/i,
+    /Only what falls below the bottom is a shortfall/i,
   ]) {
     ok(`the prompt still says ${rule.source.slice(0, 36)}`, rule.test(briefingSrc));
   }

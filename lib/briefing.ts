@@ -11,7 +11,7 @@ import { intakeForDay, isRefuelWeek, phaseForDay, proteinTargetForDay } from "./
 import { buildComposition, compositionSummary, getHqStats, loadWeights, rollingAverage } from "./stats";
 import { findMovement, masterySessions, masteryWeeks } from "./movements";
 import { movementRecords } from "./skills";
-import { lockedFor } from "./training";
+import { lockedFor, workingRange } from "./training";
 import { WEEKLY_MALUS, malusFor, standingsFor } from "./chores";
 import { allChores, choreLogBetween } from "./choreData";
 import { apiKey, baseUrl } from "./nanogpt";
@@ -187,7 +187,10 @@ export interface BriefingFacts {
       date: string;
       name: string;
       metric: string;
+      /** The bottom of the working range — what the set actually had to clear. */
       target: number | null;
+      /** The range as written, e.g. "8–12", where the prescription gives one. */
+      range: string | null;
       best: number | null;
       previousBest: number | null;
       setsDone: number;
@@ -312,6 +315,14 @@ interface PlannedExercise {
   name: string;
   sets: number;
   metric: "reps" | "time";
+  /**
+   * The working range as shown, e.g. "8–12". This is the requirement.
+   *
+   * `targetReps` below is only the number the form prefills — one more than last
+   * session, or the bottom of the range after a weight increase. Judging a set
+   * against it treats a suggestion as a floor.
+   */
+  repRange: string | null;
   targetReps: number | null;
   targetSeconds: number | null;
   targetWeightKg: number | null;
@@ -364,11 +375,20 @@ function findShortfalls(from: string, to: string): BriefingFacts["patrol"]["shor
       const best = isTime
         ? Math.max(...sets.map((s) => s.seconds ?? 0))
         : Math.max(...sets.map((s) => s.reps ?? 0));
-      const target = isTime ? p.targetSeconds : p.targetReps;
+
+      // The requirement is the bottom of the working range, not the number the
+      // form happened to prefill. Double progression asks you to land anywhere
+      // inside 8–12; the prefill creeps up through it a rep at a time and drops
+      // back to the floor when the weight goes up. Reading that suggestion as a
+      // target meant a perfectly good set of ten was reported as two reps short,
+      // and the day after a weight increase looked like a collapse.
+      const range = workingRange(p.repRange, isTime ? p.targetSeconds : p.targetReps);
+      const target = range?.floor ?? (isTime ? p.targetSeconds : p.targetReps);
+      const spread = range !== null && range.top > range.floor;
 
       // The same movement before this date, for "down from" rather than just "under".
       const earlier = db
-        .select({ reps: exerciseLogs.reps, seconds: exerciseLogs.seconds })
+        .select({ reps: exerciseLogs.reps, seconds: exerciseLogs.seconds, weightKg: exerciseLogs.weightKg })
         .from(exerciseLogs)
         .where(and(eq(exerciseLogs.exerciseKey, p.key), lte(exerciseLogs.date, addDays(plan.date, -1))))
         .orderBy(desc(exerciseLogs.date))
@@ -378,9 +398,20 @@ function findShortfalls(from: string, to: string): BriefingFacts["patrol"]["shor
         ? Math.max(...earlier.map((e) => (isTime ? (e.seconds ?? 0) : (e.reps ?? 0))))
         : null;
 
+      // Fewer reps under a heavier bar is the whole point of the weight going
+      // up, so it is never a step backwards.
+      const heaviest = (rows: { weightKg: number | null }[]) =>
+        rows.reduce<number | null>((m2, r) => (r.weightKg === null ? m2 : Math.max(m2 ?? 0, r.weightKg)), null);
+      const liftedMore =
+        heaviest(sets) !== null && heaviest(earlier) !== null && heaviest(sets)! > heaviest(earlier)!;
+
       const missedTarget = target !== null && best > 0 && best < target;
       const missedSets = sets.length < p.sets;
-      const wentBackwards = previousBest !== null && previousBest > 0 && best < previousBest;
+      // Only where there is no range to land inside. With one, a drop from the
+      // top to the middle is ordinary variation the programme already allows —
+      // and calling it a regression is the same misreading in another costume.
+      const wentBackwards =
+        !spread && !liftedMore && previousBest !== null && previousBest > 0 && best < previousBest;
       if (!missedTarget && !missedSets && !wentBackwards) continue;
 
       const m = findMovement(p.name);
@@ -389,6 +420,7 @@ function findShortfalls(from: string, to: string): BriefingFacts["patrol"]["shor
         name: p.name,
         metric: p.metric,
         target,
+        range: spread ? p.repRange : null,
         best,
         previousBest,
         setsDone: sets.length,
@@ -847,7 +879,12 @@ maintenance is the chores. A daily one missed yesterday costs 10% of today's XP 
 
 Treat this like the rest: worth a sentence when there is something to say, not a daily roll-call. Do not list the chores back at them. A running penalty, a chore missed several days in a row, or a week where they cleared everything are all worth naming; one forgotten toothbrushing is not. Never moralise about it — a missed chore is a missed chore, not a character flaw.
 
-patrol.shortfalls is movements that came in under the prescription, each with target, best, previousBest, the sets done against the sets planned, and the catalogue's own "watch" and "cues" for that movement. Use those for the correction — they are the programme's own coaching, and they are why you can be specific about technique without guessing.`;
+patrol.shortfalls is movements that came in under the prescription, each with target, best, previousBest, the sets done against the sets planned, and the catalogue's own "watch" and "cues" for that movement. Use those for the correction — they are the programme's own coaching, and they are why you can be specific about technique without guessing.
+
+MOST SETS ARE A RANGE, AND ANYWHERE INSIDE IT IS A PASS
+The programme prescribes ranges: 8–12 reps, 30–45 seconds. Landing anywhere inside one is a set done right, not a set half done. Ten reps of an 8–12 set is a success and adding a rep next time is the plan working exactly as intended — never describe it as being two short, and never compute a gap against the top of a range. Only what falls below the bottom is a shortfall, and shortfalls[].target is already that bottom, with shortfalls[].range carrying the range as written when there is one. Anything not in shortfalls at all cleared what it was asked for; say nothing about it.
+
+The same applies across sessions. Reps drifting around inside the range is ordinary, and reps dropping right after the weight went up is the point of the weight going up — that is progression, not a regression, and calling it a bad session tells them to undo the thing that is working.`;
 
 export function buildUserText(f: BriefingFacts, previous: BriefingRow[] = []): string {
   const parts = ["Write today's briefing from this data.", "", JSON.stringify(f, null, 1)];
@@ -921,12 +958,20 @@ export function localBriefing(f: BriefingFacts, previous: BriefingRow[] = []): s
     // Both can be true at once — one set, and that set short — and saying only
     // the louder half loses the reason it happened.
     const short = worst.target !== null && worst.best !== null && worst.best < worst.target;
-    const back = worst.previousBest !== null && worst.best !== null && worst.best < worst.previousBest;
+    // Mirrors findShortfalls: inside a range is not a step backwards, so the
+    // sentence must not claim one either.
+    const back =
+      worst.range === null &&
+      worst.previousBest !== null &&
+      worst.best !== null &&
+      worst.best < worst.previousBest;
     const cut = worst.setsDone < worst.setsPlanned;
 
     const parts: string[] = [];
     if (cut) parts.push(`${worst.setsDone} ${worst.setsDone === 1 ? "set" : "sets"} of ${worst.setsPlanned}`);
-    if (short) parts.push(`${worst.best}${u} against ${worst.target}${u}`);
+    // Against the range where there is one — "6 against 8–12" is a miss you can
+    // act on, where "6 against 8" hides what the set was actually asking for.
+    if (short) parts.push(`${worst.best}${u} against ${worst.range ?? worst.target}${u}`);
     else if (back) parts.push(`${worst.best}${u}, down from ${worst.previousBest}${u}`);
 
     if (parts.length > 0) {

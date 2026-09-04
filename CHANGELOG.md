@@ -17,6 +17,61 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.20.1 — 2026-09-04
+
+A set inside its range is a set done right.
+
+Reported: *"If I should do 8–12 squats and do 10, the next day the trainer says
+I was two reps short."*
+
+Reproduced on the first try. Three full sets of ten against an 8–12
+prescription came back as `target: 12, best: 10` — a shortfall, with the
+catalogue's technique corrections attached, as though the set had failed.
+
+### What it was reading
+
+A prescription carries two numbers. `repRange` is the requirement — "8–12".
+`targetReps` is only what the form prefills, and it *moves*: double progression
+adds a rep to it each session while you are inside the range, and drops it back
+to the bottom when the weight goes up. `findShortfalls` was comparing against
+that prefill, so the suggestion was being enforced as a floor.
+
+Two consequences, both wrong in the same way:
+
+- Any rep count below the current suggestion was a miss, even though the whole
+  point of a range is that anywhere inside it is a pass.
+- The session **after a weight increase** looked like a collapse — reps reset to
+  the floor by design, and the old check read the drop as going backwards. That
+  is the mechanism working, and being told to fix it is being told to undo it.
+
+### What it does now
+
+The requirement is the bottom of the working range. `workingRange` is now
+exported from `lib/training.ts` and used by both the progression and the
+trainer, so the two cannot drift apart — that shared definition is the actual
+fix; comparing against a different number was only the symptom.
+
+- Below the floor is a shortfall. Inside the range is not, at either end.
+- Rep counts moving around *inside* the range are no longer reported as a
+  regression. Only movements with no range at all — a flat "10" — still report
+  one, and even then not when the weight went up.
+- The shortfall carries the range, so the sentence reads "6 against 8–12"
+  rather than "6 against 8", which says what the set was actually asking for.
+- The prompt gained a section of its own, since the model sees these facts
+  directly: *most sets are a range, and anywhere inside it is a pass.*
+
+Set counts are untouched. One set of three is still an abandoned movement,
+whatever the reps were.
+
+The screens were always right — PATROL shows "3 × 8–12" and treats `targetReps`
+purely as a placeholder. Only the trainer misread it.
+
+Eight scenarios are now checked in both directions, because the tempting fix is
+to stop reporting shortfalls on ranged movements at all, and that would hide the
+real ones.
+
+---
+
 ## 1.20.0 — 2026-09-04
 
 The composition chart shows a change again.

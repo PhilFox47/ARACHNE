@@ -601,8 +601,13 @@ function historyWindow(phase: PhaseId): string | undefined {
  * Read back out of `repRange` rather than carried separately, because that
  * string is already on every stored prescription and adding a field would mean
  * every session saved before this release had none.
+ *
+ * Exported because the trainer has to judge a set by the same rule the
+ * progression advances it by. When it had its own idea of what the target was,
+ * it read the prefilled suggestion as a requirement and called ten reps of an
+ * 8–12 set two reps short — scolding a set the programme counts as a success.
  */
-function workingRange(repRange: string | null, fallback: number | null): { floor: number; top: number } | null {
+export function workingRange(repRange: string | null, fallback: number | null): { floor: number; top: number } | null {
   const m = repRange?.match(/(\d+)(?:\s*[–-]\s*(\d+))?/);
   if (m) return { floor: Number(m[1]), top: Number(m[2] ?? m[1]) };
   return fallback === null ? null : { floor: fallback, top: fallback };

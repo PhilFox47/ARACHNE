@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.20.0";
+export const APP_VERSION = "1.20.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-09-04";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.20.1",
+    date: "2026-09-04",
+    kind: "patch",
+    headline: "A set inside its range is a set done right",
+    changes: [
+      "The trainer was calling ten reps of an 8–12 set two reps short. A prescription carries two numbers — the range, which is the requirement, and the prefill, which is only what the form suggests and creeps up a rep a session. It was judging you against the prefill, so anywhere below the current suggestion counted as a miss even though the whole point of a range is that anywhere inside it is a pass.",
+      "The session after a weight increase was hit worst. Reps reset to the bottom of the range when the weight goes up — that is the mechanism working — and the old check read the drop as going backwards. Being told to fix that was being told to undo it.",
+      "Now the bottom of the range is the requirement, and the same range parser decides it for both the trainer and the progression, so the two cannot drift apart again. Reps moving around inside the range are no longer a regression either; only a movement with no range at all still reports one.",
+      "Real misses are untouched. Below the range is still a shortfall, one set of three is still an abandoned movement, and the sentence now reads “6 against 8–12” so you can see what the set was actually asking for.",
+    ],
+  },
   {
     version: "1.20.0",
     date: "2026-09-04",
@@ -188,8 +200,8 @@ export const RELEASES: ReleaseNote[] = [
     kind: "patch",
     headline: "Every photographed meal was filed under the same name",
     changes: [
-      "A meal is saved the moment the shutter closes, as \u201cAnalysing\u2026\u201d, and renamed when the model answers. The rename never rewrote the key everything groups by — so every photo-logged meal ever carried the key \u201canalysing\u201d, and the review saw one enormous food. The FUEL page lists rows and looked right; the review groups them and did not.",
-      "Two more faults from the same cause: the \u201cAgain\u201d row would have repeated whatever you last photographed rather than the chip you tapped, and starring a second photographed food overwrote the first favourite through the unique index on that column.",
+      "A meal is saved the moment the shutter closes, as “Analysing\u2026”, and renamed when the model answers. The rename never rewrote the key everything groups by — so every photo-logged meal ever carried the key “analysing”, and the review saw one enormous food. The FUEL page lists rows and looked right; the review groups them and did not.",
+      "Two more faults from the same cause: the “Again” row would have repeated whatever you last photographed rather than the chip you tapped, and starring a second photographed food overwrote the first favourite through the unique index on that column.",
       "Schema v14 repairs what is already stored — every entry's key recomputed from its description, favourites from their labels, and an entry still being analysed left alone. Your numbers do not change; the grouping does.",
       "One definition of that normalisation now, imported by every writer, with checks that fail a description written without its key and a file that reinvents the rule.",
     ],
@@ -201,7 +213,7 @@ export const RELEASES: ReleaseNote[] = [
     headline: "Forgot the photo? Describe it and it still gets estimated",
     changes: [
       "The text field under LOG FUEL used to just write the name down — a row with no calories and no macros, which is most of the way to not logging it. It now gets the same estimate a photo does.",
-      "Saved first, then worked out, so a slow or failed model can never cost you the entry. No \u201cAnalysing\u2026\u201d placeholder either: the description is already yours, so the row reads correctly the moment you press Add.",
+      "Saved first, then worked out, so a slow or failed model can never cost you the entry. No “Analysing\u2026” placeholder either: the description is already yours, so the row reads correctly the moment you press Add.",
       "It is asked differently on purpose. Half the photo prompt is about reading a plate, and a model given those rules with nothing to look at hedges. The text prompt says there is no photograph, that it must not refuse for want of one, and that where you gave no size it should assume the ordinary German portion, say which, and set its confidence low.",
       "An entry with no numbers now offers an Estimate button whether or not it has a photo — a meal typed on an evening the model was unreachable used to be stuck that way forever.",
     ],
@@ -224,7 +236,7 @@ export const RELEASES: ReleaseNote[] = [
     kind: "minor",
     headline: "Weight counts towards mastery, and the session shows the bar",
     changes: [
-      "Reps were always the bar — two reps of a movement that wants twelve has never banked anything. What was missing was any sign of that on the screen where you do the work. Every movement now shows \u201c0/2 sets at 12 reps \u00b7 that is what banks a session\u201d, and a set that came up short is marked with a dot rather than a tick.",
+      "Reps were always the bar — two reps of a movement that wants twelve has never banked anything. What was missing was any sign of that on the screen where you do the work. Every movement now shows “0/2 sets at 12 reps \u00b7 that is what banks a session”, and a set that came up short is marked with a dot rather than a tick.",
       "The three rungs you do holding something now count the weight as well as the reps: goblet squat 3\u00d715 at 16 kg, Romanian deadlift 3\u00d712 at 16 kg, Jefferson curl 3\u00d78 at 4 kg — the last of those is the document's own number.",
       "Always the total you are holding: two 8 kg dumbbells is 16, not 8. Heavier still counts; the load is a floor, not a target. The reps still have to be there.",
       "This is retroactive. Those three movements logged with no weight, or a light one, stop counting towards mastering them, so a leg strand may step back a rung. Nothing is deleted — log the weight and it climbs again.",
