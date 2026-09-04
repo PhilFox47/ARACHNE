@@ -59,6 +59,7 @@ import {
   type Standing,
 } from "./baseline";
 import { stripFences } from "./vision";
+import { workingRange } from "./prescription";
 
 export type Metric = "reps" | "time";
 
@@ -593,24 +594,6 @@ export function exerciseHistory(key: string, limit = 4, after?: string): Exercis
  */
 function historyWindow(phase: PhaseId): string | undefined {
   return isBaselinePhase(phase) ? undefined : baselineEndDate(getSettings().startDate);
-}
-
-/**
- * The working range behind a display string like "8–12" or "30–45 s".
- *
- * Read back out of `repRange` rather than carried separately, because that
- * string is already on every stored prescription and adding a field would mean
- * every session saved before this release had none.
- *
- * Exported because the trainer has to judge a set by the same rule the
- * progression advances it by. When it had its own idea of what the target was,
- * it read the prefilled suggestion as a requirement and called ten reps of an
- * 8–12 set two reps short — scolding a set the programme counts as a success.
- */
-export function workingRange(repRange: string | null, fallback: number | null): { floor: number; top: number } | null {
-  const m = repRange?.match(/(\d+)(?:\s*[–-]\s*(\d+))?/);
-  if (m) return { floor: Number(m[1]), top: Number(m[2] ?? m[1]) };
-  return fallback === null ? null : { floor: fallback, top: fallback };
 }
 
 /** Never suggest more than double what the plan asked for. */

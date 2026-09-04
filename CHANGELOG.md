@@ -17,6 +17,74 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.21.0 — 2026-09-04
+
+The session screen says what it wants.
+
+Following the range bug: if the trainer could misread which number was the
+goal, so could a person. A card carried four numbers and marked none of them
+as the one you were being measured on.
+
+Take a box squat card. `3 × 12–15` in the smallest muted grey on the card, the
+same weight as "per side". A greyed **12** in each input, which is only a
+prefill but looks like a logged value. **0/2 sets at 15 reps** underneath, sat
+directly below the sets where it read as today's requirement. And **BEST 8** in
+the corner. Four numbers, three of them different goals, none labelled.
+
+### One target, said plainly
+
+`3 × 12–15 reps` is now the second line of the card in full-size ink, directly
+under the movement's name. Weight and "per side" stay muted beside it. It is
+the first thing the card tells you, because it is the thing being asked.
+
+### Markers that answer today's question
+
+The set markers used to report **mastery** status — so thirteen reps against a
+12–15 prescription wore the same grey dot as six, because thirteen is short of
+the fifteen THE WEB wants. The screen was calling a correct set a miss, in the
+same week the trainer was doing it in words.
+
+Three tiers now, in the palette's own language:
+
+- **grey dot** — below the bottom of the range. The only actual miss.
+- **cobalt tick** — inside the range. What today asked for.
+- **crimson tick** — also clears the mastery bar, which is the further goal.
+
+Each carries the same sentence in its tooltip and screen-reader label, because
+a colour is not available to everyone and this is precisely the distinction
+that was being lost.
+
+### Two goals, named and kept apart
+
+Under the sets, today's progress in today's terms — `2 of 3 sets · 12–15 reps
+each · 1 under 12`, or `All 3 sets in 12–15 reps — done` in cobalt when it is
+finished. Below that, dimmer, the longer goal with its system named:
+`THE WEB · 0/2 sets at 15 reps banks a session`.
+
+Timed movements read identically: `3 × 30–45 s`, `1 under 30`, and a mastery
+bar in seconds.
+
+### One definition, three consumers
+
+`workingRange` moved out of `lib/training.ts` into a new database-free
+`lib/prescription.ts`, alongside `rangeLabel` and `setStanding`. The
+progression that advances a target, the trainer that judges a session against
+it, and the screen you log on now read the same module. When they each had
+their own idea, the trainer called ten reps of an 8–12 set two reps short.
+
+It has to be database-free because the session screen is a client component —
+a value imported from `lib/training` pulls better-sqlite3 into the browser
+bundle and the build dies on `Can't resolve 'fs'`. Same trap as the body-fat
+axis last release.
+
+The check that matters asserts the two ends agree: for every rep count around
+the range, what the card marks in the evening and what the trainer says the
+next morning must be the same verdict.
+
+No schema change.
+
+---
+
 ## 1.20.1 — 2026-09-04
 
 A set inside its range is a set done right.

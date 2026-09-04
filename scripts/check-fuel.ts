@@ -720,6 +720,43 @@ async function main() {
   });
   ok("the miss is written against the range", /6 against 8–12/.test(said), said.slice(0, 100));
 
+  // ── The card and the trainer read the same set the same way ──
+  // Two goals live on a session card: today's range, and the harder bar that
+  // banks a session towards THE WEB. The set markers used to answer only the
+  // second, so a set of thirteen against 12–15 wore the same grey dot as a set
+  // of six — the screen calling a good set a miss, in the same week the trainer
+  // was doing it in words.
+  //
+  // Both now read `lib/prescription`. This is what keeps that worth something:
+  // what the card marks in the evening and what the trainer says in the morning
+  // have to be the same verdict.
+  console.log("\nthe card and the trainer agree on what a set was");
+
+  const { setStanding, workingRange: wr, rangeLabel } = await import("../lib/prescription");
+  const r812 = wr("8–12", 12)!;
+
+  const disagree: string[] = [];
+  for (const reps of [6, 7, 8, 10, 12, 14]) {
+    const trainerFlags =
+      logRange({ repRange: "8–12", targetReps: 12 }, [{ date: gDay, reps, weightKg: 20, sets: 3 }]).length > 0;
+    const cardSays = setStanding(reps, r812, false);
+    if ((cardSays === "short") !== trainerFlags) {
+      disagree.push(`${reps}: card "${cardSays}" vs trainer ${trainerFlags ? "shortfall" : "fine"}`);
+    }
+  }
+  ok("every rep count around the range gets one verdict", disagree.length === 0, disagree.join("; "));
+
+  ok("inside the range is marked as done, not short", setStanding(10, r812, false) === "met");
+  ok("the bottom of the range is inside it", setStanding(8, r812, false) === "met");
+  ok("below the floor is short", setStanding(7, r812, false) === "short");
+  ok("clearing the mastery bar is its own tier, above met", setStanding(15, r812, true) === "mastered");
+  ok("nothing logged is neither", setStanding(null, r812, false) === "empty");
+
+  // What the card actually prints as the target.
+  ok("the target reads as a range", rangeLabel(wr("8–12", null), "reps") === "8–12 reps", `${rangeLabel(wr("8–12", null), "reps")}`);
+  ok("in seconds where the movement is timed", rangeLabel(wr("30–45 s", null), "time") === "30–45 s");
+  ok("and a single number is not dressed up as a range", rangeLabel(wr("10", null), "reps") === "10 reps");
+
   db.delete(sessTable).run();
   db.delete(exerciseLogs).run();
   db.delete(sessionPlans).run();

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Prescription, PrescribedExercise } from "@/lib/training";
+import { rangeLabel, setStanding, workingRange, type SetStanding } from "@/lib/prescription";
 import { recordFeel, saveSet, setCompleted } from "@/app/patrol/actions";
 import { ImpactBurst } from "./ImpactBurst";
 import { HoldTimer } from "./HoldTimer";
@@ -415,6 +416,23 @@ function ExerciseCard({
   const allDone = sets.length >= ex.sets;
   const counting = sets.filter((s) => setCounts(ex.bar, s)).length;
 
+  // What today actually asks for, and how each set stands against it.
+  //
+  // There are two goals on this card and they are different numbers: the range
+  // today wants, and the harder bar that banks a session towards THE WEB. The
+  // set markers used to answer only the second, so thirteen reps of a 12–15 set
+  // — an exactly correct set — wore the same grey dot as six.
+  const range = workingRange(ex.repRange, ex.metric === "time" ? ex.targetSeconds : ex.targetReps);
+  const asked = rangeLabel(range, ex.metric);
+  const valueOf = (s: LoggedSet | null) =>
+    s === null ? null : ex.metric === "time" ? s.seconds : s.reps;
+  const standings = Array.from({ length: ex.sets }, (_, i) => {
+    const s = byIndex.get(i) ?? null;
+    return setStanding(valueOf(s), range, setCounts(ex.bar, s));
+  });
+  const doneCount = standings.filter((s) => s !== "empty").length;
+  const shortCount = standings.filter((s) => s === "short").length;
+
   return (
     <div className={`panel flex flex-col gap-3 p-3 ${allDone ? "border-crimson-dim" : ""}`}>
       <div className="flex items-start justify-between gap-3">
@@ -423,10 +441,14 @@ function ExerciseCard({
             <span className="display text-base text-ink">{ex.name}</span>
             {hasBrief ? <InfoButton onClick={onExplain} name={ex.name} /> : null}
           </span>
-          <span className="label-xs">
-            {ex.sets} × {ex.metric === "time" ? `${ex.targetSeconds ?? "—"} s` : (ex.repRange ?? ex.targetReps ?? "—")}
-            {ex.targetWeightKg ? ` · ${ex.targetWeightKg} kg` : ""}
-            {ex.perSide ? " · per side" : ""}
+          {/* What today asks for, said once and said plainly.
+              This used to be the smallest text on the card, in the same muted
+              grey as "per side" — one of four numbers on screen with nothing to
+              mark it as the one you are being measured on. */}
+          <span className="text-sm text-ink">
+            {ex.sets} × {asked ?? "—"}
+            {ex.targetWeightKg ? <span className="text-muted"> · {ex.targetWeightKg} kg</span> : null}
+            {ex.perSide ? <span className="text-muted"> · per side</span> : null}
           </span>
           {ex.note ? <span className="text-xs text-muted-dim">{ex.note}</span> : null}
         </div>
@@ -455,26 +477,45 @@ function ExerciseCard({
               targetWeight={ex.targetWeightKg}
               perSide={ex.perSide}
               showWeight={ex.loaded || ex.bar?.kg !== undefined || byIndex.get(i)?.weightKg != null}
-              counts={setCounts(ex.bar, byIndex.get(i) ?? null)}
+              standing={standings[i]}
+              asked={asked}
+              barLabel={ex.bar?.label ?? null}
               onSave={(v) => onSave(i, v)}
             />
           </li>
         ))}
       </ul>
 
-      {/* ── What a set has to be to count ──
-          THE WEB has always said this; the screen you are actually working on
-          never did. Logging two reps of something that wants twelve looked
-          exactly like progress. */}
-      {ex.bar ? (
+      {/* ── The two goals, named and kept apart ──
+          Today's is the range: every set landing inside it is the whole ask.
+          THE WEB's is a harder bar across several sessions and several weeks,
+          and it is the one that opens the next rung. They were previously a
+          single line about the second, sitting where it read as the first. */}
+      {doneCount > 0 && asked ? (
         <p className="label-xs">
-          {counting >= ex.bar.sets ? (
-            <span className="text-crimson">
-              {counting}/{ex.bar.sets} sets counted — this session banks towards mastery
-            </span>
+          {doneCount < ex.sets ? (
+            <>
+              {doneCount} of {ex.sets} sets · {asked} each
+              {shortCount > 0 ? <span className="text-crimson"> · {shortCount} under {range!.floor}</span> : null}
+            </>
+          ) : shortCount === 0 ? (
+            <span className="text-cobalt-lift">All {ex.sets} sets in {asked} — done</span>
           ) : (
             <>
-              {counting}/{ex.bar.sets} sets at {ex.bar.label} · that is what banks a session
+              {ex.sets} of {ex.sets} sets logged
+              <span className="text-crimson"> · {shortCount} under {range!.floor}</span>
+            </>
+          )}
+        </p>
+      ) : null}
+
+      {ex.bar ? (
+        <p className="label-xs text-muted-dim">
+          {counting >= ex.bar.sets ? (
+            <span className="text-crimson">THE WEB · banked — {counting}/{ex.bar.sets} sets at {ex.bar.label}</span>
+          ) : (
+            <>
+              THE WEB · {counting}/{ex.bar.sets} sets at {ex.bar.label} banks a session
             </>
           )}
         </p>
@@ -573,6 +614,22 @@ function FeelCheck({
   );
 }
 
+/**
+ * What each marker means, in words, for the tooltip and the screen reader.
+ *
+ * Written out rather than left to colour. The colours carry it at a glance, but
+ * a glance is not available to everyone and the distinction between "did what
+ * today asked" and "also cleared the mastery bar" is exactly the one that was
+ * being missed.
+ */
+const STANDING_WORDS: Record<SetStanding, (asked: string | null, bar: string | null) => string> = {
+  empty: () => "not logged yet",
+  short: (asked) => (asked ? `short of today's ${asked}` : "short of today's target"),
+  met: (asked) => (asked ? `${asked} — what today asked for` : "what today asked for"),
+  mastered: (_asked, bar) =>
+    bar ? `${bar} — clears today's target and banks towards THE WEB` : "clears the mastery bar",
+};
+
 function SetRow({
   index,
   name,
@@ -583,7 +640,9 @@ function SetRow({
   targetWeight,
   perSide,
   showWeight,
-  counts,
+  standing,
+  asked,
+  barLabel,
   onSave,
 }: {
   index: number;
@@ -595,8 +654,12 @@ function SetRow({
   targetWeight: number | null;
   perSide: boolean;
   showWeight: boolean;
-  /** This set cleared the movement's mastery bar. */
-  counts: boolean;
+  /** Where this set landed: short of today's range, inside it, or past the bar. */
+  standing: SetStanding;
+  /** Today's range in words, for the label that explains the marker. */
+  asked: string | null;
+  /** What a set has to be to bank towards mastery, where the movement has one. */
+  barLabel: string | null;
   onSave: (v: { reps?: number | null; weightKg?: number | null; seconds?: number | null }) => void;
 }) {
   const [primary, setPrimary] = useState(
@@ -644,24 +707,30 @@ function SetRow({
         />
       ) : null}
 
+      {/* The marker says where the set landed, and says it about today first.
+          Cobalt is "you did what was asked"; crimson is the further thing —
+          this one also banks towards the next rung. A grey dot now means only
+          what it looks like: short of what today wanted. */}
       <button
         type="button"
         onClick={filled ? () => { setPrimary(""); setWeight(""); commit("", ""); } : fillTarget}
         aria-label={
           filled
-            ? `Clear set ${index + 1}${counts ? " — counted towards mastery" : " — short of the mastery bar"}`
-            : `Fill set ${index + 1} with target`
+            ? `Clear set ${index + 1} — ${STANDING_WORDS[standing](asked, barLabel)}`
+            : `Fill set ${index + 1} with today's target`
         }
-        title={filled && !counts ? "Logged, but short of the bar for mastering this movement" : undefined}
+        title={filled ? STANDING_WORDS[standing](asked, barLabel) : undefined}
         className={`flex h-9 w-9 shrink-0 items-center justify-center border text-xs ${
-          filled
-            ? counts
-              ? "border-crimson bg-crimson/15 text-crimson"
-              : "border-edge bg-panel-2 text-muted"
-            : "border-edge text-muted-dim"
+          standing === "mastered"
+            ? "border-crimson bg-crimson/15 text-crimson"
+            : standing === "met"
+              ? "border-cobalt bg-cobalt/15 text-cobalt-lift"
+              : standing === "short"
+                ? "border-edge bg-panel-2 text-muted"
+                : "border-edge text-muted-dim"
         }`}
       >
-        {filled ? (counts ? "✓" : "·") : index + 1}
+        {standing === "empty" ? index + 1 : standing === "short" ? "·" : "✓"}
       </button>
 
       <input

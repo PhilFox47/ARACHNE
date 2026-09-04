@@ -12,7 +12,7 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.20.1";
+export const APP_VERSION = "1.21.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
 export const RELEASED = "2026-09-04";
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.21.0",
+    date: "2026-09-04",
+    kind: "minor",
+    headline: "The session screen says what it wants",
+    changes: [
+      "A card carried four numbers and marked none of them as the one you were being measured on: the range in the smallest grey on the card, a prefill in each box that looks like a logged value, the mastery bar sat where it read as today's requirement, and your best ever in the corner. Today's target is now the second line of the card, full size, right under the movement's name.",
+      "The set markers answer today's question first. They used to report mastery, so thirteen reps of a 12–15 set wore the same grey dot as six — the screen calling a correct set a miss. Now a grey dot means below the range, a blue tick means inside it, and a red tick means it also banks towards THE WEB. Each says so in words on hold, too.",
+      "Under the sets, today's progress in today's terms — “2 of 3 sets · 12–15 reps each · 1 under 12”, or “All 3 sets in 12–15 reps — done” when it is finished. The longer goal sits below it, dimmer and with its system named, so the two can no longer be mistaken for each other.",
+      "One definition behind all of it. The rule for what a target is now lives in one module read by the progression that advances it, the trainer that judges you against it, and the screen you log on. The check asserts they agree: what the card marks in the evening and what the trainer says the next morning have to be the same verdict.",
+    ],
+  },
   {
     version: "1.20.1",
     date: "2026-09-04",

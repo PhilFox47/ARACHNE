@@ -11,7 +11,8 @@ import { intakeForDay, isRefuelWeek, phaseForDay, proteinTargetForDay } from "./
 import { buildComposition, compositionSummary, getHqStats, loadWeights, rollingAverage } from "./stats";
 import { findMovement, masterySessions, masteryWeeks } from "./movements";
 import { movementRecords } from "./skills";
-import { lockedFor, workingRange } from "./training";
+import { lockedFor } from "./training";
+import { workingRange } from "./prescription";
 import { WEEKLY_MALUS, malusFor, standingsFor } from "./chores";
 import { allChores, choreLogBetween } from "./choreData";
 import { apiKey, baseUrl } from "./nanogpt";
