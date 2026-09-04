@@ -107,8 +107,9 @@ export default async function Vitals() {
           </>
         ) : (
           <p className="text-xs leading-relaxed text-muted-dim">
-            Log the body-fat reading with your weight for a fortnight and this splits the line into fat and
-            lean mass — the number that decides whether the deficit is working or eating your muscle.
+            Log the body-fat reading with your weight for a fortnight and this tracks which way it is going,
+            and how much of what you have lost came off as fat rather than muscle — the number that decides
+            whether the deficit is working.
           </p>
         )}
       </section>

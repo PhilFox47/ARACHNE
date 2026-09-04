@@ -17,6 +17,68 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.20.0 — 2026-09-04
+
+The composition chart shows a change again.
+
+Reported from the phone: the VITALS composition graph displays the full range,
+runs past 100, and the thing it is meant to show barely moves.
+
+All three were true. It stacked lean and fat mass from zero, so a hundred-kilo
+body produced an axis rounded up to **110** — and since the numbers looked like
+percentages, an axis that ran to 110% of a person. Against that scale a good
+month is roughly two pixels. The chart was drawing a real measurement at a
+resolution that could not display it.
+
+The original reasoning was that "which tissue is leaving" is a question about
+proportion, and proportion has to be read against the whole body. That is sound
+and it was still the wrong call, because the proportion question is already
+answered *exactly*, in numbers, in the three cells directly beneath the chart —
+fat delta, lean delta, and what share of the change was fat. The chart was
+spending all its resolution restating something the numbers state better.
+
+### What it shows now
+
+Body fat over time, on an axis zoomed to the range actually lived in. The
+truncation is deliberate and correct for a line, where position carries the
+value; the zero-baseline rule belongs to bars, where length does.
+
+Two things keep the zoom honest, because an axis fitted to the data alone is the
+opposite mistake and no more truthful — a fortnight of readings between 30.1 and
+30.4 would fill the panel and turn hydration into a cliff:
+
+- **A floor on the window.** It is never narrower than 8 percentage points, sized
+  in multiples of four so every gridline is a whole number and every gap is the
+  same size, at every scale from a flat fortnight to a full year.
+- **The raw readings are drawn behind the average**, faintly, the same way the
+  weight chart does it. A zoomed axis with no visible scatter invites you to read
+  bioimpedance noise as biology. The dots show the instrument's real spread
+  around the line you are being asked to trust.
+
+Your first reading is marked as a dashed reference line, so however the window
+rescales, the gap between it and today is the honest answer to "has any of this
+worked". There is **no target line**: the plan document sets no body-fat goal,
+and a number invented to make a chart look purposeful would be worse than none.
+
+### Checked rather than eyeballed
+
+A wrong axis renders perfectly and simply lies about the slope, so the window
+arithmetic moved into `lib/bodyfat.ts` where it can be asserted against. Both
+failure directions are covered — a two-point move must occupy a real fraction of
+the panel, a third of a point of wobble must not — along with even gridlines at
+four scales, nothing clipped when a raw spike sits outside the averaged range,
+and an axis that never offers negative body fat.
+
+That module is separate from `lib/stats.ts` for a reason worth writing down: the
+chart is a client component, and importing a *value* from `stats` pulls its
+`db` import into the browser bundle, where better-sqlite3 asks for `fs` and the
+build fails. The type-only import it had before was erased, so the failure
+appears the moment a real function is shared.
+
+No schema change. `rawPct` is derived on read like everything else in that file.
+
+---
+
 ## 1.19.0 — 2026-09-03
 
 How it felt, after every session.

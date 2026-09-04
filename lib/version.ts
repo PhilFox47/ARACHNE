@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.19.0";
+export const APP_VERSION = "1.20.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-09-03";
+export const RELEASED = "2026-09-04";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.20.0",
+    date: "2026-09-04",
+    kind: "minor",
+    headline: "The composition chart shows a change again",
+    changes: [
+      "It stacked lean and fat mass from zero, so a hundred-kilo body gave an axis rounded up to 110 — and since those numbers read as percentages, an axis running to 110% of a person. Against that scale a good month was about two pixels. It was drawing a real measurement at a resolution that could not display it.",
+      "It now plots body fat over time, zoomed to the range you actually live in. The proportion question it used to answer is answered exactly, in numbers, in the three cells right beneath it, so the chart is free to answer the one numbers answer badly: which way is this going, and how steadily.",
+      "The zoom is kept honest two ways, because an axis fitted to the data alone is the opposite lie. The window is never narrower than 8 points, sized so every gridline is a round number at every scale; and your raw daily readings are drawn faintly behind the average, so you can see how far bioimpedance scatters around the line you are being asked to trust.",
+      "Your first reading is marked with a dashed line. However the window rescales, the gap between it and today is the honest answer to whether any of this has worked. There is no target line — the plan sets no body-fat goal, and inventing one to make the chart look purposeful would be worse than none.",
+      "The window arithmetic is checked rather than eyeballed: a wrong axis renders perfectly and just lies about the slope. Both failure directions are asserted, along with even gridlines at four scales and an axis that can never offer negative body fat.",
+    ],
+  },
   {
     version: "1.19.0",
     date: "2026-09-03",

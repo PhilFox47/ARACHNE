@@ -78,6 +78,17 @@ export interface CompositionPoint {
   day: number;
   /** Smoothed, because a single bioimpedance reading is not worth plotting. */
   bodyfatPct: number;
+  /**
+   * That day's actual reading, unsmoothed.
+   *
+   * Plotted faintly behind the average. The body-fat chart has to zoom a long
+   * way in to show a change at all — a year's work is a dozen percentage points
+   * against a scale that runs to a hundred — and a zoomed axis with no visible
+   * scatter invites you to read hydration as biology. The dots are the honesty:
+   * they show how wide the instrument's spread is around the line you are
+   * meant to trust.
+   */
+  rawPct: number;
   fatKg: number;
   leanKg: number;
 }
@@ -108,6 +119,7 @@ export function buildComposition(rows: WeightRow[], windowDays = 7): Composition
       date: r.date,
       day: daysBetween(startDate, r.date),
       bodyfatPct: round1(bf),
+      rawPct: round1(r.bodyfatPct!),
       fatKg: round1(fat),
       leanKg: round1(kg - fat),
     });

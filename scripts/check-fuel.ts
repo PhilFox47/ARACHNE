@@ -1073,6 +1073,72 @@ async function main() {
     ok(`the prompt still says ${rule.source.slice(0, 36)}`, rule.test(briefingSrc));
   }
 
+  // ── The body-fat chart's axis ──
+  // The chart this replaced stacked fat and lean mass from zero, so a hundred-
+  // kilo body gave an axis running to 110 and a year of work was a band a few
+  // pixels thick. Zooming in fixes that and introduces the opposite failure: an
+  // axis fitted to the data alone turns a fortnight of hydration noise into a
+  // cliff. Both directions are checked here, because both are silent — a wrong
+  // axis renders perfectly and simply lies about the slope.
+  console.log("\nthe body-fat axis is zoomed but not credulous");
+
+  const { buildComposition: comp } = await import("../lib/stats");
+  const { bodyfatDomain, BODYFAT_MIN_SPAN_PCT } = await import("../lib/bodyfat");
+  const asWeights = (pcts: number[]) =>
+    pcts.map((bodyfatPct, i) => ({ date: addDays(today, -(pcts.length - 1 - i)), weightKg: 98, bodyfatPct }));
+
+  // The fault that started this: a real change has to be visible.
+  const real = bodyfatDomain(comp(asWeights([30.4, 30.1, 29.6, 29.2, 28.8, 28.5])));
+  ok(
+    "a 2-point move is most of the panel, not a twentieth of it",
+    (30.4 - 28.5) / (real.max - real.min) > 0.15,
+    `${real.min}–${real.max}%`,
+  );
+
+  // And the opposite fault: noise must not be promoted to a trend.
+  const noise = bodyfatDomain(comp(asWeights([30.2, 30.1, 30.4, 30.2, 30.3, 30.1])));
+  ok(
+    "a third of a point of wobble is not a cliff",
+    noise.max - noise.min >= BODYFAT_MIN_SPAN_PCT,
+    `${noise.min}–${noise.max}%`,
+  );
+  ok(
+    "and a flat stretch sits in the middle rather than against an edge",
+    30.2 > noise.min + (noise.max - noise.min) * 0.3 && 30.2 < noise.max - (noise.max - noise.min) * 0.3,
+  );
+
+  // Nothing may be clipped. A raw reading outside the averaged range is exactly
+  // the value a reader needs to see, because it is why the average moved.
+  const spiky = comp(asWeights([30.0, 30.1, 34.5, 30.0, 29.9, 29.8]));
+  const sd = bodyfatDomain(spiky);
+  ok(
+    "every reading fits inside the window, raw ones included",
+    spiky.every((p) => p.rawPct >= sd.min && p.rawPct <= sd.max && p.bodyfatPct >= sd.min && p.bodyfatPct <= sd.max),
+    `${sd.min}–${sd.max}% against a 34.5 spike`,
+  );
+
+  // Gridlines that are whole numbers, evenly spaced, at every scale — the axis
+  // produced 27 / 29 / 31 / 34 before this, one gap wider than the others.
+  const scales: [string, number[]][] = [
+    ["a flat fortnight", [30.2, 30.1, 30.3, 30.2]],
+    ["two months of work", [30.4, 29.8, 29.1, 28.6, 28.0]],
+    ["a full year", [31.3, 28.0, 25.2, 22.4, 19.6, 18.4]],
+    ["single figures", [8.4, 8.1, 7.9, 7.6]],
+  ];
+  for (const [label, pcts] of scales) {
+    const d = bodyfatDomain(comp(asWeights(pcts)));
+    const gaps = d.ticks.slice(1).map((t, i) => t - d.ticks[i]);
+    ok(
+      `${label}: whole, evenly spaced gridlines`,
+      d.ticks.every((t) => Number.isInteger(t)) && new Set(gaps).size === 1 && d.min >= 0,
+      `${d.ticks.join(" / ")}`,
+    );
+  }
+
+  // Body fat is never negative, so the axis must never offer it.
+  const low = bodyfatDomain(comp(asWeights([3.2, 3.0, 2.9])));
+  ok("the axis never runs below zero", low.min >= 0, `${low.min}–${low.max}%`);
+
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
