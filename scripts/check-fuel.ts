@@ -430,6 +430,18 @@ async function main() {
   ok("and stays due for the rest of the day", briefingDue(today, at(22)));
   ok("a past date is never due", !briefingDue(addDays(today, -1), at(22)));
 
+  // Past midnight the day has not turned over yet, so the paragraph on screen
+  // is still the current one. The calendar date has changed and nothing else
+  // has — asking for tomorrow's briefing at 01:30 would write it eighteen hours
+  // early, from a day that has not happened.
+  const tomorrow = addDays(today, 1);
+  const lateNight = new Date(`${tomorrow}T01:30:00`);
+  ok("at 01:30 the next calendar date is not yet a day", !briefingDue(tomorrow, lateNight));
+  ok("and it is still today's briefing that stands", !briefingDue(today, lateNight));
+  // Once the day does turn over, the ordinary rule resumes.
+  ok("nothing is due at 05:00 either", !briefingDue(tomorrow, new Date(`${tomorrow}T05:00:00`)));
+  ok(`but one is from ${BRIEFING_HOUR}:00`, briefingDue(tomorrow, new Date(`${tomorrow}T09:00:00`)));
+
   const fresh = Math.floor(Date.now() / 1000);
   const row = (source: "ai" | "local", ageSec: number) =>
     ({ date: today, body: "x", model: null, source, createdAt: fresh - ageSec }) as never;

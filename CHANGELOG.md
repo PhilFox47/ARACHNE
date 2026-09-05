@@ -17,6 +17,74 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.22.0 — 2026-09-05
+
+The day ends at 04:00.
+
+A day that rolls over while you are still awake takes the evening with it. The
+glass of water at 00:30 landed on a day that had not begun. The meal after a
+late night started a fresh calorie budget from scratch and left the night
+before looking abstemious. Worst of the three: the chores you were about to
+tick had already become **missed yesterday**, and had already earned the coming
+day an XP malus — for a day you had not finished living.
+
+None of that is what happened. You simply had not gone to bed yet.
+
+Four in the morning is late enough to cover any ordinary late night and early
+enough that nobody is confused by it. On the rare morning you are up before
+four, the app is still on yesterday, which is where you are too.
+
+### What moved, and what did not
+
+Only the *logical* day. `lib/dates.ts` gained `dayOf()` — the single place a
+clock becomes a date — and `DAY_START_HOUR`. Everything that asks what day it
+is already went through `todayISO()`, so PATROL, FUEL, VITALS, MAINTENANCE,
+water, the weekly challenge windows, the chore standings and the daily backup
+all follow from one constant.
+
+Timestamps stay real. Anything reading a wall clock for its own reasons keeps
+reading the wall clock, because 01:00 is one in the morning whichever day it
+belongs to:
+
+- the meal-versus-snack guess — a 01:00 sandwich is still a snack
+- the 08:00 briefing — and its window is now *shorter*, since the gap between
+  turnover and briefing is four hours rather than eight
+- the hour-of-day chart in FUEL
+
+Four stragglers that built dates themselves — the backup name, the manual
+backup button, the skill-reset summary and `scripts/backup.ts` — now go through
+the same function. `briefingDue` was taking its hour from the clock it is
+handed and its date from real time; those agreed by accident until today.
+
+### The window where it has to say so
+
+Between midnight and 04:00 the app's date and the wall clock disagree, and a
+FUEL screen still totalling yesterday at 01:00 reads as a bug rather than as
+the point. FUEL and MAINTENANCE now carry one line under the header:
+*Still 5 Sept — the day turns over at 4:00.* It appears only in that window.
+
+### TZ is now load-bearing
+
+The boundary is a **local** hour, so `TZ` decides more than which day a backup
+belongs to — it decides which day it is. Compose already defaults it to
+`Europe/Berlin`; the README says plainly what it now governs.
+
+Which makes daylight saving a real case, not a theoretical one. A new
+`scripts/check-day.ts` pins `TZ` to the shipped default and walks every hour of
+four fourteen-day stretches — an ordinary fortnight, the spring-forward week
+(23 hours long), the autumn-back week (25), and the turn of the year —
+asserting that no day is ever skipped or repeated, that the turnover always
+lands at 04:00, and that the app is never *ahead* of the calendar. Plus the
+leap day, both directions.
+
+That is the shape of check that caught the Monday bug: asked of every hour
+rather than of the few a person thinks to try.
+
+No schema change. Rows already written keep their dates; only entries made
+between midnight and 04:00 from here on land on the day you are still in.
+
+---
+
 ## 1.21.0 — 2026-09-04
 
 The session screen says what it wants.

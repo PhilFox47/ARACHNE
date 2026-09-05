@@ -72,11 +72,28 @@ and **Restore**. Restoring is guarded the same way a reset is — pick a date, r
 | `BACKUP_DIR` | `/data/backups` | Point it at a NAS mount to get backups off the machine |
 | `BACKUP_KEEP` | `31` | How many days to hold. `0` disables backups entirely |
 | `BACKUP_DISABLED` | — | `1` to switch the schedule off without changing the count |
-| `TZ` | `Europe/Berlin` | Decides which calendar day a backup belongs to |
+| `TZ` | `Europe/Berlin` | Which day *is* today. See below — it decides far more than backups |
 
 Timing is an hourly check for "is there a backup for today yet?", not a timer set for midnight. Same
 result on a machine that stays up, and a better one on a machine that doesn't: a container restarted
 at 23:58 loses nothing, and one that was off for a week backs up within the hour of coming back.
+
+### When a day ends
+
+**04:00 local, not midnight.** Staying up past twelve should not move the water you are drinking,
+the meal you are logging or the chores you are ticking onto a day that has not started — nor hand
+the day you are still in a set of chores it never had a chance to do. Between midnight and 04:00 the
+screens say so in a line under the header, because that is the one window where the app's date and
+the wall clock disagree.
+
+`lib/dates.ts` owns it: `dayOf()` is the only place a clock becomes a date, and `DAY_START_HOUR` is
+the only number. Timestamps stay real, and anything reading a wall clock for its own reasons — the
+meal-versus-snack guess, the 08:00 briefing, the hour-of-day chart in FUEL — keeps reading the wall
+clock, since 01:00 is one in the morning whichever day it belongs to.
+
+Because the boundary is a *local* hour, `TZ` has to be right. `npm run check` pins it to the Compose
+default and walks every hour of four seasons, including both daylight-saving transitions, asserting
+that no day is ever skipped or repeated and that the turnover always lands at 04:00.
 
 ### From the command line
 
@@ -214,7 +231,7 @@ All via environment. See `.env.example`.
 | `NANOGPT_API_KEY` | FUEL photo analysis (Phase 3). Server-side only — never reaches the client. |
 | `NANOGPT_VISION_MODEL` | Which vision model. Not hardcoded anywhere. |
 | `DATABASE_PATH` · `UPLOAD_DIR` | Set by Compose to the two volumes. |
-| `TZ` | Dates are stored in local time; this is what defines local. |
+| `TZ` | Dates are stored in local time, and the day turns over at 04:00 local. This is what defines local — set it to where you actually are. |
 
 ### Choosing a vision model
 

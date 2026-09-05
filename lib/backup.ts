@@ -26,7 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DB_PATH, SCHEMA_VERSION, openAt, sqlite } from "./db";
 import { UPLOAD_DIR } from "./photos";
-import { toISODate } from "./dates";
+import { todayISO } from "./dates";
 
 export const BACKUP_DIR = process.env.BACKUP_DIR ?? "./data/backups";
 
@@ -194,7 +194,7 @@ export type BackupResult =
  * Writes the backup for a date. Refuses if one already exists, so the hourly
  * check can call it blindly and the day's backup is written exactly once.
  */
-export function createBackup(date = toISODate(new Date())): BackupResult {
+export function createBackup(date = todayISO()): BackupResult {
   if (!DATE_DIR.test(date)) return { ok: false, error: "Not a valid date." };
 
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
@@ -257,7 +257,7 @@ export function prune(keep = KEEP_BACKUPS): string[] {
 
 /** The daily check. Idempotent, so it can run as often as it likes. */
 export function ensureTodaysBackup(): BackupResult | null {
-  const today = toISODate(new Date());
+  const today = todayISO();
   if (hasBackupFor(today)) return null;
   return createBackup(today);
 }

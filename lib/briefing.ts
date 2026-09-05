@@ -4,7 +4,7 @@ import {
   briefings, exerciseLogs, foodEntries, measurements as measurementsTable,
   movementFeedback, sessionPlans, sessions, trials, abilities, waterLogs,
 } from "./db/schema";
-import { addDays, dayKeyOf, daysBetween, todayISO, weekIndex } from "./dates";
+import { addDays, dayKeyOf, dayOf, daysBetween, todayISO, weekIndex } from "./dates";
 import { getSettings } from "./settings";
 import { TRAINING_DAYS, isLowProfileWeek, roundsForWeek, sessionFor, type DayKey } from "./plan";
 import { intakeForDay, isRefuelWeek, phaseForDay, proteinTargetForDay } from "./course";
@@ -69,7 +69,13 @@ export function storedBriefing(date: string): BriefingRow | null {
  * so the first is written whenever the app is first opened.
  */
 export function briefingDue(date: string, now = new Date()): boolean {
-  if (date !== todayISO()) return false;
+  // Both halves read the same clock. It used to take `now` for the hour and
+  // real time for the date, which agreed by accident until the day stopped
+  // starting at midnight.
+  if (date !== dayOf(now)) return false;
+  // A wall-clock hour, deliberately: 08:00 is eight in the morning. Between
+  // midnight and the day's turnover the hour is 0–3, which is below it, and
+  // that day's briefing was written twenty hours ago anyway.
   if (now.getHours() >= BRIEFING_HOUR) return true;
   return db.select({ n: sql<number>`COUNT(*)` }).from(briefings).get()?.n === 0;
 }

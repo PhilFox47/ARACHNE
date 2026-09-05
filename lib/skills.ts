@@ -26,7 +26,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs, movementFeedback, skillResets } from "./db/schema";
-import { mondayOf, toISODate } from "./dates";
+import { dayOf, mondayOf } from "./dates";
 import {
   findMovement,
   masterySessions,
@@ -124,7 +124,7 @@ export interface ResetSummary {
  */
 export function resetSummary(): ResetSummary[] {
   const c = cutoffs();
-  const at = (resetAt: number) => toISODate(new Date(resetAt * 1000));
+  const at = (resetAt: number) => dayOf(new Date(resetAt * 1000));
 
   const out: ResetSummary[] = [];
   if (c.global > 0) out.push({ family: null, resetAt: c.global, since: at(c.global) });

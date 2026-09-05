@@ -1,6 +1,6 @@
 {
   "name": "arachne",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",
-    "check": "tsx scripts/check-migrations.ts && tsx scripts/check-skills.ts && tsx scripts/check-fuel.ts && tsx scripts/check-game.ts"
+    "check": "tsx scripts/check-migrations.ts && tsx scripts/check-skills.ts && tsx scripts/check-fuel.ts && tsx scripts/check-game.ts && tsx scripts/check-day.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

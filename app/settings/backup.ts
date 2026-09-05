@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { isAuthed } from "@/lib/auth";
+import { todayISO } from "@/lib/dates";
 import {
   BACKUP_DIR,
   KEEP_BACKUPS,
@@ -43,8 +44,7 @@ export async function backupState(): Promise<{
  */
 export async function backupNow() {
   await guard();
-  const today = new Date();
-  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const date = todayISO();
 
   fs.rmSync(path.join(BACKUP_DIR, date), { recursive: true, force: true });
   const res = createBackup(date);

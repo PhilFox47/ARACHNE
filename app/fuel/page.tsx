@@ -15,6 +15,7 @@ import { FuelCapture } from "@/components/FuelCapture";
 import { WaterTracker } from "@/components/WaterTracker";
 import { FuelEntryRow } from "@/components/FuelEntry";
 import { BottomNav } from "@/components/BottomNav";
+import { SmallHours } from "@/components/SmallHours";
 import { TensionLine } from "@/components/TensionLine";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +116,8 @@ export default async function Fuel({
           </Link>
         </div>
       </header>
+
+      {isToday ? <SmallHours className="-mt-3" /> : null}
 
       {/* ── Which day ── */}
       <nav className="flex items-center justify-between gap-2">

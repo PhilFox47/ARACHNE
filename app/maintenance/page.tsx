@@ -7,6 +7,7 @@ import { malusFor, standingsFor, MALUS_CAP, DAILY_MALUS, WEEKLY_MALUS } from "@/
 import { ChoreList } from "@/components/ChoreList";
 import { ChoreEditor } from "@/components/ChoreEditor";
 import { BottomNav } from "@/components/BottomNav";
+import { SmallHours } from "@/components/SmallHours";
 import { TensionLine } from "@/components/TensionLine";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,8 @@ export default async function Maintenance() {
           {dailyDone + weeklyDone} / {daily.length + weekly.length}
         </span>
       </header>
+
+      <SmallHours className="-mt-3" />
 
       {/* ── What it is costing you ── */}
       {malus.fraction > 0 ? (

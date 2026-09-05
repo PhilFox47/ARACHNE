@@ -11,10 +11,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { BACKUP_DIR, KEEP_BACKUPS, createBackup, listBackups } from "../lib/backup";
-import { toISODate } from "../lib/dates";
+import { todayISO } from "../lib/dates";
 
 const force = process.argv.includes("--force");
-const date = toISODate(new Date());
+const date = todayISO();
 
 if (force) fs.rmSync(path.join(BACKUP_DIR, date), { recursive: true, force: true });
 

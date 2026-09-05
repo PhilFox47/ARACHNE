@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.21.0";
+export const APP_VERSION = "1.22.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-09-04";
+export const RELEASED = "2026-09-05";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.22.0",
+    date: "2026-09-05",
+    kind: "minor",
+    headline: "The day ends at 04:00",
+    changes: [
+      "A day that rolled over while you were still awake took the evening with it. The glass of water at 00:30 landed on a day that had not begun, and the chores you were about to tick had already become “missed yesterday” — earning the coming day an XP malus for a day you had not finished living. Four in the morning is late enough to cover any ordinary late night and early enough that nobody is confused by it.",
+      "Only the logical day moved. Timestamps stay real, and anything reading a wall clock for its own reasons keeps reading it: a 01:00 sandwich is still a snack, the briefing is still written at eight. Everything that asks what day it is now goes through one function and one constant, so every screen, every challenge window and the daily backup follow together.",
+      "Between midnight and four the app's date and the wall clock disagree, so FUEL and MAINTENANCE say so in one line under the header — “Still 5 Sept, the day turns over at 4:00”. It shows only in that window.",
+      "The boundary is a local hour, which makes TZ load-bearing and daylight saving a real case. A new check pins the timezone to the shipped default and walks every hour of four fortnights — including the 23-hour spring-forward week and the 25-hour autumn-back one — asserting that no day is ever skipped or repeated and that the turnover always lands at four.",
+    ],
+  },
   {
     version: "1.21.0",
     date: "2026-09-04",
