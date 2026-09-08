@@ -7,7 +7,7 @@ import {
 import { addDays, dayKeyOf, dayOf, daysBetween, todayISO, weekIndex } from "./dates";
 import { getSettings } from "./settings";
 import { TRAINING_DAYS, isLowProfileWeek, roundsForWeek, sessionFor, type DayKey } from "./plan";
-import { intakeForDay, isRefuelWeek, phaseForDay, proteinTargetForDay } from "./course";
+import { intakeForDay, isRefuelWeek, nutrientGuidesForDay, phaseForDay, proteinTargetForDay } from "./course";
 import { buildComposition, compositionSummary, getHqStats, loadWeights, rollingAverage } from "./stats";
 import { findMovement, masterySessions, masteryWeeks } from "./movements";
 import { movementRecords } from "./skills";
@@ -164,6 +164,24 @@ export interface BriefingFacts {
     }[];
     /** The week's most expensive snacks, which is usually the same short list. */
     topSnacks7: { description: string; kcal: number; times: number }[];
+    /**
+     * Reference values for everything protein is not, with the week's average
+     * against each.
+     *
+     * Orientation, and the facts say so in the `kind` field: `around` for a
+     * rough share, `rest` for what the calories have left, `atLeast` for a
+     * floor, `under` for a soft ceiling. Two come from the plan document and
+     * three are ordinary public guidance the document never mentions, which is
+     * why `source` travels with them — the trainer should not cite a number as
+     * the plan's when it is not.
+     */
+    guides: {
+      label: string;
+      kind: string;
+      grams: number;
+      source: string;
+      avg7: number | null;
+    }[];
   };
   patrol: {
     last7: { date: string; dayKey: string; title: string | null; completed: boolean; rpe: number | null; note: string | null; sets: number }[];
@@ -494,6 +512,23 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
   const logged = fuelDays.filter((d) => d.entries > 0);
   const proteinTarget = proteinTargetForDay(day);
 
+  // The week's average for each nutrient that carries a reference value. Kept
+  // as five numbers rather than five more columns on every day: the guides are
+  // about the shape of a week, and a day-by-day salt figure is noise.
+  const loggedDates = new Set(logged.map((d) => d.date));
+  const avgOf = (f: (r: (typeof food)[number]) => number | null): number | null => {
+    if (loggedDates.size === 0) return null;
+    const total = food.filter((r) => loggedDates.has(r.date)).reduce((s, r) => s + (f(r) ?? 0), 0);
+    return Math.round((total / loggedDates.size) * 10) / 10;
+  };
+  const guideAverages: Record<string, number | null> = {
+    carbsG: avgOf((r) => r.carbsG),
+    fatG: avgOf((r) => r.fatG),
+    fiberG: avgOf((r) => r.fiberG),
+    sugarG: avgOf((r) => r.sugarG),
+    saltG: avgOf((r) => r.saltG),
+  };
+
   // ── Which days went over, and on what ──
   const overTargetDays: BriefingFacts["fuel"]["overTargetDays"] = [];
   for (const d of logged) {
@@ -728,6 +763,13 @@ export function gatherFacts(date = todayISO()): BriefingFacts {
       proteinDaysMet7: logged.filter((d) => d.proteinG >= proteinTarget).length,
       overTargetDays,
       topSnacks7,
+      guides: nutrientGuidesForDay(day, intake.kcal).map((g) => ({
+        label: g.label,
+        kind: g.kind,
+        grams: g.grams,
+        source: g.source,
+        avg7: guideAverages[g.key] ?? null,
+      })),
     },
     patrol: {
       last7: patrolDays,
@@ -887,6 +929,13 @@ maintenance is the chores. A daily one missed yesterday costs 10% of today's XP 
 Treat this like the rest: worth a sentence when there is something to say, not a daily roll-call. Do not list the chores back at them. A running penalty, a chore missed several days in a row, or a week where they cleared everything are all worth naming; one forgotten toothbrushing is not. Never moralise about it — a missed chore is a missed chore, not a character flaw.
 
 patrol.shortfalls is movements that came in under the prescription, each with target, best, previousBest, the sets done against the sets planned, and the catalogue's own "watch" and "cues" for that movement. Use those for the correction — they are the programme's own coaching, and they are why you can be specific about technique without guessing.
+
+PROTEIN IS THE ONLY NUMBER TO HIT
+fuel.guides carries reference values for carbs, fat, fibre, sugar and salt, each with the week's average against it. They are orientation, not targets, and you must not turn them into targets. Do not read them back as a list, do not score the day against them, and never suggest that being under one is a failure — a day at 22 g of fibre is a normal day, not a lapse.
+
+Their "kind" field says what each one even means: "around" is a rough share, "rest" is whatever the calories have left, "atLeast" is a floor you cannot overshoot, "under" is a soft ceiling. A number below an "atLeast" is worth knowing; a number below an "under" is simply good. And "source" matters when you name one: two come from the plan document, three are ordinary public guidance it never mentions — never cite the latter as the plan's.
+
+The bar for mentioning one at all is high: a full week substantially adrift, where saying so would change what they buy. "Fibre has averaged 12 g against 30 — that is most of why you are hungry at nine" is worth a sentence once. Salt and sugar almost never are, and the rule against moralising about food applies to them with particular force.
 
 MOST SETS ARE A RANGE, AND ANYWHERE INSIDE IT IS A PASS
 The programme prescribes ranges: 8–12 reps, 30–45 seconds. Landing anywhere inside one is a set done right, not a set half done. Ten reps of an 8–12 set is a success and adding a rep next time is the plan working exactly as intended — never describe it as being two short, and never compute a gap against the top of a range. Only what falls below the bottom is a shortfall, and shortfalls[].target is already that bottom, with shortfalls[].range carrying the range as written when there is one. Anything not in shortfalls at all cleared what it was asked for; say nothing about it.

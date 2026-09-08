@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.22.0";
+export const APP_VERSION = "1.23.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-09-05";
+export const RELEASED = "2026-09-08";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,19 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.23.0",
+    date: "2026-09-08",
+    kind: "minor",
+    headline: "Reference values for everything protein is not",
+    changes: [
+      "Carbs, fat, fibre, sugar and salt were counted and shown as bare numbers with nothing to read them against. Each now carries a reference value — deliberately not a target in the way protein is one.",
+      "Two of them were already in the plan. “2.300 kcal · 160 g Protein · ~70 g Fett · Rest Kohlenhydrate” — the fat figure had even been sitting in the code since the beginning, read by nothing. Fat is the document's ~70 g, carbs are literally the remainder, and the three add back to the calorie target at every phase.",
+      "Fibre, sugar and salt appear nowhere in the plan, so they are marked as what they are: 30 g of fibre and 6 g of salt from the DGE, sugar at the WHO's 10% of energy. The sugar line is held loose on purpose — a photo estimate counts the fruit and the milk, which that guideline does not, and the app says so rather than faking a precision it has not got.",
+      "Guidance has to look like guidance. The symbol says which kind each one is — / to hit, ~ around, ≥ a floor, ≤ a ceiling — protein sits a step brighter, and none of the five ever turns red. There is no “you went over”. INTAKE lists where every number came from, labelled either from the plan or not.",
+      "The trainer can see them and is told to leave them alone: it must not score days against them, never call being under one a failure, and never cite the three public-guidance figures as the plan's.",
+    ],
+  },
   {
     version: "1.22.0",
     date: "2026-09-05",

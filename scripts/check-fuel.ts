@@ -1240,12 +1240,97 @@ async function main() {
     /feedback\.hardStreak/,
     /Never respond to a hard streak by telling them to push harder/i,
     /Read hardCount against feedback\.answered/i,
+    /PROTEIN IS THE ONLY NUMBER TO HIT/,
+    /They are orientation, not targets, and you must not turn them into targets/i,
+    /never suggest that being under one is a failure/i,
+    /never cite the latter as the plan's/i,
     /MOST SETS ARE A RANGE, AND ANYWHERE INSIDE IT IS A PASS/,
     /never compute a gap against the top of a range/i,
     /Only what falls below the bottom is a shortfall/i,
   ]) {
     ok(`the prompt still says ${rule.source.slice(0, 36)}`, rule.test(briefingSrc));
   }
+
+  // ── Reference values for everything protein is not ──
+  // The rule this has to keep: the plan states one line of macros and calls
+  // exactly one of them non-negotiable. Five more numbers on the same screen is
+  // five more ways to feel like you failed, unless each says what kind of thing
+  // it is and where it came from.
+  console.log("\nthe nutrient guides are guidance, not five more targets");
+
+  const { nutrientGuides, PHASES: allPhases, normaliseCourse: normCourse, DOCUMENT_COURSE: docCourse,
+    proteinTargetForDayIn: proteinIn, phaseForDayIn: phaseIn } = await import("../lib/plan");
+
+  const g1 = nutrientGuides(2300, 160, 70);
+  const byKey = (k: string) => g1.find((g) => g.key === k)!;
+
+  // Phase 1 is the one line the document actually writes down.
+  ok("fat is the document's own ~70 g", byKey("fatG").grams === 70 && byKey("fatG").source === "document",
+    `${byKey("fatG").grams} g, ${byKey("fatG").source}`);
+  ok("carbs are the remainder, as the document says", byKey("carbsG").grams === 258, `${byKey("carbsG").grams} g`);
+  ok(
+    "and the three macros add back up to the calorie target",
+    Math.abs(160 * 4 + byKey("fatG").grams * 9 + byKey("carbsG").grams * 4 - 2300) <= 4,
+    `${160 * 4 + byKey("fatG").grams * 9 + byKey("carbsG").grams * 4} kcal`,
+  );
+
+  // Nothing the document does not say may claim it did.
+  const invented = g1.filter((g) => ["fiberG", "sugarG", "saltG"].includes(g.key));
+  ok(
+    "fibre, sugar and salt are all marked as not from the plan",
+    invented.every((g) => g.source === "EXTRAPOLATED"),
+    invented.filter((g) => g.source !== "EXTRAPOLATED").map((g) => g.label).join(", "),
+  );
+  ok("and every guide explains itself", g1.every((g) => g.note.length > 40));
+
+  // The kinds are the whole point: a floor and a ceiling are not the same
+  // request, and rendering them identically is what turns them into targets.
+  ok("fibre is a floor", byKey("fiberG").kind === "atLeast");
+  ok("sugar and salt are ceilings", byKey("sugarG").kind === "under" && byKey("saltG").kind === "under");
+  ok("fat is a rough share", byKey("fatG").kind === "around");
+  ok("carbs are the remainder and nothing else", byKey("carbsG").kind === "rest");
+
+  // Every phase has to produce a coherent set, including the ones with no fat
+  // figure and Phase 0, which states no protein target either.
+  const drift: string[] = [];
+  for (const ph of allPhases) {
+    const course = normCourse(docCourse);
+    const protein = proteinIn(course, ph.startDay);
+    const gs = nutrientGuides(ph.kcal, protein, phaseIn(course, ph.startDay).fatG);
+    const fat = gs.find((x) => x.key === "fatG")!.grams;
+    const carbs = gs.find((x) => x.key === "carbsG")!.grams;
+    const sum = protein * 4 + fat * 9 + carbs * 4;
+    if (Math.abs(sum - ph.kcal) > 4) drift.push(`phase ${ph.id}: ${sum} vs ${ph.kcal}`);
+    if (gs.some((x) => x.grams <= 0)) drift.push(`phase ${ph.id}: a guide came out at zero`);
+  }
+  ok("every phase produces a coherent set", drift.length === 0, drift.join("; "));
+
+  // A phase with no fat figure derives one, and says it derived it.
+  const derived = nutrientGuides(2100, 170, null);
+  ok(
+    "a phase the document gives no fat figure for says so",
+    derived.find((x) => x.key === "fatG")!.source === "EXTRAPOLATED",
+  );
+  ok(
+    "and derives a sane one rather than nothing",
+    derived.find((x) => x.key === "fatG")!.grams > 40 && derived.find((x) => x.key === "fatG")!.grams < 100,
+    `${derived.find((x) => x.key === "fatG")!.grams} g`,
+  );
+
+  // Salt and fibre are about the body, not the day's calories.
+  const lean = nutrientGuides(1800, 160, null);
+  const rich = nutrientGuides(2700, 160, null);
+  ok(
+    "fibre and salt do not move with the calorie target",
+    lean.find((x) => x.key === "fiberG")!.grams === rich.find((x) => x.key === "fiberG")!.grams &&
+      lean.find((x) => x.key === "saltG")!.grams === rich.find((x) => x.key === "saltG")!.grams,
+  );
+  ok(
+    "but carbs, fat and sugar do",
+    rich.find((x) => x.key === "carbsG")!.grams > lean.find((x) => x.key === "carbsG")!.grams &&
+      rich.find((x) => x.key === "fatG")!.grams > lean.find((x) => x.key === "fatG")!.grams &&
+      rich.find((x) => x.key === "sugarG")!.grams > lean.find((x) => x.key === "sugarG")!.grams,
+  );
 
   // ── The body-fat chart's axis ──
   // The chart this replaced stacked fat and lean mass from zero, so a hundred-

@@ -24,12 +24,14 @@ import {
   maintenanceForDayIn,
   phaseForDayIn,
   phasesFor,
+  nutrientGuides,
   proteinTargetForDayIn,
   taperFor,
   type DailyIntake,
   type DayWeight,
   type Checkpoint,
   type CourseConfig,
+  type NutrientGuide,
   type Phase,
 } from "./plan";
 import { getSettings } from "./settings";
@@ -78,6 +80,21 @@ export function kcalTargetForDay(day: number): { kcal: number; taper: boolean } 
 
 export function proteinTargetForDay(day: number): number {
   return proteinTargetForDayIn(activeCourse(), day);
+}
+
+/**
+ * The day's reference values for carbs, fat, fibre, sugar and salt.
+ *
+ * Built from the intake for the day on screen rather than the phase headline,
+ * so a REFUEL WEEK or an adjusted day carries them with it.
+ */
+export function nutrientGuidesForDay(day: number, kcal?: number): NutrientGuide[] {
+  const course = activeCourse();
+  return nutrientGuides(
+    kcal ?? intakeForDay(day).kcal,
+    proteinTargetForDayIn(course, day),
+    phaseForDayIn(course, day).fatG,
+  );
 }
 
 export function courseCheckpoints(): Checkpoint[] {

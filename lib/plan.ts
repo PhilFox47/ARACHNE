@@ -519,6 +519,118 @@ export function proteinTargetForDayIn(config: CourseConfig, day: number): number
 }
 
 // ─────────────────────────────────────────────────────────────
+// The other nutrients — guidance, not targets
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * What a nutrient guide is asking of you, which is not the same for all of them.
+ *
+ * Protein is a target: hit 160 g. These are not, and rendering them the same way
+ * would quietly turn five pieces of orientation into five more things to fail.
+ *
+ *   around    a rough share. Both directions are worth noticing and neither is
+ *             a failure — fat too low costs you hormones, too high crowds out
+ *             the food that keeps you full.
+ *   rest      literally the remainder. Not a goal in any direction; it is what
+ *             the calories become once protein and fat are paid for.
+ *   atLeast   a floor. Under it is worth knowing; over it is simply fine.
+ *   under     a ceiling, and a soft one.
+ */
+export type GuideKind = "around" | "rest" | "atLeast" | "under";
+
+export interface NutrientGuide {
+  key: "carbsG" | "fatG" | "fiberG" | "sugarG" | "saltG";
+  label: string;
+  kind: GuideKind;
+  grams: number;
+  /** Where the number comes from, held to the same standard as every other. */
+  source: "document" | "EXTRAPOLATED";
+  /** One line, for the screen that has to explain itself. */
+  note: string;
+}
+
+/**
+ * The document's own fat figure, as a share of energy.
+ *
+ * "2.300 kcal · 160 g Protein · ~70 g Fett · Rest Kohlenhydrate" — Phase 1.
+ * 70 g is 630 kcal of 2,300, so 27%. Only Phase 1 states a number; the share is
+ * what carries it to the phases that do not, and to a day whose intake has been
+ * adjusted. The tilde is the document's own: it wrote "~70 g", not "70 g".
+ */
+const FAT_ENERGY_SHARE = 0.274;
+
+/**
+ * Fibre, EXTRAPOLATED. The document never mentions it.
+ *
+ * 30 g a day is the DGE's recommendation for adults, and it is a floor rather
+ * than a target — nobody has ever been harmed by the next serving of vegetables.
+ * Flat rather than scaled with energy: the reason to eat it does not shrink
+ * because the day's calories did.
+ */
+const FIBRE_MIN_G = 30;
+
+/**
+ * Sugar, EXTRAPOLATED. The WHO's guideline is under 10% of energy from free
+ * sugars, and under 5% is better still.
+ *
+ * Held deliberately loose, because the app cannot measure what the guideline
+ * measures. A photo estimate gives *total* sugars — the banana and the milk in
+ * with the biscuits — and the WHO's 10% is about free sugars only. So a day
+ * that eats a lot of fruit can pass the real guideline and fail this number.
+ * That is why it is drawn as a soft ceiling and says what it counts.
+ */
+const SUGAR_ENERGY_SHARE = 0.1;
+
+/**
+ * Salt, EXTRAPOLATED. The DGE puts the upper end at 6 g of salt a day, the WHO
+ * at 5. The higher of the two, because this is orientation and the lower figure
+ * is a public-health target rather than a personal one.
+ *
+ * Not scaled with energy either — sodium is about blood pressure, not calories.
+ */
+const SALT_MAX_G = 6;
+
+/**
+ * The day's reference values for everything that is not protein.
+ *
+ * Derived from the intake actually on screen rather than the phase's headline
+ * figure, so a REFUEL WEEK or an adjusted day moves them together with the
+ * calorie number they are a share of.
+ */
+export function nutrientGuides(kcal: number, proteinG: number, fatG: number | null): NutrientGuide[] {
+  const fat = fatG ?? Math.round((kcal * FAT_ENERGY_SHARE) / 9);
+  // "Rest Kohlenhydrate" — what is left once protein and fat are paid for.
+  const carbs = Math.max(0, Math.round((kcal - proteinG * 4 - fat * 9) / 4));
+
+  return [
+    {
+      key: "carbsG", label: "Carbs", kind: "rest", grams: carbs, source: "document",
+      note: "Whatever the calories have left once protein and fat are paid for. The document sets no figure and does not need one.",
+    },
+    {
+      key: "fatG", label: "Fat", kind: "around", grams: fat,
+      source: fatG === null ? "EXTRAPOLATED" : "document",
+      note: fatG === null
+        ? "27% of the day's energy, which is what the document's ~70 g works out to in Phase 1. Too low costs you hormones; too high crowds out the food that fills you up."
+        : "The document's own figure for this phase, and it wrote it with a tilde. Too low costs you hormones; too high crowds out the food that fills you up.",
+    },
+    {
+      key: "fiberG", label: "Fibre", kind: "atLeast", grams: FIBRE_MIN_G, source: "EXTRAPOLATED",
+      note: "The DGE's 30 g a day. A floor, not a target — it is the one number here you cannot really overshoot, and it does most of the work of feeling full on fewer calories.",
+    },
+    {
+      key: "sugarG", label: "Sugar", kind: "under", grams: Math.round((kcal * SUGAR_ENERGY_SHARE) / 4),
+      source: "EXTRAPOLATED",
+      note: "10% of energy, from the WHO's guideline on free sugars. Deliberately loose: a photo estimate counts the fruit and the milk too, which that guideline does not.",
+    },
+    {
+      key: "saltG", label: "Salt", kind: "under", grams: SALT_MAX_G, source: "EXTRAPOLATED",
+      note: "The DGE's upper end of 6 g a day. About blood pressure rather than calories, so it does not move with the day's intake.",
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────
 // Weight corridor
 // ─────────────────────────────────────────────────────────────
 

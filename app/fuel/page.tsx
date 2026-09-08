@@ -8,7 +8,8 @@ import { foodEntries, mealPhotos } from "@/lib/db/schema";
 import { getHqStats } from "@/lib/stats";
 import { getSettings } from "@/lib/settings";
 import { addDays, daysBetween, formatShort, todayISO } from "@/lib/dates";
-import { intakeForDay, proteinTargetForDay } from "@/lib/course";
+import { intakeForDay, nutrientGuidesForDay, proteinTargetForDay } from "@/lib/course";
+import type { NutrientGuide } from "@/lib/plan";
 import { listFavourites, quickLogCandidates } from "./actions";
 import { waterForDate } from "./water";
 import { FuelCapture } from "@/components/FuelCapture";
@@ -99,6 +100,12 @@ export default async function Fuel({
   const target = intake.kcal;
   // The phase's own figure — 160 g through Phase 1, not three meals' worth.
   const proteinTarget = proteinTargetForDay(dayIndex);
+
+  // Reference values for everything protein is not. Built from the day on
+  // screen's own intake, so a REFUEL WEEK moves them with the calorie number
+  // they are a share of.
+  const guides = nutrientGuidesForDay(dayIndex, target);
+  const guide = (key: NutrientKey) => guides.find((g) => g.key === key);
   const pct = target > 0 ? Math.min(100, Math.round((kcal / target) * 100)) : 0;
   const over = kcal > target;
   const unpriced = entries.filter((e) => e.kcal === null).length;
@@ -215,18 +222,32 @@ export default async function Fuel({
 
         <TensionLine accent={over && !isPhase0} />
 
+        {/* Protein carries a target and turns crimson when it is met. Everything
+            else carries a reference value and never changes colour: the plan
+            names one figure to hit, and rendering five more the same way would
+            quietly turn orientation into five further ways to fail. The symbol
+            says which kind each one is — / to hit, ~ around, ≥ a floor, ≤ a
+            ceiling. */}
         <div className="grid grid-cols-4 border border-edge">
           <Macro label="Protein" value={protein} unit="g" goal={proteinTarget} accent={protein >= proteinTarget} />
-          <Macro label="Carbs" value={carbs} unit="g" bordered />
-          <Macro label="Fat" value={fat} unit="g" bordered />
-          <Macro label="Fibre" value={fiber} unit="g" bordered />
+          <Macro label="Carbs" value={carbs} unit="g" guide={guide("carbsG")} bordered />
+          <Macro label="Fat" value={fat} unit="g" guide={guide("fatG")} bordered />
+          <Macro label="Fibre" value={fiber} unit="g" guide={guide("fiberG")} bordered />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <Mini label="Sugar" value={sugar} unit="g" />
-          <Mini label="Salt" value={salt} unit="g" />
+          <Mini label="Sugar" value={sugar} unit="g" guide={guide("sugarG")} />
+          <Mini label="Salt" value={salt} unit="g" guide={guide("saltG")} />
           <Mini label="From snacks" value={snackPct} unit="%" accent={snackPct > 20} />
         </div>
+
+        <p className="text-xs leading-relaxed text-muted-dim">
+          Protein is the target. The rest are reference values — being under one is worth knowing, not
+          worth a bad evening.{" "}
+          <Link href="/fuel/stats#guides" className="text-cobalt-lift underline">
+            Where they come from
+          </Link>
+        </p>
       </section>
 
       <WaterTracker initialMl={water.ml} targetMl={settings.waterTargetMl} date={date} />
@@ -290,6 +311,18 @@ export default async function Fuel({
   );
 }
 
+/**
+ * How a reference value is written, which says what kind of thing it is.
+ *
+ * The symbol is the whole distinction between a target and a guide, and it has
+ * to survive being three characters wide on a phone: `/` is the one figure to
+ * hit, `~` is roughly this, `≥` is a floor, `≤` is a ceiling.
+ */
+function guideMark(g: NutrientGuide): string {
+  const symbol = g.kind === "atLeast" ? "≥" : g.kind === "under" ? "≤" : "~";
+  return `${symbol} ${g.grams}`;
+}
+
 function Macro({
   label,
   value,
@@ -297,6 +330,7 @@ function Macro({
   bordered,
   accent,
   goal,
+  guide,
 }: {
   label: string;
   value: number;
@@ -305,6 +339,8 @@ function Macro({
   accent?: boolean;
   /** Shown under the label where the plan states a figure to hit. */
   goal?: number;
+  /** Shown where there is orientation rather than a figure to hit. */
+  guide?: NutrientGuide;
 }) {
   return (
     <div className={`flex flex-col gap-1 p-2.5 ${bordered ? "border-l border-edge" : ""}`}>
@@ -312,22 +348,43 @@ function Macro({
         {Math.round(value)}
         <span className="text-[0.5em] text-muted">{unit}</span>
       </span>
+      {/* The figure on its own line. Four columns on a 393px screen are not
+          wide enough for "CARBS ~ 258" and it broke after the tilde. */}
       <span className="label-xs leading-tight">
         {label}
-        {goal !== undefined ? <span className="text-muted-dim"> / {goal}</span> : null}
+        {/* The target sits a step brighter than the guides beside it. One of
+            these six numbers is binding and five are orientation, and the
+            symbol alone was carrying that whole distinction. */}
+        {goal !== undefined ? <span className="block text-muted">/ {goal}</span> : null}
+        {guide ? <span className="block text-muted-dim">{guideMark(guide)}</span> : null}
       </span>
     </div>
   );
 }
 
-function Mini({ label, value, unit, accent }: { label: string; value: number; unit: string; accent?: boolean }) {
+function Mini({
+  label,
+  value,
+  unit,
+  accent,
+  guide,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  accent?: boolean;
+  guide?: NutrientGuide;
+}) {
   return (
     <span className="flex items-baseline gap-1.5">
       <span className={`numeral text-sm tabular ${accent ? "text-crimson" : "text-muted"}`}>
         {Math.round(value * 10) / 10}
         {unit}
       </span>
-      <span className="label-xs">{label}</span>
+      <span className="label-xs">
+        {label}
+        {guide ? <span className="text-muted-dim"> {guideMark(guide)}</span> : null}
+      </span>
     </span>
   );
 }

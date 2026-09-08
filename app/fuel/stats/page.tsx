@@ -4,6 +4,9 @@ import { isAuthed } from "@/lib/auth";
 import { needsOnboarding } from "@/lib/onboarding";
 import { buildFuelStats } from "@/lib/fuelStats";
 import { PROTEIN_PER_MEAL_G } from "@/lib/plan";
+import { nutrientGuidesForDay, proteinTargetForDay } from "@/lib/course";
+import { getSettings } from "@/lib/settings";
+import { daysBetween, todayISO } from "@/lib/dates";
 import { CountUp } from "@/components/CountUp";
 import { TensionLine } from "@/components/TensionLine";
 import { BottomNav } from "@/components/BottomNav";
@@ -30,6 +33,12 @@ export default async function FuelStats({
   const params = await searchParams;
   const requested = Number(params.days);
   const period = (PERIODS as readonly number[]).includes(requested) ? requested : 30;
+
+  // Today's reference values, so the page that explains them shows the ones
+  // actually on screen rather than a phase's headline figures.
+  const dayIndex = Math.max(0, daysBetween(getSettings().startDate, todayISO()));
+  const proteinTarget = proteinTargetForDay(dayIndex);
+  const guides = nutrientGuidesForDay(dayIndex);
 
   const st = buildFuelStats(period);
   const t = st.totals;
@@ -218,6 +227,42 @@ export default async function FuelStats({
         Days on target: {t.kcalDaysUnder} at or under calories, {t.proteinDaysMet} at protein,{" "}
         {t.waterDaysMet} at water.
       </p>
+
+      {/* ── Where the reference values come from ──
+          The screen that shows five numbers has to be able to say where each
+          one came from, because two of them are the document's and three are
+          not, and that difference is the difference between a plan and a guess
+          with a nice font. */}
+      <section id="guides" className="flex flex-col gap-2 scroll-mt-4">
+        <p className="label-xs">Where the reference values come from</p>
+        <p className="text-xs leading-relaxed text-muted">
+          Protein is the only target — {proteinTarget} g, which the plan calls non-negotiable. Everything
+          below is orientation. Being under one on a given day is worth knowing and is not a failure.
+        </p>
+        <ul className="flex flex-col border border-edge">
+          {guides.map((g) => (
+            <li key={g.key} className="flex flex-col gap-1 border-b border-edge p-3 last:border-b-0">
+              <span className="flex items-baseline justify-between gap-3">
+                <span className="label-xs text-ink">
+                  {g.label}{" "}
+                  <span className="text-muted-dim">
+                    {g.kind === "atLeast" ? "≥" : g.kind === "under" ? "≤" : "~"} {g.grams} g
+                  </span>
+                </span>
+                <span className={`label-xs shrink-0 ${g.source === "document" ? "text-cobalt-lift" : "text-muted-dim"}`}>
+                  {g.source === "document" ? "From the plan" : "Not in the plan"}
+                </span>
+              </span>
+              <span className="text-xs leading-relaxed text-muted-dim">{g.note}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs leading-relaxed text-muted-dim">
+          The plan states one line of macros — 2,300 kcal, 160 g protein, ~70 g fat, the rest carbohydrate
+          — and says nothing about fibre, sugar or salt. Those three are marked as what they are: sound
+          public guidance, not part of the plan you signed up to.
+        </p>
+      </section>
 
       <BottomNav />
     </main>

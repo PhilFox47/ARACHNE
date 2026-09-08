@@ -17,6 +17,65 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.23.0 — 2026-09-08
+
+Reference values for everything protein is not.
+
+Carbs, fat, fibre, sugar and salt were counted and shown as bare numbers with
+nothing to read them against. Now each carries a reference value — deliberately
+**not** a target in the way protein is one.
+
+### Two of them were already written down
+
+The plan's Phase 1 line is `2.300 kcal · 160 g Protein · ~70 g Fett · Rest
+Kohlenhydrate`. Fat and carbs were in the document all along, and `fatG: 70`
+had even been sitting in `PHASES` since the beginning — read by nothing. It is
+read now.
+
+- **Fat** — the document's `~70 g`, tilde and all. Where a later phase states
+  none, it carries as a share of energy: 70 g of 2,300 kcal is 27%.
+- **Carbs** — literally "Rest Kohlenhydrate", the remainder once protein and fat
+  are paid for. 258 g in Phase 1, and the three add back to the calorie target
+  within rounding, which is checked at every phase.
+
+### Three of them were not, and say so
+
+Fibre, sugar and salt appear nowhere in the plan, so they are marked
+`EXTRAPOLATED` like every other number the document does not state:
+
+- **Fibre ≥ 30 g** — the DGE's figure for adults.
+- **Sugar ≤ 10% of energy** — the WHO's guideline, held deliberately loose. The
+  app cannot measure what that guideline measures: a photo estimate gives
+  *total* sugars, fruit and milk included, and the WHO's 10% is about free
+  sugars. The screen says so rather than implying a precision it has not got.
+- **Salt ≤ 6 g** — the DGE's upper end, the higher of it and the WHO's 5.
+
+Fibre and salt do not move with the calorie target. Neither is about calories.
+
+### Guidance has to look like guidance
+
+Five more numbers rendered like protein's `/ 160` would have been five more
+ways to fail. So the symbol says what kind of thing each one is — `/` to hit,
+`~` around, `≥` a floor, `≤` a ceiling — protein's target sits a step brighter
+than the guides beside it, and **none of the five ever changes colour.** There
+is no "you went over" red. That is what a reference value is.
+
+INTAKE gained a section listing all five with where each came from, labelled
+either *From the plan* or *Not in the plan*, and FUEL links to it.
+
+### The trainer can see them and is told to leave them alone
+
+It would otherwise be blind to five numbers now on screen. The facts carry each
+guide with its kind, its source and the week's average — and the prompt gained
+a section whose first line is that protein is the only number to hit. It must
+not score days against them, must never call being under one a failure, and
+must never cite fibre, sugar or salt as the plan's when they are not. The bar
+for mentioning one is a full week substantially adrift.
+
+No schema change.
+
+---
+
 ## 1.22.0 — 2026-09-05
 
 The day ends at 04:00.
