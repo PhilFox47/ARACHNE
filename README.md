@@ -73,6 +73,7 @@ and **Restore**. Restoring is guarded the same way a reset is — pick a date, r
 | `BACKUP_KEEP` | `31` | How many days to hold. `0` disables backups entirely |
 | `BACKUP_DISABLED` | — | `1` to switch the schedule off without changing the count |
 | `TZ` | `Europe/Berlin` | Which day *is* today. See below — it decides far more than backups |
+| `DAY_START_HOUR` | `4` | The hour a day turns over, local time. `0` restores midnight |
 
 Timing is an hourly check for "is there a backup for today yet?", not a timer set for midnight. Same
 result on a machine that stays up, and a better one on a machine that doesn't: a container restarted
@@ -85,6 +86,13 @@ the meal you are logging or the chores you are ticking onto a day that has not s
 the day you are still in a set of chores it never had a chance to do. Between midnight and 04:00 the
 screens say so in a line under the header, because that is the one window where the app's date and
 the wall clock disagree.
+
+`DAY_START_HOUR` moves it. 4 covers an ordinary late night; set it to 5 or 6 if you are reliably up
+later, or 0 to restore the midnight boundary. It is an environment variable rather than an in-app
+setting for the same reason `TZ` is one — the function that answers "what day is it" is called by
+every screen and has no business opening the database. A nonsense value falls back to 4 rather than
+turning every date in the app into `Invalid Date`, and **SETTINGS shows the hour the running build is
+using**, next to the version, so you can check it from the phone.
 
 `lib/dates.ts` owns it: `dayOf()` is the only place a clock becomes a date, and `DAY_START_HOUR` is
 the only number. Timestamps stay real, and anything reading a wall clock for its own reasons — the

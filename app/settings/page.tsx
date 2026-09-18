@@ -7,6 +7,7 @@ import { SettingsForm } from "@/components/SettingsForm";
 import { EquipmentPicker } from "@/components/EquipmentPicker";
 import { VrGamesPicker } from "@/components/VrGamesPicker";
 import { SCHEMA_VERSION } from "@/lib/db";
+import { DAY_START_HOUR } from "@/lib/dates";
 import { BackupPanel } from "@/components/BackupPanel";
 import { VersionPanel } from "@/components/VersionPanel";
 import { ResetPanel } from "@/components/ResetPanel";
@@ -51,7 +52,7 @@ export default async function Settings() {
 
       <BackupPanel />
 
-      <VersionPanel schemaVersion={SCHEMA_VERSION} />
+      <VersionPanel schemaVersion={SCHEMA_VERSION} dayStartHour={DAY_START_HOUR} />
 
       <ResetPanel />
 

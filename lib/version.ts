@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.23.0";
+export const APP_VERSION = "1.24.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-09-08";
+export const RELEASED = "2026-09-18";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.24.0",
+    date: "2026-09-18",
+    kind: "minor",
+    headline: "The turnover hour is yours to set",
+    changes: [
+      "This panel now says what the build is doing: “the day turns over at 4:00”. A day boundary is invisible until the one night it matters, and when it misbehaves the first question is whether the build on your phone has it at all — which is now answerable right here, next to the version number that answers it.",
+      "DAY_START_HOUR sets the hour. 4 stays the default; set 5 or 6 if you are reliably up later, or 0 to go back to midnight. An environment variable rather than a setting in here, for the same reason TZ is one: the function that answers “what day is it” is called by every screen and has no business opening the database.",
+      "A nonsense value falls back to 4 rather than turning every date in the app into Invalid Date, fractions truncate, and nothing can move the turnover into the evening.",
+      "The reported fault — chores at 02:00 showing the new day — does not reproduce on this code. Running the server with its clock at 02:27 shows the previous day's list, tickable, and the tick lands on that day. That is the 04:00 boundary from v1.22.0 working, so a build from before it is the thing to check.",
+    ],
+  },
   {
     version: "1.23.0",
     date: "2026-09-08",

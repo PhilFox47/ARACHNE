@@ -17,6 +17,53 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.24.0 — 2026-09-18
+
+The turnover hour is yours to set, and the build says what it is.
+
+Reported: chores still not resetting properly — at 02:00 on the 18th the app
+shows the 18th's list, so last night's evening chore can never be ticked.
+
+**On this code, it does not.** Reproduced by running the server with its clock
+inside that window (`TZ=America/New_York`, local time 02:27 on the 18th):
+MAINTENANCE renders `TODAY · 17 SEPT`, the list is the 17th's and tickable, and
+a tick lands in `chore_log` dated `2026-09-17`. Exactly the wanted behaviour.
+That is v1.22.0's boundary working, which means the symptom is a build from
+before it.
+
+So this release does not change the boundary. It makes the hour configurable
+and — more usefully — makes the running build state it.
+
+### SETTINGS says what the build is doing
+
+The version panel now carries one line: *The day turns over at 4:00 —
+DAY_START_HOUR.* A day boundary is invisible until the one night it matters,
+and when it misbehaves the first question is whether the build on the phone has
+it at all. That question is now answerable from the phone, next to the version
+number that answers it.
+
+### DAY_START_HOUR
+
+4 stays the default. Set it to 5 or 6 if you are reliably up later, or 0 to
+restore the midnight boundary. An environment variable rather than an in-app
+setting, for the same reason `TZ` is one: the function that answers "what day is
+it" is called by every screen, every challenge window and the backup schedule,
+and it has no business opening the database to do it.
+
+Validated rather than trusted. `Number("five")` is `NaN`, and a `NaN` hour would
+turn every date in the app into `Invalid Date` at once — so anything unparseable
+falls back to 4, fractions truncate, negatives clamp to 0 and anything past 11
+clamps there, because a day that turns over in the evening is not a day.
+
+`scripts/check-day.ts` asserts the parsing, and then asserts the variable
+actually reaches `dayOf` by running it in a child process with the env set:
+04:30 is the new day at the default and still yesterday at 5. Recomputing the
+shift inside the check would only have proved that the check can subtract.
+
+No schema change.
+
+---
+
 ## 1.23.0 — 2026-09-08
 
 Reference values for everything protein is not.

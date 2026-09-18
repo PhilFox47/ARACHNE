@@ -20,16 +20,38 @@ export function toISODate(d: Date): string {
  * scratch and leaves last night's looking abstemious. None of that is what
  * happened — you simply had not gone to bed yet.
  *
- * Four in the morning is late enough to cover any ordinary late night and early
- * enough that nobody is confused by it: on the very rare morning you are up
- * before four, the app is still on yesterday, which is where you are too.
+ * Four in the morning is the default, and it is late enough to cover an ordinary
+ * late night while early enough that nobody is confused by it: on the rare
+ * morning you are up before four, the app is still on yesterday, which is where
+ * you are too. `DAY_START_HOUR` moves it for someone who is reliably up later —
+ * the right hour is a fact about the person, not about the app.
  *
  * Only the *logical* day moves. Timestamps stay real, and anything that reads a
  * wall clock for its own reasons — the meal-versus-snack guess, the 08:00
  * briefing, the hour-of-day chart in FUEL — keeps reading the wall clock, since
  * 01:00 is one in the morning whichever day it belongs to.
  */
-export const DAY_START_HOUR = 4;
+export const DAY_START_HOUR = parseDayStartHour(process.env.DAY_START_HOUR);
+
+/**
+ * Reads the configured turnover hour, defaulting to four.
+ *
+ * Configurable because the right hour is a fact about the person, not about the
+ * app: four covers an ordinary late night, and somebody who is reliably up past
+ * it wants five. An environment variable rather than a setting in the database,
+ * for the same reason `TZ` is one — this is read by the single function every
+ * screen, every challenge window and the backup schedule call to find out what
+ * day it is, and that function has no business opening the database.
+ *
+ * Clamped and validated rather than trusted: a typo that produced `NaN` would
+ * make every date in the app `Invalid Date`, and a boundary of 23 would leave
+ * the day turning over an hour before midnight.
+ */
+export function parseDayStartHour(raw: string | undefined): number {
+  const n = Number(raw);
+  if (raw === undefined || raw.trim() === "" || !Number.isFinite(n)) return 4;
+  return Math.min(11, Math.max(0, Math.trunc(n)));
+}
 
 /**
  * The day a moment belongs to.

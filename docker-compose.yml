@@ -25,6 +25,9 @@ services:
       BACKUP_KEEP: ${BACKUP_KEEP:-31}
       # TZ decides which calendar day a backup belongs to, so it has to be set.
       TZ: ${TZ:-Europe/Berlin}
+      # The hour a day turns over, local time. 4 covers an ordinary late night;
+      # raise it if you are reliably up later. 0 restores midnight.
+      DAY_START_HOUR: ${DAY_START_HOUR:-4}
     volumes:
       - arachne-db:/data/db
       - arachne-uploads:/data/uploads

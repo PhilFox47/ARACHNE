@@ -22,7 +22,12 @@
 
 process.env.TZ = "Europe/Berlin";
 
-import { DAY_START_HOUR, addDays, dayOf, inSmallHours, todayISO, toISODate } from "../lib/dates";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+
+import { DAY_START_HOUR, addDays, dayOf, inSmallHours, parseDayStartHour, todayISO, toISODate } from "../lib/dates";
 
 let failures = 0;
 const ok = (label: string, cond: boolean, extra = "") => {
@@ -149,6 +154,55 @@ function main() {
       (d) => dayOf(d) <= toISODate(d),
     ),
   );
+
+  // ── The configured hour ──
+  // Four is the default, not the rule: the right boundary is a fact about the
+  // person. A bad value has to fail safe rather than poison every date in the
+  // app — `Number("five")` is NaN, and a NaN hour makes `dayOf` return
+  // "NaN-NaN-NaN" everywhere at once.
+  console.log("\na bad DAY_START_HOUR cannot poison every date in the app");
+
+  ok("the default is four", parseDayStartHour(undefined) === 4);
+  ok("an empty value is the default", parseDayStartHour("") === 4 && parseDayStartHour("   ") === 4);
+  ok("a word is the default, not NaN", parseDayStartHour("five") === 4);
+  ok("a real hour is taken", parseDayStartHour("5") === 5 && parseDayStartHour("0") === 0);
+  ok("a fraction is truncated", parseDayStartHour("4.7") === 4);
+  ok("negatives clamp to midnight", parseDayStartHour("-3") === 0);
+  ok("and nothing turns the day over in the evening", parseDayStartHour("23") === 11 && parseDayStartHour("999") === 11);
+  ok(
+    "every accepted value is an hour of the morning",
+    ["0", "1", "4", "5", "11", "-1", "40", "abc", "", undefined].every((v) => {
+      const h = parseDayStartHour(v as string | undefined);
+      return Number.isInteger(h) && h >= 0 && h <= 11;
+    }),
+  );
+
+  // And the variable has to actually reach `dayOf`. Asserted in a child process
+  // with the env set, because the constant is read once at import: recomputing
+  // the shift here by hand would prove only that this check can subtract.
+  const probe = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "arachne-dayhour-")),
+    "probe.mts",
+  );
+  fs.writeFileSync(
+    probe,
+    `const { dayOf, DAY_START_HOUR } = await import(${JSON.stringify(path.resolve("lib/dates.ts"))});\n` +
+      `console.log(DAY_START_HOUR + " " + dayOf(new Date("2026-09-18T04:30:00")));\n`,
+  );
+  const run = (hour: string | undefined) =>
+    execFileSync("npx", ["tsx", probe], {
+      encoding: "utf8",
+      env: { ...process.env, TZ: "Europe/Berlin", ...(hour === undefined ? {} : { DAY_START_HOUR: hour }) },
+    }).trim();
+
+  // 04:30 is after a 4:00 boundary and before a 5:00 one, so the two configs
+  // have to disagree about which day it is.
+  ok("unset, 04:30 is already the new day", run(undefined) === "4 2026-09-18", run(undefined));
+  ok("set to 5, the same moment is still yesterday", run("5") === "5 2026-09-17", run("5"));
+  ok("set to 0, the boundary is midnight again", run("0") === "0 2026-09-18", run("0"));
+  ok("and a nonsense value falls back to four", run("five") === "4 2026-09-18", run("five"));
+
+  fs.rmSync(path.dirname(probe), { recursive: true, force: true });
 
   // ── The live function ──
   console.log("\nand the live one agrees with the rule");

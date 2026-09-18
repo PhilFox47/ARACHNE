@@ -11,7 +11,21 @@ import { APP_VERSION, RELEASES } from "@/lib/version";
  * says how far the database has been migrated. When something looks wrong after
  * an update, the pair of them is the first thing worth reading out.
  */
-export function VersionPanel({ schemaVersion }: { schemaVersion: number }) {
+export function VersionPanel({
+  schemaVersion,
+  dayStartHour,
+}: {
+  schemaVersion: number;
+  /**
+   * The hour the running build turns the day over.
+   *
+   * Here rather than buried in an env file because this is the panel that
+   * answers "what is the build on my phone actually doing". The day boundary is
+   * invisible until the one night it matters, and when it does not behave the
+   * first question is whether this build has it at all.
+   */
+  dayStartHour: number;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -27,6 +41,10 @@ export function VersionPanel({ schemaVersion }: { schemaVersion: number }) {
         <span className="numeral text-3xl text-ink tabular">{APP_VERSION}</span>
         <span className="label-xs">schema {schemaVersion}</span>
       </div>
+
+      <p className="label-xs text-muted-dim">
+        The day turns over at {dayStartHour}:00 — DAY_START_HOUR
+      </p>
 
       {open ? (
         <ul className="flex flex-col gap-4 border-t border-edge pt-3">
