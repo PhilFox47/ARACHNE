@@ -9,6 +9,7 @@ import { dayKeyOf } from "@/lib/dates";
 import { phaseForDay } from "@/lib/course";
 import { daysBetween } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
+import { isVerdict, type Verdict } from "@/lib/feedback";
 
 async function guard() {
   if (!(await isAuthed())) throw new Error("Not authorised.");
@@ -137,12 +138,16 @@ export async function clearSession(date: string) {
 export async function recordFeel(
   date: string,
   exerciseKey: string,
-  verdict: "controlled" | "hard" | "pain",
+  verdict: Verdict,
 ) {
   await guard();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || exerciseKey.trim() === "") {
     return { ok: false as const, error: "Bad request." };
   }
+  // The verdict arrives over the wire, and the column has no CHECK constraint
+  // behind it — an unknown value would sit in the table reading as neither
+  // painful nor anything else, and quietly never step a movement down.
+  if (!isVerdict(verdict)) return { ok: false as const, error: "Unknown verdict." };
 
   db.insert(movementFeedback)
     .values({ date, exerciseKey, verdict })

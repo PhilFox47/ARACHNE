@@ -27,6 +27,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { exerciseLogs, movementFeedback, skillResets } from "./db/schema";
 import { dayOf, mondayOf } from "./dates";
+import type { Verdict } from "./feedback";
 import {
   findMovement,
   masterySessions,
@@ -274,12 +275,49 @@ export function painCounts(): Map<string, number> {
  * ever this barely mattered; asked every session it is the whole difference
  * between a question and a nag.
  */
-export function feedbackFor(date: string): { exerciseKey: string; verdict: "controlled" | "hard" | "pain" }[] {
+export function feedbackFor(date: string): { exerciseKey: string; verdict: Verdict }[] {
   return db
     .select({ exerciseKey: movementFeedback.exerciseKey, verdict: movementFeedback.verdict })
     .from(movementFeedback)
     .where(eq(movementFeedback.date, date))
     .all();
+}
+
+/**
+ * The most recent answer for every movement, with the day it was given.
+ *
+ * One query rather than one per movement: the progression asks this for every
+ * exercise in a session, and the session screen is the hottest path in the app.
+ * The date travels with it so the caller can check the answer belongs to the
+ * session it is about to progress from — feedback from three weeks ago should
+ * not decide what today asks for.
+ */
+export function latestVerdicts(): Map<string, { date: string; verdict: Verdict }> {
+  const rows = db
+    .select({ key: movementFeedback.exerciseKey, date: movementFeedback.date, verdict: movementFeedback.verdict })
+    .from(movementFeedback)
+    .orderBy(asc(movementFeedback.date))
+    .all();
+
+  const out = new Map<string, { date: string; verdict: Verdict }>();
+  // Ascending, so the last write for a key is the newest.
+  for (const r of rows) out.set(r.key, { date: r.date, verdict: r.verdict });
+  return out;
+}
+
+/**
+ * Every answer ever given, keyed by "exerciseKey|date".
+ *
+ * For handing a session's history to the model with how each one felt attached.
+ * A flat map rather than a nested one because the caller already has both parts
+ * of the key and wants a single lookup per row.
+ */
+export function verdictsByKeyDate(): Map<string, Verdict> {
+  const rows = db
+    .select({ key: movementFeedback.exerciseKey, date: movementFeedback.date, verdict: movementFeedback.verdict })
+    .from(movementFeedback)
+    .all();
+  return new Map(rows.map((r) => [`${r.key}|${r.date}`, r.verdict]));
 }
 
 /** Dates on which each movement was reported as hurting. */
@@ -291,7 +329,7 @@ function painDays(): Map<string, Set<string>> {
 
   const out = new Map<string, Set<string>>();
   for (const r of rows) {
-    if (r.verdict !== "pain") continue;
+    if (r.verdict !== "painful") continue;
     const set = out.get(r.key) ?? new Set<string>();
     set.add(r.date);
     out.set(r.key, set);

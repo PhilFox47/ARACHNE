@@ -276,7 +276,7 @@ export const movementFeedback = sqliteTable(
     date: text("date").notNull(),
     /** Shared with exercise_logs, so it survives everything that key survives. */
     exerciseKey: text("exercise_key").notNull(),
-    verdict: text("verdict", { enum: ["controlled", "hard", "pain"] }).notNull(),
+    verdict: text("verdict", { enum: ["easy", "clean", "hard", "limit", "painful"] }).notNull(),
     createdAt: integer("created_at").notNull().default(now),
   },
   (t) => [uniqueIndex("feedback_date_key_idx").on(t.date, t.exerciseKey)],

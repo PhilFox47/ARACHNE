@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.24.0";
+export const APP_VERSION = "1.25.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-09-18";
+export const RELEASED = "2026-09-21";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.25.0",
+    date: "2026-09-21",
+    kind: "minor",
+    headline: "Five answers to how it felt",
+    changes: [
+      "Easy, Clean, Hard, Limit, Painful. Three was not enough, and the two missing ones carry instructions: “controlled” meant both exactly right and far too easy, so a movement you had outgrown crept up a rep a session while the calendar took weeks to notice; and “hard” meant both I finished barely and I could not finish, which is the difference between the load being at the edge and the load being wrong.",
+      "The answer now sets the next session. Same work logged, only the rating different: Easy asks for two more reps, Clean one, Hard and Limit hold where you are, and Painful drops back to the bottom of the range. A movement you did not rate progresses exactly as it did before — a quiet session must never stall the plan.",
+      "The trainer gained the vocabulary. A run of “easy” is now its own signal, and it is the clearest instruction in the data precisely because nothing is going wrong. Runs of hard and limit count together, since both mean at or past what can be absorbed. The model that builds each session now sees how every past session felt, not only what you lifted.",
+      "Everything you have already answered came with you. Schema 17 renames rather than discards: controlled became clean, pain became painful, hard kept its name. Nothing was invented as easy or limit — nobody could give those answers before, and making up how a session felt months ago would be worse than leaving it blank.",
+    ],
+  },
   {
     version: "1.24.0",
     date: "2026-09-18",

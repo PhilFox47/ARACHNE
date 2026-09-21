@@ -448,6 +448,30 @@ export const MIGRATIONS: ((db: Database.Database) => void)[] = [
       CREATE INDEX IF NOT EXISTS chore_log_date_idx ON chore_log(date);
     `);
   },
+
+  // ── v17: five answers to "how did that feel", not three ──
+  //
+  // "controlled" was doing two jobs — *exactly right* and *far too easy* — and
+  // the app could only act on the first, so a movement you had outgrown sat at
+  // the same load until the calendar moved it. "hard" was doing two as well:
+  // *finished, barely* and *could not finish*. The new scale splits both.
+  //
+  // A rename, so every answer already given keeps its meaning rather than being
+  // thrown away: "controlled" is what the new scale calls "clean", and "pain" is
+  // "painful". "hard" keeps both its name and its meaning. Nothing maps to
+  // "easy" or "limit" — those are answers nobody was previously able to give,
+  // and inventing them for past sessions would be making up how something felt
+  // months ago.
+  //
+  // The column has no CHECK constraint, so this is an UPDATE and not a table
+  // rebuild. The old names are gone afterwards; the unique index on
+  // (date, exercise_key) is untouched because no row changes its identity.
+  (sqlite) => {
+    sqlite.exec(`
+      UPDATE movement_feedback SET verdict = 'clean'   WHERE verdict = 'controlled';
+      UPDATE movement_feedback SET verdict = 'painful' WHERE verdict = 'pain';
+    `);
+  },
 ];
 
 /**

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Prescription, PrescribedExercise } from "@/lib/training";
 import { rangeLabel, setStanding, workingRange, type SetStanding } from "@/lib/prescription";
+import { VERDICTS, isOverreach, verdictInfo, type Verdict } from "@/lib/feedback";
 import { recordFeel, saveSet, setCompleted } from "@/app/patrol/actions";
 import { ImpactBurst } from "./ImpactBurst";
 import { HoldTimer } from "./HoldTimer";
@@ -41,7 +42,7 @@ export function SessionLogger({
   /** The day has not arrived. Nothing is issued, stored, or logged. */
   preview?: boolean;
   /** Today's verdict per movement, so the question can show its own answer. */
-  feel?: Record<string, "controlled" | "hard" | "pain">;
+  feel?: Record<string, Verdict>;
   /** The catalogue entry behind each movement, keyed by exercise key. */
   briefs?: Record<string, MovementBrief>;
 }) {
@@ -408,7 +409,7 @@ function ExerciseCard({
   pb: { reps: number | null; weightKg: number | null; seconds: number | null } | null;
   hasBrief: boolean;
   /** What was already said about this movement today, if anything. */
-  storedFeel: "controlled" | "hard" | "pain" | null;
+  storedFeel: Verdict | null;
   onExplain: () => void;
   onSave: (setIndex: number, v: { reps?: number | null; weightKg?: number | null; seconds?: number | null }) => void;
 }) {
@@ -528,12 +529,6 @@ function ExerciseCard({
   );
 }
 
-const VERDICTS = [
-  { key: "controlled", label: "Controlled", hint: "Felt solid" },
-  { key: "hard", label: "Hard", hint: "But nothing wrong" },
-  { key: "pain", label: "Something hurt", hint: "Joint, not muscle" },
-] as const;
-
 /**
  * How the movement felt, asked after every session rather than once ever.
  *
@@ -560,9 +555,9 @@ function FeelCheck({
 }: {
   date: string;
   ex: PrescribedExercise;
-  stored: "controlled" | "hard" | "pain" | null;
+  stored: Verdict | null;
 }) {
-  const [chosen, setChosen] = useState<string | null>(stored);
+  const [chosen, setChosen] = useState<Verdict | null>(stored);
   const [, start] = useTransition();
 
   // Answered on the server for this day: the row is an upsert on
@@ -578,7 +573,13 @@ function FeelCheck({
             ? `First time on ${ex.name.toLowerCase()} — how did it feel?`
             : "How did that feel?"}
       </p>
-      <div className="grid grid-cols-3 gap-2">
+
+      {/* One row, read left to right as a scale: too little, right, at the
+          edge, past it, and the one that is not about effort at all. Five
+          hints will not fit inside five buttons on a phone, so the buttons
+          carry the word and the line underneath carries the meaning — which
+          also makes the line do something useful before anything is chosen. */}
+      <div className="grid grid-cols-5 gap-1">
         {VERDICTS.map((v) => (
           <button
             key={v.key}
@@ -591,25 +592,28 @@ function FeelCheck({
               });
             }}
             aria-pressed={chosen === v.key}
-            className={`tap flex flex-col items-center justify-center gap-0.5 border px-2 py-2 ${
+            aria-label={`${v.label} — ${v.hint}`}
+            title={v.hint}
+            className={`tap flex items-center justify-center border px-1 py-2 text-[0.68rem] leading-tight ${
               chosen === v.key
-                ? v.key === "pain"
+                ? isOverreach(v.key)
                   ? "border-crimson bg-crimson/15 text-crimson"
                   : "border-cobalt bg-cobalt/15 text-cobalt-lift"
                 : "border-edge text-muted"
             }`}
           >
-            <span className="text-[0.7rem] leading-tight">{v.label}</span>
-            <span className="text-[0.55rem] leading-tight text-muted-dim">{v.hint}</span>
+            {v.label}
           </button>
         ))}
       </div>
-      {chosen === "pain" ? (
-        <p className="text-xs leading-relaxed text-crimson">
-          Logged. Say so once more on this movement and it steps back down a level until the one below is
-          clean again.
-        </p>
-      ) : null}
+
+      <p className={`text-xs leading-relaxed ${chosen === "painful" ? "text-crimson" : "text-muted-dim"}`}>
+        {/* Short forms until something is chosen: the full sentence for each of
+            five, under each of nine movements, is more legend than screen. The
+            whole hint is still on every button for a screen reader, and the
+            answer you give replaces this with what it will actually do. */}
+        {chosen ? verdictInfo(chosen).meaning : VERDICTS.map((v) => `${v.label}: ${v.brief}`).join(" · ")}
+      </p>
     </div>
   );
 }

@@ -1099,8 +1099,8 @@ async function main() {
   setS("start_date", addDays(today, -60));
 
   const painDay = addDays(today, -2);
-  db.insert(movementFeedback).values({ date: painDay, exerciseKey: "incline inverted row", verdict: "pain" }).run();
-  db.insert(movementFeedback).values({ date: addDays(today, -5), exerciseKey: "incline inverted row", verdict: "pain" }).run();
+  db.insert(movementFeedback).values({ date: painDay, exerciseKey: "incline inverted row", verdict: "painful" }).run();
+  db.insert(movementFeedback).values({ date: addDays(today, -5), exerciseKey: "incline inverted row", verdict: "painful" }).run();
   db.insert(movementFeedback).values({ date: addDays(today, -3), exerciseKey: "wall push-up", verdict: "hard" }).run();
   db.insert(measTbl).values({ date: addDays(today, -45), waistCm: 108 }).run();
   db.insert(measTbl).values({ date: addDays(today, -3), waistCm: 104 }).run();
@@ -1115,15 +1115,22 @@ async function main() {
   ok("pain is visible at all", seen.feedback.painful.length > 0, JSON.stringify(seen.feedback.painful));
   ok("with the movement named", seen.feedback.painful[0]?.movement === "Incline inverted row", seen.feedback.painful[0]?.movement);
   ok("and how often it has happened", seen.feedback.painful[0]?.times === 2);
-  ok("'hard' is counted separately from pain", seen.feedback.hardCount === 1 && seen.feedback.painful.length === 1);
-  ok("and it comes with a denominator", seen.feedback.answered === 3, `${seen.feedback.hardCount} of ${seen.feedback.answered}`);
+  ok("'hard' is counted separately from pain", seen.feedback.counts.hard === 1 && seen.feedback.painful.length === 1);
+  ok("and it comes with a denominator", seen.feedback.answered === 3, `${seen.feedback.counts.hard} of ${seen.feedback.answered}`);
+  ok(
+    "every answer on the scale has its own tally",
+    Object.keys(seen.feedback.counts).length === 5 &&
+      seen.feedback.counts.painful === 2 &&
+      seen.feedback.counts.easy === 0,
+    JSON.stringify(seen.feedback.counts),
+  );
 
   // The reason for asking every session rather than once: a run of "hard" on
   // one movement is a load that is not being absorbed, and it is invisible if
   // the question is only ever asked the first time.
   db.delete(movementFeedback).run();
   // Newest first: three hard sessions running, with an easier one behind them.
-  const runOfHard = ["hard", "hard", "hard", "controlled"] as const;
+  const runOfHard = ["hard", "hard", "hard", "clean"] as const;
   runOfHard.forEach((verdict, i) => {
     db.insert(movementFeedback).values({ date: addDays(today, -(i + 1)), exerciseKey: "box squat", verdict }).run();
   });
@@ -1139,20 +1146,67 @@ async function main() {
   // And the run has to be the current one. A movement that was hard three
   // times and came back controlled is one you are winning; reporting that as
   // a streak would say the opposite of what happened.
-  db.insert(movementFeedback).values({ date: today, exerciseKey: "box squat", verdict: "controlled" }).run();
+  db.insert(movementFeedback).values({ date: today, exerciseKey: "box squat", verdict: "clean" }).run();
   ok(
     "a movement that came back controlled has no streak left",
     gatherFacts(today).feedback.hardStreak.length === 0,
     JSON.stringify(gatherFacts(today).feedback.hardStreak),
   );
 
+  const noFeedback = { recent: [], counts: { easy: 0, clean: 0, hard: 0, limit: 0, painful: 0 }, answered: 0,
+    painful: [], easyStreak: [], hardStreak: [] };
+
   const streakSaid = localBriefing(
-    { ...gatherFacts(today), feedback: { recent: [], painful: [], hardCount: 4, answered: 6,
-      hardStreak: [{ movement: "Box squat", sessions: 3 }] } },
+    { ...gatherFacts(today), feedback: { ...noFeedback, counts: { ...noFeedback.counts, hard: 4 }, answered: 6,
+      hardStreak: [{ movement: "Box squat", sessions: 3, worst: "hard" as const }] } },
     [],
   );
   ok("the streak is spoken, not just carried", /box squat has come back hard/i.test(streakSaid), streakSaid.slice(0, 110));
   ok("and it says hold the load rather than add to it", /hold the load/i.test(streakSaid));
+
+  // ── The two answers the old scale could not carry ──
+  // "limit" is not a louder "hard": one means finished at the edge, the other
+  // means could not finish, and the advice differs. And "easy" is the only
+  // thing anywhere in the data that says to make something harder — nothing is
+  // going wrong, which is exactly why it would otherwise never get said.
+  db.delete(movementFeedback).run();
+  for (const [i, v] of (["limit", "hard", "limit"] as const).entries()) {
+    db.insert(movementFeedback).values({ date: addDays(today, -(i + 1)), exerciseKey: "box squat", verdict: v }).run();
+  }
+  for (const [i] of [0, 1, 2].entries()) {
+    db.insert(movementFeedback).values({ date: addDays(today, -(i + 1)), exerciseKey: "wall push-up", verdict: "easy" }).run();
+  }
+  const mixed = gatherFacts(today).feedback;
+
+  ok("hard and limit together are one run, not two", mixed.hardStreak[0]?.sessions === 3, JSON.stringify(mixed.hardStreak));
+  ok("and the run says it contained a failure", mixed.hardStreak[0]?.worst === "limit", `${mixed.hardStreak[0]?.worst}`);
+  ok("a run of easy sessions is its own signal", mixed.easyStreak[0]?.movement === "Wall push-up" && mixed.easyStreak[0]?.sessions === 3,
+    JSON.stringify(mixed.easyStreak));
+  ok("and easy is never mistaken for a hard streak", !mixed.hardStreak.some((h) => h.movement === "Wall push-up"));
+  ok("every answer is tallied separately", mixed.counts.limit === 2 && mixed.counts.hard === 1 && mixed.counts.easy === 3,
+    JSON.stringify(mixed.counts));
+
+  const easySaid = localBriefing(
+    { ...gatherFacts(today), patrol: { ...gatherFacts(today).patrol, skipped: [], shortfalls: [], lastSessionDaysAgo: 0 },
+      feedback: { ...noFeedback, easyStreak: [{ movement: "Wall push-up", sessions: 3 }] } },
+    [],
+  );
+  ok("a movement that costs nothing is called out", /wall push-up has felt easy/i.test(easySaid), easySaid.slice(0, 110));
+  ok("and it says to add rather than to carry on", /add weight/i.test(easySaid));
+
+  const limitSaid = localBriefing(
+    { ...gatherFacts(today), patrol: { ...gatherFacts(today).patrol, skipped: [], shortfalls: [], lastSessionDaysAgo: 0 },
+      feedback: { ...noFeedback, hardStreak: [{ movement: "Box squat", sessions: 3, worst: "limit" as const }] } },
+    [],
+  );
+  ok("a run of failures reads as the load, not as laziness", /under the target/i.test(limitSaid), limitSaid.slice(0, 120));
+  ok("and never as a demand for more effort", !/push harder|try harder/i.test(limitSaid));
+  ok(
+    "the rotation tells an easy streak from a hard one on the same movement",
+    recentTopics([asRow("Wall push-up has felt easy 3 times in a row.")]).has("easy:Wall push-up") &&
+      !recentTopics([asRow("Wall push-up has felt easy 3 times in a row.")]).has("hard:Wall push-up"),
+  );
+  db.delete(movementFeedback).run();
   ok(
     "the rotation can tell a hard streak from a shortfall on the same movement",
     recentTopics([asRow("Box squat has come back hard 3 times in a row.")]).has("hard:Box squat") &&
@@ -1239,7 +1293,11 @@ async function main() {
     /web\.nearMastery/,
     /feedback\.hardStreak/,
     /Never respond to a hard streak by telling them to push harder/i,
-    /Read hardCount against feedback\.answered/i,
+    /feedback\.counts is how many of each there were/i,
+    /THE FIVE ANSWERS, AND WHAT EACH ONE ASKS YOU TO DO/,
+    /easy — almost no effort\. This is an instruction to make it harder/,
+    /feedback\.easyStreak is movements that came back "easy"/,
+    /Never respond to a hard streak by telling them to push harder/i,
     /PROTEIN IS THE ONLY NUMBER TO HIT/,
     /They are orientation, not targets, and you must not turn them into targets/i,
     /never suggest that being under one is a failure/i,

@@ -198,7 +198,7 @@ async function main() {
     .values({
       date: "2026-09-14",
       exerciseKey: movementKey(BENCH),
-      verdict: "pain",
+      verdict: "painful",
       createdAt: ++clock,
     })
     .run();
@@ -394,6 +394,99 @@ async function main() {
     db.select().from(exerciseLogs).all().length === rowsNow,
     `${rowsNow} rows`,
   );
+
+  // ── How it felt decides what is asked for next ──
+  // The whole reason the question is asked. Double progression on its own reads
+  // twelve reps the same way whether they flew up or nearly finished you, and
+  // adds one either way — so on the old three-answer scale a movement someone
+  // had outgrown crept up a rep a session while a movement that was crushing
+  // them did exactly the same.
+  console.log("\nthe rating changes what the next session asks for");
+
+  const { stepFor, VERDICTS: SCALE } = await import("../lib/feedback");
+
+  ok("five answers, not three", SCALE.length === 5, SCALE.map((v) => v.key).join(", "));
+  ok("and each one says what it does", SCALE.every((v) => v.hint.length > 10 && v.meaning.length > 20));
+
+  ok("easy asks for more than clean", stepFor("easy").reps > stepFor("clean").reps);
+  ok("and more seconds on a hold too", stepFor("easy").seconds > stepFor("clean").seconds);
+  ok("clean is the ordinary single step", stepFor("clean").reps === 1 && stepFor("clean").seconds === 5);
+  ok("hard adds nothing", stepFor("hard").reps === 0 && stepFor("hard").seconds === 0);
+  ok("limit adds nothing either", stepFor("limit").reps === 0 && stepFor("limit").seconds === 0);
+  ok("painful goes back rather than nowhere", stepFor("painful").back);
+  ok("and nothing else does", !["easy", "clean", "hard", "limit"].some((v) => stepFor(v as never).back));
+
+  // A movement nobody has rated has to behave exactly as it did before any of
+  // this existed, or a quiet session silently stalls the plan.
+  ok("an unanswered movement keeps the ordinary step", stepFor(null).reps === 1 && stepFor(undefined).reps === 1);
+  ok("and never steps back on its own", !stepFor(null).back);
+
+  // Nothing on the scale may ever ask for less than nothing, or for a jump no
+  // sane session could absorb.
+  ok(
+    "every step is a sane size",
+    [...SCALE.map((v) => v.key), null].every((v) => {
+      const st = stepFor(v as never);
+      return st.reps >= 0 && st.reps <= 2 && st.seconds >= 0 && st.seconds <= 10;
+    }),
+  );
+
+  // And end to end, through the real issuing path: identical work logged, only
+  // the rating different. This is the assertion the whole feature stands on —
+  // everything above proves the arithmetic, this proves it reaches the session.
+  console.log("\nthe same session, rated differently, is prescribed differently");
+  {
+    const { baselinePrescription, generatePrescription } = await import("../lib/training");
+    const { todayISO: nowISO, addDays: plus, dayKeyOf: dk } = await import("../lib/dates");
+    const { setSetting } = await import("../lib/settings");
+
+    const day = nowISO();
+    const before = plus(day, -1);
+    setSetting("start_date", plus(day, -60));
+
+    const shape = baselinePrescription(1, dk(day) as never, 8, day);
+    const move = shape.exercises.find((e) => e.metric === "reps");
+
+    const issued = async (verdict: string | null) => {
+      db.delete(exerciseLogs).run();
+      db.delete(sessions).run();
+      db.delete(movementFeedback).run();
+      const sid = db
+        .insert(sessions)
+        .values({ date: before, dayKey: dk(before), phase: 1, completed: true })
+        .returning({ id: sessions.id })
+        .get().id;
+      for (let i = 0; i < 3; i++) {
+        db.insert(exerciseLogs)
+          .values({ sessionId: sid, date: before, exerciseKey: move!.key, exerciseName: move!.name,
+            setIndex: i, reps: 10, weightKg: 20 })
+          .run();
+      }
+      if (verdict) db.insert(movementFeedback).values({ date: before, exerciseKey: move!.key, verdict: verdict as never }).run();
+      const rx = await generatePrescription(baselinePrescription(1, dk(day) as never, 8, day), false);
+      return rx.exercises.find((e) => e.key === move!.key)?.targetReps ?? null;
+    };
+
+    if (!move) {
+      ok("today's session has a rep-based movement to test with", false);
+    } else {
+      const none = await issued(null);
+      const easy = await issued("easy");
+      const clean = await issued("clean");
+      const hard = await issued("hard");
+      const limit = await issued("limit");
+      const painful = await issued("painful");
+
+      ok("easy asks for more than clean", (easy ?? 0) > (clean ?? 0), `${easy} vs ${clean}`);
+      ok("clean asks for more than the ten that were logged", (clean ?? 0) > 10, `${clean}`);
+      ok("hard holds at what was logged", hard === 10, `${hard}`);
+      ok("limit holds too", limit === 10, `${limit}`);
+      ok("painful drops back rather than holding", (painful ?? 99) < 10, `${painful}`);
+      // The one that must not change. A movement nobody rated has to behave
+      // exactly as it did before any of this shipped.
+      ok("and an unrated movement progresses as it always did", none === clean, `${none} vs ${clean}`);
+    }
+  }
 
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failures === 0 ? "\nAll checks hold." : `\n${failures} check(s) failed.`);

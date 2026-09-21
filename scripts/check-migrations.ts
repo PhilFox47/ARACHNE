@@ -18,6 +18,7 @@ import path from "node:path";
 import { builtinModules } from "node:module";
 import Database from "better-sqlite3";
 import { MIGRATIONS, SCHEMA_VERSION, openAt } from "../lib/db";
+import { VERDICT_KEYS } from "../lib/feedback";
 import {
   ADAPT_MAX_KCAL,
   BASELINE_PATROLS,
@@ -291,6 +292,78 @@ console.log("norm_key follows the description again");
   );
   again.close();
   fixed.close();
+  console.log("");
+}
+
+// ── Three answers become five, without losing what was already said ──
+// The scale gained "easy" and "limit", and two of the old names were wrong for
+// the new scale: "controlled" meant *exactly right*, which the five call
+// "clean", and "pain" is "painful". Every answer already given has to survive
+// that as the same answer — a rating is a memory of how a session felt, and
+// there is no way to go back and ask again.
+//
+// Seeded against a real v16 database rather than asserted about the SQL,
+// because what matters is what happens to rows that already exist.
+console.log("the feedback scale gains two answers and loses none");
+{
+  const file = path.join(root, "verdicts.db");
+  const raw = new Database(file);
+  raw.pragma("journal_mode = WAL");
+  for (let v = 0; v < 16; v++) MIGRATIONS[v](raw);
+  raw.pragma("user_version = 16");
+
+  const add = raw.prepare(
+    "INSERT INTO movement_feedback (date, exercise_key, verdict) VALUES (?, ?, ?)",
+  );
+  const seeded: [string, string, string][] = [
+    ["2026-09-01", "goblet squat", "controlled"],
+    ["2026-09-02", "goblet squat", "hard"],
+    ["2026-09-03", "goblet squat", "pain"],
+    ["2026-09-01", "incline inverted row", "controlled"],
+    ["2026-09-02", "incline inverted row", "pain"],
+  ];
+  for (const [d, k, v] of seeded) add.run(d, k, v);
+  raw.close();
+
+  const up = openAt(file);
+  const rows = up
+    .prepare("SELECT date, exercise_key, verdict FROM movement_feedback ORDER BY exercise_key, date")
+    .all() as { date: string; exercise_key: string; verdict: string }[];
+
+  ok("every answer is still there", rows.length === seeded.length, `${rows.length} of ${seeded.length}`);
+  ok(
+    "and every one is on the new scale",
+    rows.every((r) => VERDICT_KEYS.includes(r.verdict as never)),
+    rows.map((r) => r.verdict).join(", "),
+  );
+  ok("none of the old names survive", !rows.some((r) => r.verdict === "controlled" || r.verdict === "pain"));
+
+  const verdictOn = (key: string, date: string) =>
+    rows.find((r) => r.exercise_key === key && r.date === date)?.verdict;
+  ok("\"controlled\" is what the new scale calls \"clean\"", verdictOn("goblet squat", "2026-09-01") === "clean");
+  ok("\"hard\" keeps its name and its meaning", verdictOn("goblet squat", "2026-09-02") === "hard");
+  ok("\"pain\" is \"painful\"", verdictOn("goblet squat", "2026-09-03") === "painful");
+
+  // The step-down depends on this one. A painful day that stopped counting as
+  // painful would quietly hand back the rung it was meant to close.
+  ok(
+    "both painful days are still painful",
+    rows.filter((r) => r.verdict === "painful").length === 2,
+  );
+  // Nothing may be invented: nobody ever gave these answers.
+  ok(
+    "nothing was back-filled as easy or limit",
+    !rows.some((r) => r.verdict === "easy" || r.verdict === "limit"),
+  );
+
+  const twice = openAt(file);
+  ok(
+    "running it twice changes nothing",
+    (twice.prepare("SELECT COUNT(*) AS n FROM movement_feedback WHERE verdict = 'clean'").get() as { n: number })
+      .n === 2,
+  );
+  twice.close();
+  up.close();
   console.log("");
 }
 

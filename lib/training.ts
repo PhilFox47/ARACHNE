@@ -60,6 +60,8 @@ import {
 } from "./baseline";
 import { stripFences } from "./vision";
 import { workingRange } from "./prescription";
+import { stepFor } from "./feedback";
+import { latestVerdicts, verdictsByKeyDate } from "./skills";
 
 export type Metric = "reps" | "time";
 
@@ -620,9 +622,29 @@ const RUNAWAY_MULTIPLE = 2;
  *                                        the movement itself gets harder, and it
  *                                        now takes weeks to do it — reps are what
  *                                        carries the load in the meantime.
+ *
+ * And how it felt changes the size of that step, which is the whole reason the
+ * question is asked. The reps alone read twelve the same way whether they flew
+ * up or nearly finished you, so on their own they add one either way:
+ *
+ *   easy     →  two reps, or ten seconds. A rung that costs nothing has stopped
+ *               training anyone, and waiting for the calendar to fix it wastes
+ *               the weeks in between.
+ *   clean    →  the ordinary step.
+ *   hard     →  nothing. Finishing at the edge is a good session; adding to it
+ *               is how the next one becomes a limit.
+ *   limit    →  nothing, for the same reason with less ambiguity.
+ *   painful  →  back to the bottom of the range, and no weight added. The tree
+ *               handles the rung; this stops today's number asking again for
+ *               exactly what hurt.
+ *
+ * Only the answer given on the day being progressed *from* counts. A verdict
+ * from three weeks ago describes a different load.
  */
 function withHistory(p: Prescription): Prescription {
   const after = historyWindow(p.phase);
+  const verdicts = latestVerdicts();
+
   return {
     ...p,
     exercises: p.exercises.map((e) => {
@@ -631,15 +653,20 @@ function withHistory(p: Prescription): Prescription {
       const last = hist[0];
       const loaded = e.loaded || last.bestWeightKg !== null;
 
+      const said = verdicts.get(e.key);
+      const step = stepFor(said?.date === last.date ? said.verdict : null);
+
       if (e.metric === "time") {
         const range = workingRange(e.repRange, e.targetSeconds);
         const from = last.bestSeconds;
-        const next =
-          from === null || range === null
-            ? (from ?? e.targetSeconds)
-            : from >= range.floor
-              ? Math.min(from + 5, range.top * RUNAWAY_MULTIPLE)
-              : from;
+        if (from === null || range === null) {
+          return { ...e, targetSeconds: from ?? e.targetSeconds, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
+        }
+        const next = step.back
+          ? range.floor
+          : from >= range.floor
+            ? Math.min(from + step.seconds, range.top * RUNAWAY_MULTIPLE)
+            : from;
         return { ...e, targetSeconds: next, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
       }
 
@@ -649,14 +676,23 @@ function withHistory(p: Prescription): Prescription {
         return { ...e, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
       }
 
+      // Something hurt: ask for the bottom of the range at the same weight. The
+      // skill tree decides whether the movement itself steps down; this only
+      // declines to hand back the number that caused it.
+      if (step.back) {
+        return { ...e, targetReps: range.floor, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
+      }
+
       // Top of the range on a loaded movement: the weight goes up and the reps
       // go back to the bottom. On a bodyweight movement there is nothing to add
-      // but reps, so they keep climbing.
-      if (from >= range.top && last.bestWeightKg !== null) {
+      // but reps, so they keep climbing. Held back when the last session was
+      // already at the edge — the top of the range reached by a hair is not an
+      // invitation to add a plate.
+      if (from >= range.top && last.bestWeightKg !== null && step.reps > 0) {
         return { ...e, targetReps: range.floor, targetWeightKg: last.bestWeightKg + 2.5, loaded };
       }
 
-      const next = from >= range.floor ? Math.min(from + 1, range.top * RUNAWAY_MULTIPLE) : from;
+      const next = from >= range.floor ? Math.min(from + step.reps, range.top * RUNAWAY_MULTIPLE) : from;
       return { ...e, targetReps: next, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
     }),
   };
@@ -737,6 +773,19 @@ RULES — these are not yours to change:
   reps, and only when the last session met or beat its target. Never jump more
   than one increment.
 - If a movement regressed or was missed, hold or reduce slightly. Do not push.
+- Every history entry carries "felt" — the athlete's own rating of that session,
+  or null if they did not answer. It outranks the numbers, because the numbers
+  cannot tell you whether twelve reps flew up or nearly finished them:
+    easy    — too light. Add more than the usual step: take it to the top of the
+              range, or add weight outright. A rung that costs nothing trains
+              nobody, and this is the only place that fact appears.
+    clean   — right. The ordinary step.
+    hard    — finished at the edge. Hold. Do not add.
+    limit   — could not finish, nothing hurt. Hold or reduce. Never add.
+    painful — a joint, not a muscle. Reduce, and never increase anything on that
+              movement. Two of these step it down a rung on their own.
+  Two or more "easy" in a row is the clearest instruction in the data; two or
+  more "hard" or "limit" in a row means the programming is wrong, not the effort.
 - On a deload week, reduce: fewer sets, roughly 70% of usual load, nothing near
   failure.
 - With no history for a movement, keep the plan's own numbers and set weight to
@@ -877,6 +926,11 @@ export async function generatePrescription(
 
   const st = standings();
   const after = historyWindow(base.phase);
+  // How each of those sessions felt, attached to the session it describes. The
+  // numbers alone read twelve reps the same way whether they flew up or nearly
+  // finished them, which is the one thing the model most needs to know before
+  // deciding what to ask for next.
+  const felt = verdictsByKeyDate();
   const context = base.exercises.map((e) => ({
     name: e.name,
     metric: e.metric,
@@ -889,6 +943,7 @@ export async function generatePrescription(
       best_weight_kg: h.bestWeightKg,
       best_seconds: h.bestSeconds,
       sets: h.totalSets,
+      felt: felt.get(`${e.key}|${h.date}`) ?? null,
     })),
   }));
 

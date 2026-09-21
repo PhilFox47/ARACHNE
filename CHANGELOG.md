@@ -17,6 +17,83 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.25.0 — 2026-09-21
+
+Five answers to "how did that feel", and they change the next session.
+
+Three was not enough, and the two that were missing were the two that carry
+instructions.
+
+**"Controlled" was doing two jobs.** It meant both *this was exactly right* and
+*this was trivial, give me more* — opposite instructions wearing the same word.
+The app could only ever act on the first reading, so a movement you had
+outgrown crept up one rep a session while the calendar took weeks to notice.
+
+**"Hard" was doing two as well.** *I finished, barely* and *I could not finish*
+are the difference between the load being right at the edge and the load being
+wrong, and they were the same button.
+
+The scale now runs left to right from too little to too much, with the one that
+is not about effort at the end:
+
+| | |
+|---|---|
+| **Easy** | Almost no effort — make it harder |
+| **Clean** | Done as asked, exactly the right amount |
+| **Hard** | Finished it, but it took everything |
+| **Limit** | Could not reach the goal — but nothing hurt |
+| **Painful** | A joint, or somewhere that should not hurt |
+
+### It changes what you are asked for next
+
+This is the point, not the labels. Double progression reads twelve reps the
+same way whether they flew up or nearly finished you, and adds one either way.
+Now the answer sets the size of the step — proven end to end in the checks, with
+identical work logged and only the rating different:
+
+| Rated | Next session asks for |
+|---|---|
+| Easy | **12 reps** — two, not one |
+| Clean | 11 reps — the ordinary step |
+| Hard | 10 reps — holds |
+| Limit | 10 reps — holds |
+| Painful | 8 reps — back to the bottom of the range |
+| *Not rated* | 11 reps — **exactly as before this shipped** |
+
+That last row is load-bearing. A movement nobody rated has to behave the way it
+always did, or a quiet session silently stalls the plan.
+
+### The trainer gained the vocabulary
+
+`feedback.counts` tallies all five. `feedback.easyStreak` is new and is the
+clearest actionable signal in the whole dataset — *nothing is going wrong*,
+which is exactly why it would otherwise never get said. `hardStreak` now counts
+`hard` and `limit` together, because both mean at or past what can be absorbed,
+and carries `worst` so the briefing can tell "you finished them all" from "you
+could not finish". The model that suggests each session now gets each past
+session's rating attached to its numbers, and is told what to do with each.
+
+### Migrating what you already answered
+
+A rating is a memory of how a session felt, and there is no going back to ask
+again. Schema **17** renames rather than discards: `controlled` → `clean`,
+`pain` → `painful`, `hard` keeps both its name and its meaning. Nothing is
+back-filled as `easy` or `limit` — nobody was ever able to give those answers,
+and inventing them for past sessions would be making up how something felt
+months ago. Checked against a seeded v16 database rather than asserted about the
+SQL, including that both painful days survive as painful, since the step-down
+depends on exactly that.
+
+### On the screen
+
+Five buttons in one row, read left to right as a scale, on a 393px phone with
+no overflow. Before you answer, a compact legend defines each; after, the line
+becomes what that answer will actually do — *"Logged as too light. The next
+session asks for more."* The full wording stays on every button for a screen
+reader.
+
+---
+
 ## 1.24.0 — 2026-09-18
 
 The turnover hour is yours to set, and the build says what it is.
