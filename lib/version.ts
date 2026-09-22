@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.25.0";
+export const APP_VERSION = "1.25.1";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-09-21";
+export const RELEASED = "2026-09-22";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.25.1",
+    date: "2026-09-22",
+    kind: "patch",
+    headline: "A hold's timer counts to the plan, not to your last attempt",
+    changes: [
+      "The card said 3 × 45 s and the timer was set to 37 — your previous best — so it chimed early. “Fell short, so repeat it” is right for reps, where the prefill is only a placeholder. On a hold that number goes to the timer, the timer chimes on it, and a chime means let go — so the prefill enforced itself: hold to the chime at 37, log 37, be handed 37 again. Every week, with 45 written above it the whole time.",
+      "No rating escaped it either. The branch that adds time only runs once you are already at the plan's figure, and you could never get there — so “easy” was as stuck as “limit”.",
+      "The rule's job is to cap growth, not to lower the plan's own floor. A hold is never prescribed below what the plan asks now. Above it, the ordinary steps resume and the ratings steer them as before. Reps are untouched.",
+      "A check added yesterday passed on the 21st and failed on the 22nd with nothing changed but the date — it logged a fixed ten reps into whatever movement the weekday happened to bring. It now derives its figures from the movement it picks, and the new hold check walks four sessions forward rather than asserting one number, because the fault was a loop rather than a wrong value.",
+    ],
+  },
   {
     version: "1.25.0",
     date: "2026-09-21",

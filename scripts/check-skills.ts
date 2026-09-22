@@ -441,16 +441,36 @@ async function main() {
     const { setSetting } = await import("../lib/settings");
 
     const day = nowISO();
-    const before = plus(day, -1);
     setSetting("start_date", plus(day, -60));
 
-    const shape = baselinePrescription(1, dk(day) as never, 8, day);
-    const move = shape.exercises.find((e) => e.metric === "reps");
+    // A movement with room on both sides of the logged figure, found by
+    // looking rather than assumed. The first version of this check logged a
+    // hard-coded ten reps into whatever today's session happened to hold, and
+    // passed for a day — until the weekday turned over and brought a movement
+    // whose range topped out at ten, where ten triggers the weight increase and
+    // resets the reps to the floor. A check that depends on the calendar is a
+    // check that fails on a day you did not change anything.
+    let move: { key: string; name: string; repRange: string | null } | null = null;
+    let onDay = day;
+    for (let i = 0; i < 7; i++) {
+      const d = plus(day, i);
+      const found = baselinePrescription(1, dk(d) as never, 8, d).exercises.find((e) => {
+        if (e.metric !== "reps" || !e.repRange) return false;
+        const m = e.repRange.match(/(\d+)\s*[–-]\s*(\d+)/);
+        // Two clear reps of headroom, so the logged figure sits strictly inside
+        // the range and no branch but the one under test can fire.
+        return m !== null && Number(m[2]) - Number(m[1]) >= 2;
+      });
+      if (found) { move = found; onDay = d; break; }
+    }
+    const floor = move ? Number(move.repRange!.match(/\d+/)![0]) : 0;
+    const logged = floor + 1;
 
     const issued = async (verdict: string | null) => {
       db.delete(exerciseLogs).run();
       db.delete(sessions).run();
       db.delete(movementFeedback).run();
+      const before = plus(onDay, -7);
       const sid = db
         .insert(sessions)
         .values({ date: before, dayKey: dk(before), phase: 1, completed: true })
@@ -459,16 +479,16 @@ async function main() {
       for (let i = 0; i < 3; i++) {
         db.insert(exerciseLogs)
           .values({ sessionId: sid, date: before, exerciseKey: move!.key, exerciseName: move!.name,
-            setIndex: i, reps: 10, weightKg: 20 })
+            setIndex: i, reps: logged, weightKg: 20 })
           .run();
       }
       if (verdict) db.insert(movementFeedback).values({ date: before, exerciseKey: move!.key, verdict: verdict as never }).run();
-      const rx = await generatePrescription(baselinePrescription(1, dk(day) as never, 8, day), false);
+      const rx = await generatePrescription(baselinePrescription(1, dk(onDay) as never, 8, onDay), false);
       return rx.exercises.find((e) => e.key === move!.key)?.targetReps ?? null;
     };
 
     if (!move) {
-      ok("today's session has a rep-based movement to test with", false);
+      ok("the plan has a rep movement with range to spare", false);
     } else {
       const none = await issued(null);
       const easy = await issued("easy");
@@ -478,13 +498,103 @@ async function main() {
       const painful = await issued("painful");
 
       ok("easy asks for more than clean", (easy ?? 0) > (clean ?? 0), `${easy} vs ${clean}`);
-      ok("clean asks for more than the ten that were logged", (clean ?? 0) > 10, `${clean}`);
-      ok("hard holds at what was logged", hard === 10, `${hard}`);
-      ok("limit holds too", limit === 10, `${limit}`);
-      ok("painful drops back rather than holding", (painful ?? 99) < 10, `${painful}`);
+      ok("clean asks for more than was logged", (clean ?? 0) > logged, `${clean} after ${logged}`);
+      ok("hard holds at what was logged", hard === logged, `${hard}`);
+      ok("limit holds too", limit === logged, `${limit}`);
+      ok("painful drops back rather than holding", (painful ?? 99) < logged, `${painful}`);
       // The one that must not change. A movement nobody rated has to behave
       // exactly as it did before any of this shipped.
       ok("and an unrated movement progresses as it always did", none === clean, `${none} vs ${clean}`);
+    }
+  }
+
+  // ── A hold's timer may never chime below what the plan asks ──
+  // Reported from the phone: the card said "3 × 45 s" and the timer was set to
+  // 37 s, the previous best. "Fell short, so repeat it" is right for reps — the
+  // prefill is a placeholder and you type what you actually did. On a hold the
+  // number goes to the timer, the timer chimes on it, and a chime means let go.
+  // So the prefill enforced itself: released at 37, logged 37, prefilled 37.
+  // Every week for a year, with 45 written above it the whole time.
+  console.log("\na hold is never prescribed below the plan's own figure");
+  {
+    const { baselinePrescription, generatePrescription } = await import("../lib/training");
+    const { todayISO: nowISO, addDays: plus, dayKeyOf: dk } = await import("../lib/dates");
+    const { setSetting } = await import("../lib/settings");
+
+    const day = nowISO();
+    setSetting("start_date", plus(day, -60));
+
+    // Whichever weekday carries a single-target hold — the shape that stalls.
+    let hold: { key: string; name: string; repRange: string | null } | null = null;
+    let on = day;
+    for (let i = 0; i < 7; i++) {
+      const d = plus(day, i);
+      const found = baselinePrescription(1, dk(d) as never, 8, d).exercises.find(
+        (e) => e.metric === "time" && e.repRange !== null && !/[–-]/.test(e.repRange),
+      );
+      if (found) { hold = found; on = d; break; }
+    }
+
+    if (!hold) {
+      ok("the plan has a single-target hold to test with", false);
+    } else {
+      const asked = Number(hold.repRange!.match(/\d+/)![0]);
+
+      const issued = async (heldFor: number, verdict: string | null) => {
+        db.delete(exerciseLogs).run();
+        db.delete(sessions).run();
+        db.delete(movementFeedback).run();
+        const before = plus(on, -7);
+        const sid = db
+          .insert(sessions)
+          .values({ date: before, dayKey: dk(before), phase: 1, completed: true })
+          .returning({ id: sessions.id })
+          .get().id;
+        for (let i = 0; i < 3; i++) {
+          db.insert(exerciseLogs)
+            .values({ sessionId: sid, date: before, exerciseKey: hold!.key, exerciseName: hold!.name,
+              setIndex: i, seconds: heldFor })
+            .run();
+        }
+        if (verdict) {
+          db.insert(movementFeedback)
+            .values({ date: before, exerciseKey: hold!.key, verdict: verdict as never })
+            .run();
+        }
+        const rx = await generatePrescription(baselinePrescription(1, dk(on) as never, 8, on), false);
+        return rx.exercises.find((e) => e.key === hold!.key)?.targetSeconds ?? null;
+      };
+
+      const short = await issued(asked - 8, null);
+      ok(
+        "falling short still asks for the plan's figure, not for your best",
+        short === asked,
+        `plan ${asked}s, held ${asked - 8}s, prescribed ${short}s`,
+      );
+
+      // The fault was a fixed point: the number the timer chimes on is the
+      // number you release on, which becomes the number it chimes on. Walking
+      // it forward is the only way to show the loop is gone.
+      let released = asked - 8;
+      const walk: number[] = [];
+      for (let i = 0; i < 4; i++) {
+        const next = (await issued(released, null)) ?? released;
+        walk.push(next);
+        released = next;
+      }
+      ok(
+        "and holding to the chime climbs rather than flatlining",
+        walk[walk.length - 1] > walk[0],
+        walk.join(" → "),
+      );
+      ok("with nothing stuck at the old best", !walk.includes(asked - 8), walk.join(" → "));
+
+      // The ratings still steer it, and still cannot push it under the plan.
+      ok("a hard hold holds where it is", (await issued(asked + 5, "hard")) === asked + 5);
+      ok("an easy one adds more than a clean one",
+        (await issued(asked + 5, "easy"))! > (await issued(asked + 5, "clean"))!);
+      ok("and a painful one comes back to the plan, not below it",
+        (await issued(asked + 20, "painful")) === asked);
     }
   }
 

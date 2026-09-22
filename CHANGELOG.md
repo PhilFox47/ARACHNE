@@ -17,6 +17,54 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.25.1 — 2026-09-22
+
+A hold's timer counts to the plan's figure, not to your last attempt.
+
+Reported with a screenshot: the card read **3 × 45 s** and the timer was set to
+**37 s** — the previous best — so it chimed eight seconds early.
+
+The display was the small half of it. "Fell short, so repeat it" is the right
+rule for reps: the prefill is a placeholder and you type whatever you actually
+managed. On a hold that number is handed to the timer, the timer chimes on it,
+and a chime means *let go*. So the prefill enforced itself:
+
+> hold to the chime at 37 → log 37 → be handed 37 again
+
+Every week, for the rest of the year, with 45 written above it the whole time.
+No rating escaped it either — `easy` was as stuck as `limit`, because the "add
+to it" branch only runs once you are **at** the plan's figure, and you could
+never get there.
+
+The rule's job is to cap growth, not to lower the plan's own floor. A hold is
+now never prescribed below what the plan asks. Held 37 against a 45 s
+prescription, the timer is set to 45; held 52 against 60, it is set to 60. Once
+you are at or above it, the ordinary steps resume and the ratings steer them as
+before — `hard` holds, `easy` adds ten seconds, `painful` comes back to the
+plan's figure rather than below it.
+
+Reps are untouched. The prefill there is a placeholder and nothing enforces it.
+
+### A check that passed for a day
+
+The end-to-end progression check added yesterday logged a hard-coded ten reps
+into whatever movement today's session happened to contain. It passed on the
+21st and failed on the 22nd — the weekday turned over and brought a movement
+whose range tops out at ten, where ten triggers the weight increase and resets
+the reps to the floor.
+
+Nothing had changed but the date. It now finds a movement with two reps of
+headroom and derives its figures from that movement's own range, so it tests
+the branch it means to test on any day of the week.
+
+The new hold check walks the fixed point forward rather than asserting one
+number: release on the chime four sessions running and the target has to climb,
+because the fault was precisely that it did not.
+
+No schema change.
+
+---
+
 ## 1.25.0 — 2026-09-21
 
 Five answers to "how did that feel", and they change the next session.

@@ -662,11 +662,25 @@ function withHistory(p: Prescription): Prescription {
         if (from === null || range === null) {
           return { ...e, targetSeconds: from ?? e.targetSeconds, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
         }
-        const next = step.back
-          ? range.floor
-          : from >= range.floor
-            ? Math.min(from + step.seconds, range.top * RUNAWAY_MULTIPLE)
-            : from;
+        const grown = from >= range.floor
+          ? Math.min(from + step.seconds, range.top * RUNAWAY_MULTIPLE)
+          : from;
+
+        // Never below what the plan asks for — and a hold is the one place
+        // where that is not merely untidy.
+        //
+        // "Fell short, so repeat it" exists to stop the app asking for *more*
+        // than you managed. On reps it does exactly that: the prefill is a
+        // placeholder and you type whatever you actually did. On a hold the
+        // number is handed to the timer, the timer chimes on it, and a chime is
+        // an instruction to let go — so prefilling your previous best makes
+        // your previous best permanent. Deep squat hold asks for 45 s; someone
+        // who managed 37 was handed a 37 s timer, released on the chime at 37,
+        // and was handed 37 again. Every week for a year, with the card above
+        // it saying 45 the whole time.
+        //
+        // The rule's job is to cap growth, not to lower the plan's own floor.
+        const next = step.back ? range.floor : Math.max(grown, range.floor);
         return { ...e, targetSeconds: next, targetWeightKg: last.bestWeightKg ?? e.targetWeightKg, loaded };
       }
 
