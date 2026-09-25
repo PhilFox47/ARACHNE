@@ -12,10 +12,10 @@
  * the count of migrations, and it only ever goes up by one per shipped schema
  * change. A version bump does not imply a schema bump or the reverse.
  */
-export const APP_VERSION = "1.25.1";
+export const APP_VERSION = "1.26.0";
 
 /** Bumped on the release that introduced it, for the settings screen. */
-export const RELEASED = "2026-09-22";
+export const RELEASED = "2026-09-25";
 
 export interface ReleaseNote {
   version: string;
@@ -32,6 +32,18 @@ export interface ReleaseNote {
  * running build can be identified from.
  */
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "1.26.0",
+    date: "2026-09-25",
+    kind: "minor",
+    headline: "The trainer notices when things are going right",
+    changes: [
+      "It was structurally lopsided: every problem branch — a missed patrol, an overshoot, a shortfall — sat at priority 70 to 98, while the genuine wins scattered through the same logic sat at 40 to 68. On any real week with even one small miss, a real win never made the three-sentence budget. It read as a coach who only ever finds fault, because on most days it mathematically could not do anything else.",
+      "The morning brief now looks for what is working before it decides what to lead with, and says so with the same specificity a criticism gets — not “great job”, but the number that makes it true. A week where every patrol landed, nothing went over target and nothing hurt now opens with exactly that, plainly, by name.",
+      "Setbacks did not get softer — they got a second half. Naming what went wrong and stopping there was a scoreboard, not coaching. Every shortfall now comes with the reason when the data has one (a note, a pattern across days, a knock-on effect) and one concrete next step, not “try harder” — the catalogue's cues for a movement, the item that blew the calorie target, what to do about a missed patrol tomorrow.",
+      "Every existing rule stayed exactly as strict as it was: no praise without evidence, pain still overrides everything, a bad week is still called a bad week. This is not the trainer getting nicer — it is the trainer getting more accurate about a week that actually went well, which is a fact it was previously structurally unable to lead with.",
+    ],
+  },
   {
     version: "1.25.1",
     date: "2026-09-22",

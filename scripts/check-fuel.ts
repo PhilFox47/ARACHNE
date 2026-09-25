@@ -719,7 +719,8 @@ async function main() {
   // What the sentence actually reads, since that is what gets seen.
   const said = localBriefing({
     ...gatherFacts(todayISO()),
-    feedback: { recent: [], painful: [], hardCount: 0, answered: 0, hardStreak: [] },
+    feedback: { recent: [], counts: { easy: 0, clean: 0, hard: 0, limit: 0, painful: 0 }, answered: 0,
+      painful: [], easyStreak: [], hardStreak: [] },
     patrol: {
       ...gatherFacts(todayISO()).patrol,
       skipped: [], lastSessionDaysAgo: 0,
@@ -806,7 +807,8 @@ async function main() {
   const goodText = localBriefing(goodFacts);
   ok("so the briefing does not invent a problem", !/missed|over at|went backwards/i.test(goodText), goodText.slice(0, 90));
 
-  // The prompt is where the licence to criticise lives.
+  // The prompt is where the licence to criticise lives — and, in equal
+  // measure, the instruction to actually notice when things are going well.
   for (const rule of [
     /not a cheerleader/i,
     /No praise without evidence/i,
@@ -814,9 +816,57 @@ async function main() {
     /skipped a patrol, say so plainly/i,
     /never about them as a person/i,
     /do not shame/i,
+    /CELEBRATE WHAT IS ACTUALLY WORKING/,
+    /lead with it — plainly, specifically, by name, and mean it/i,
+    /EVERY SETBACK GETS AN ANALYSIS AND A FIX/,
+    /Naming what went wrong and stopping there is a scoreboard, not coaching/i,
+    /One concrete, doable next step/i,
+    /never what it says about them/i,
   ]) {
     ok(`the prompt still says ${rule.source.slice(0, 32)}`, rule.test(briefingSrc));
   }
+
+  // ── A week where everything actually went right ──
+  // The complaint this answers: the trainer read as too negative, because
+  // every problem branch sits at priority 70-98 while the scattered positive
+  // branches sit at 40-68 — so on any real week with even one small miss, a
+  // genuine win never made the three-item budget. Checked against an explicit
+  // clean-week fixture rather than the ambient goodFacts above, whose exact
+  // attendance count depends on which weekday the check happens to run on.
+  console.log("\na genuinely clean week gets celebrated, not just left uncriticised");
+
+  const greatWeekFacts = {
+    ...goodFacts,
+    patrol: { ...goodFacts.patrol, skipped: [], doneThisWeek: goodFacts.patrol.dueThisWeek },
+    fuel: { ...goodFacts.fuel, overTargetDays: [] },
+    feedback: { recent: [], counts: { easy: 0, clean: 0, hard: 0, limit: 0, painful: 0 }, answered: 0,
+      painful: [], easyStreak: [], hardStreak: [] },
+  };
+  const greatWeekText = localBriefing(greatWeekFacts);
+  ok(
+    "it is named specifically, not just left uncriticised",
+    /what a good week looks like/i.test(greatWeekText),
+    greatWeekText.slice(0, 110),
+  );
+  ok(
+    "and the attendance branch does not also say it — that is repetition, not emphasis",
+    (greatWeekText.match(/patrols done/gi) ?? []).length === 1,
+    greatWeekText,
+  );
+
+  // The gate has to be strict, or this becomes exactly the "congratulates a
+  // bad week" failure the honesty rules above exist to prevent.
+  const oneMissAgain = {
+    ...greatWeekFacts,
+    fuel: {
+      ...greatWeekFacts.fuel,
+      overTargetDays: [{ date: dayBackISO(1), kcal: 2900, target: 2300, overBy: 600, worstItems: [] }],
+    },
+  };
+  ok(
+    "but a single day over target is enough to withhold it",
+    !/what a good week looks like/i.test(localBriefing(oneMissAgain)),
+  );
 
   // ── It remembers what it already said ──
   // The complaint: it covered the same ground every morning as though it had
@@ -904,7 +954,8 @@ async function main() {
     // No pain in this one on purpose. Pain is the headline whenever it exists
     // and never rotates, which is correct and is checked on its own further
     // down — leaving it in here would make this test measure that instead.
-    feedback: { recent: [], painful: [], hardCount: 0 },
+    feedback: { recent: [], counts: { easy: 0, clean: 0, hard: 0, limit: 0, painful: 0 }, answered: 0,
+      painful: [], easyStreak: [], hardStreak: [] },
     vitals: { ...gatherFacts(today).vitals, avg7: 98.2, avg7LastWeek: 97.9, daysSinceWeighIn: 0 },
     fuel: {
       ...gatherFacts(today).fuel,
@@ -916,7 +967,7 @@ async function main() {
       ...gatherFacts(today).patrol,
       skipped: [{ date: addDays(today, -4), dayKey: "thu", title: "Conditioning", started: false }],
       shortfalls: [{ date: addDays(today, -2), name: "Incline inverted row", metric: "reps",
-        target: 10, best: 6, previousBest: 10, setsDone: 3, setsPlanned: 3,
+        target: 10, range: null, best: 6, previousBest: 10, setsDone: 3, setsPlanned: 3,
         watch: "Hips stay up.", cues: ["Blades together"] }],
     },
   };
@@ -1253,7 +1304,8 @@ async function main() {
   // never mentioned the subject would pass for the wrong reason.
   const quiet = {
     ...seen,
-    feedback: { recent: [], painful: [], hardCount: 0 },
+    feedback: { recent: [], counts: { easy: 0, clean: 0, hard: 0, limit: 0, painful: 0 }, answered: 0,
+      painful: [], easyStreak: [], hardStreak: [] },
     fuel: { ...seen.fuel, daysLogged7: 7, avgProtein7: 200, proteinDaysMet7: 7, overTargetDays: [] },
     measurements: { ...seen.measurements, waistDeltaCm: null, daysSinceLast: 1 },
     patrol: { ...seen.patrol, skipped: [], shortfalls: [], lastSessionDaysAgo: 0, doneThisWeek: 2 },

@@ -17,6 +17,66 @@ carry an existing database forward does not ship.
 
 ---
 
+## 1.26.0 — 2026-09-25
+
+The trainer notices when things are going right.
+
+Reported: the morning brief reads too negative. It should be more motivating —
+celebrate wins, analyse setbacks, suggest fixes.
+
+### Why it was actually happening
+
+Not a wording problem — a structural one. `localBriefing`'s fallback composer,
+and the live prompt it mirrors, rank everything true about a week by how
+urgent it is and keep the top few. Every problem branch — a missed patrol
+(88–98), an overshoot (90), a shortfall (80–85) — sat well above every win
+scattered through the same function: attendance (40), protein hit (50),
+composition (44), web mastery (66). On any real week with even one small miss,
+a genuine win mathematically could not make the three-item budget. The trainer
+wasn't choosing to be harsh — it had no way to be anything else most mornings.
+
+### What changed
+
+**The prompt gained two sections with the same weight as the honesty rules,
+not subordinate to them.** `CELEBRATE WHAT IS ACTUALLY WORKING` instructs it to
+look for a genuine win *before* deciding what to lead with, and to give it the
+same specificity a criticism gets — the number that makes it true, not "great
+job". `EVERY SETBACK GETS AN ANALYSIS AND A FIX, NOT JUST A VERDICT` requires
+the reason when the data has one (a note, a pattern, a knock-on effect) and one
+concrete next step — never "try harder" — pulling from what the data already
+hands over: the catalogue's cues, the item that blew the target, "start with
+today's, don't try to make up the others."
+
+**Nothing that was already strict got softer.** "No praise without evidence"
+stands word for word. Pain still overrides everything. A bad week is still
+called a bad week, plainly. The change is what happens on a *good* week, which
+the old prompt was structurally unable to say much about.
+
+**The offline fallback got the same fix, gated tightly.** A new observation
+fires only when every due patrol landed, nothing went over target, and nothing
+was reported painful — strict enough that it only ever displaces an actual
+problem, never invents one to have something nice to say instead:
+
+> 5 of 5 patrols done, nothing over target and protein on target too. That is
+> what a good week looks like — keep doing exactly this.
+
+Verified on the running app: seeded a genuinely clean week (full attendance,
+nothing over target, chores clear) and confirmed the panel leads with this
+rather than the smaller positive branches it used to compete with and lose to.
+
+### Two pre-existing type errors, fixed on the way
+
+`npm run typecheck` was already failing on `scripts/check-fuel.ts` before this
+change — stale fixtures left over from the five-answer feedback scale
+(`hardCount` instead of `counts`/`answered`/`easyStreak`/`hardStreak`, and a
+shortfall missing its `range` field). Unrelated to this release, but it should
+never have been possible to commit against a repo that doesn't typecheck, so
+fixed here rather than left for the next person to trip over.
+
+No schema change.
+
+---
+
 ## 1.25.1 — 2026-09-22
 
 A hold's timer counts to the plan's figure, not to your last attempt.
